@@ -78,6 +78,7 @@ statement ok
 CREATE TABLE tbl AS SELECT * FROM range(1, 6);
 
 # Order by UUID v7 doesn't change the initial order.
+# Flaky in nature: we use system clock, which suffers clock skew.
 query I
 SELECT * FROM tbl ORDER BY uuidv7();
 ----

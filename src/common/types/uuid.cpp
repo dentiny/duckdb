@@ -170,7 +170,8 @@ hugeint_t UUIDv7::GenerateRandomUUID(RandomEngine &engine) {
 	const auto unix_ts_ns = static_cast<uint64_t>(time_ns.time_since_epoch().count());
 
 	// Begins with a 48 bit big-endian Unix Epoch timestamp with millisecond granularity.
-	const uint64_t unix_ts_ms = unix_ts_ns / 1000 /*nano second per millisecond*/;
+	static constexpr uint64_t kNanoToMilli = 1000000;
+	const uint64_t unix_ts_ms = unix_ts_ns / kNanoToMilli;
 	bytes[0] = static_cast<uint8_t>(unix_ts_ms >> 40);
 	bytes[1] = static_cast<uint8_t>(unix_ts_ms >> 32);
 	bytes[2] = static_cast<uint8_t>(unix_ts_ms >> 24);
@@ -193,11 +194,11 @@ hugeint_t UUIDv7::GenerateRandomUUID(RandomEngine &engine) {
 	bytes[14] = static_cast<uint8_t>(random_c >> 24);
 	bytes[15] = static_cast<uint8_t>(random_c >> 16);
 
-	// Fill in version number (4 bits).
+	// Fill in version number.
 	constexpr uint8_t kVersion = 7;
 	bytes[6] = (bytes[6] & 0x0f) | (kVersion << 4);
 
-	// Fill in veriant field.
+	// Fill in variant field.
 	bytes[8] = (bytes[8] & 0x3f) | 0x80;
 
 	return Convert(bytes);
