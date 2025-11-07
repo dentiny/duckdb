@@ -478,7 +478,7 @@ string BoxRenderer::ConvertRenderValue(const string &input) {
 				result += 'f';
 				break;
 			case 13:
-				// cariage return
+				// carriage return
 				result += 'r';
 				break;
 			case 27:
