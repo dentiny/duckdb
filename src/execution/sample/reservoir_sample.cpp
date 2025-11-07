@@ -908,7 +908,7 @@ unique_ptr<BlockingSample> ReservoirSamplePercentage::Copy() const {
 
 void ReservoirSamplePercentage::Finalize() {
 	// need to finalize the current sample, if any
-	// we are finializing, so we are starting to return chunks. Our last chunk has
+	// we are finalizing, so we are starting to return chunks. Our last chunk has
 	// sample_percentage * RESERVOIR_THRESHOLD entries that hold samples.
 	// if our current count is less than the sample_percentage * RESERVOIR_THRESHOLD
 	// then we have sampled too much for the current_sample and we need to redo the sample

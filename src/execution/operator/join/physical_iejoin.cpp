@@ -196,7 +196,7 @@ SinkFinalizeType PhysicalIEJoin::Finalize(Pipeline &pipeline, Event &event, Clie
 
 	if ((gstate.child == 1 && PropagatesBuildSide(join_type)) || (gstate.child == 0 && IsLeftOuterJoin(join_type))) {
 		// for FULL/LEFT/RIGHT OUTER JOIN, initialize found_match to false for every tuple
-		table.IntializeMatches();
+		table.InitializeMatches();
 	}
 
 	SinkFinalizeType res;
@@ -572,7 +572,7 @@ IEJoinUnion::IEJoinUnion(ExecutionContext &context, const PhysicalIEJoin &op, So
 	// RHS has negative rids
 	ExpressionExecutor r_executor(context.client);
 	r_executor.AddExpression(*op.rhs_orders[0].expression);
-	// add const column flase
+	// add const column false
 	auto right_const = make_uniq<BoundConstantExpression>(Value::BOOLEAN(false));
 	r_executor.AddExpression(*right_const);
 	r_executor.AddExpression(*op.rhs_orders[1].expression);
