@@ -20,7 +20,7 @@ struct ToMillenniaOperator {
 		interval_t result;
 		result.days = 0;
 		result.micros = 0;
-		if (!TryMultiplyOperator::Operation<int32_t, int32_t, int32_t>(iinput, Interval::MONTHS_PER_MILLENIUM,
+		if (!TryMultiplyOperator::Operation<int32_t, int32_t, int32_t>(iinput, Interval::MONTHS_PER_MILLENNIUM,
 		                                                               result.months)) {
 			throw OutOfRangeException("Interval value %s millennia out of range", NumericHelper::ToString(input));
 		}

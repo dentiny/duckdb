@@ -393,7 +393,7 @@ void ReservoirSample::WeightedMerge(ReservoirSample &other_sample) {
 			sel_size += 1;
 		}
 
-		// make sure that the sample indexes are (this.sample_chunk.size() + chunk_offfset)
+		// make sure that the sample indexes are (this.sample_chunk.size() + chunk_offset)
 		base_reservoir_sample->reservoir_weights.push(other_top);
 		chunk_offset += 1;
 		i += 1;

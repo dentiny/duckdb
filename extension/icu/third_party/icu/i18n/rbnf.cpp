@@ -1727,7 +1727,7 @@ RuleBasedNumberFormat::stripWhitespace(UnicodeString& description)
             start = p + 1;
         }
 
-        // when we get here, we've seeked off the end of the string, and
+        // when we get here, we've sought off the end of the string, and
         // we terminate the loop (we continue until *start* is -1 rather
         // than until *p* is -1, because otherwise we'd miss the last
         // rule in the description)

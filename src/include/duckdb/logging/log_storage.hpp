@@ -148,7 +148,7 @@ protected:
 	//! lock to be used by this class and child classes to ensure thread safety TODO: maybe remove and delegate
 	//! thread-safety to LogManager?
 	mutable mutex lock;
-	//! Switches between using false = use LoggingTargetTable::ALL_LOGS, true = use LoggingTargetTable::LOG_ENTIRES +
+	//! Switches between using false = use LoggingTargetTable::ALL_LOGS, true = use LoggingTargetTable::LOG_ENTRIES +
 	//! LoggingTargetTable::CONTEXTS
 	bool normalize_contexts = true;
 

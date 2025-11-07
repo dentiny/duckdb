@@ -193,7 +193,7 @@ interval_parse_identifier:
 	// add the specifier to the interval
 	switch (specifier) {
 	case DatePartSpecifier::MILLENNIUM:
-		IntervalTryAddition<int32_t>(result.months, number, MONTHS_PER_MILLENIUM, fraction);
+		IntervalTryAddition<int32_t>(result.months, number, MONTHS_PER_MILLENNIUM, fraction);
 		break;
 	case DatePartSpecifier::CENTURY:
 		IntervalTryAddition<int32_t>(result.months, number, MONTHS_PER_CENTURY, fraction);

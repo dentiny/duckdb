@@ -164,7 +164,7 @@ void Deliminator::FindJoinWithDelimGet(unique_ptr<LogicalOperator> &op, DelimCan
 	}
 }
 
-static bool ChildJoinTypeCanBeDeliminated(JoinType &join_type) {
+static bool ChildJoinTypeCanBeDelimited(JoinType &join_type) {
 	switch (join_type) {
 	case JoinType::INNER:
 	case JoinType::SEMI:
@@ -177,7 +177,7 @@ static bool ChildJoinTypeCanBeDeliminated(JoinType &join_type) {
 bool Deliminator::RemoveJoinWithDelimGet(LogicalComparisonJoin &delim_join, const idx_t delim_get_count,
                                          unique_ptr<LogicalOperator> &join, bool &all_equality_conditions) {
 	auto &comparison_join = join->Cast<LogicalComparisonJoin>();
-	if (!ChildJoinTypeCanBeDeliminated(comparison_join.join_type)) {
+	if (!ChildJoinTypeCanBeDelimited(comparison_join.join_type)) {
 		return false;
 	}
 

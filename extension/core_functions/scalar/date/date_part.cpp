@@ -881,7 +881,7 @@ int64_t DatePart::CenturyOperator::Operation(dtime_tz_t input) {
 
 template <>
 int64_t DatePart::MillenniumOperator::Operation(interval_t input) {
-	return input.months / Interval::MONTHS_PER_MILLENIUM;
+	return input.months / Interval::MONTHS_PER_MILLENNIUM;
 }
 
 template <>
@@ -1648,7 +1648,7 @@ void DatePart::StructOperator::Operation(bigint_vec &bigint_values, double_vec &
 		}
 		part_data = HasPartValue(bigint_values, DatePartSpecifier::MILLENNIUM);
 		if (part_data) {
-			part_data[idx] = input.months / Interval::MONTHS_PER_MILLENIUM;
+			part_data[idx] = input.months / Interval::MONTHS_PER_MILLENNIUM;
 		}
 		part_data = HasPartValue(bigint_values, DatePartSpecifier::QUARTER);
 		if (part_data) {

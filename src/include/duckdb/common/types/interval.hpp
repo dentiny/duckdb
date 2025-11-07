@@ -92,7 +92,7 @@ struct interval_t { // NOLINT
 //! type.
 class Interval {
 public:
-	static constexpr const int32_t MONTHS_PER_MILLENIUM = 12000;
+	static constexpr const int32_t MONTHS_PER_MILLENNIUM = 12000;
 	static constexpr const int32_t MONTHS_PER_CENTURY = 1200;
 	static constexpr const int32_t MONTHS_PER_DECADE = 120;
 	static constexpr const int32_t MONTHS_PER_YEAR = 12;
