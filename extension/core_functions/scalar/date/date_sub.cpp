@@ -99,7 +99,7 @@ struct DateSub {
 	struct MilleniumOperator {
 		template <class TA, class TB, class TR>
 		static inline TR Operation(TA start_ts, TB end_ts) {
-			return MonthOperator::Operation<TA, TB, TR>(start_ts, end_ts) / Interval::MONTHS_PER_MILLENIUM;
+			return MonthOperator::Operation<TA, TB, TR>(start_ts, end_ts) / Interval::MONTHS_PER_MILLENNIUM;
 		}
 	};
 

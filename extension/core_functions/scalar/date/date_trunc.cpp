@@ -369,7 +369,7 @@ template <>
 interval_t DateTrunc::MillenniumOperator::Operation(interval_t input) {
 	input.days = 0;
 	input.micros = 0;
-	input.months = (input.months / Interval::MONTHS_PER_MILLENIUM) * Interval::MONTHS_PER_MILLENIUM;
+	input.months = (input.months / Interval::MONTHS_PER_MILLENNIUM) * Interval::MONTHS_PER_MILLENNIUM;
 	return input;
 }
 

@@ -76,7 +76,7 @@ struct ExtensionAccess {
 		load_state.has_error = true;
 		load_state.error_data =
 		    error ? ErrorData(error)
-		          : ErrorData(ExceptionType::UNKNOWN_TYPE, "Extension has indicated an error occured during "
+		          : ErrorData(ExceptionType::UNKNOWN_TYPE, "Extension has indicated an error occurred during "
 		                                                   "initialization, but did not set an error message.");
 	}
 
@@ -119,7 +119,7 @@ struct ExtensionAccess {
 			}
 		} else if (load_state.init_result.abi_type == ExtensionABIType::C_STRUCT_UNSTABLE) {
 			// NOTE: we currently don't check anything here: the version of extensions of ABI type C_STRUCT_UNSTABLE is
-			// ignored because C_STRUCT_UNSTABLE extensions are tied 1:1 to duckdb verions meaning they will always
+			// ignored because C_STRUCT_UNSTABLE extensions are tied 1:1 to duckdb versions meaning they will always
 			// receive the whole function pointer struct
 		} else {
 			load_state.has_error = true;
@@ -418,7 +418,7 @@ bool ExtensionHelper::TryInitialLoad(DatabaseInstance &db, FileSystem &fs, const
 #ifdef WASM_LOADABLE_EXTENSIONS
 	EM_ASM(
 	    {
-		    // Next few lines should argubly in separate JavaScript-land function call
+		    // Next few lines should arguably in separate JavaScript-land function call
 		    // TODO: move them out / have them configurable
 		    const xhr = new XMLHttpRequest();
 		    xhr.open("GET", UTF8ToString($0), false);
@@ -591,7 +591,7 @@ void ExtensionHelper::LoadExternalExtensionInternal(DatabaseInstance &db, FileSy
 		if (result == false) {
 			throw FatalException(
 			    "Extension '%s' failed to initialize but did not return an error. This indicates an "
-			    "error in the extension: C API extensions should return a boolean `true` to indicate succesful "
+			    "error in the extension: C API extensions should return a boolean `true` to indicate successful "
 			    "initialization. "
 			    "This means that the Extension may be partially initialized resulting in an inconsistent state of "
 			    "DuckDB.",

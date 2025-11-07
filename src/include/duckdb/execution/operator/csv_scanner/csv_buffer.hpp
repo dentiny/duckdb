@@ -51,7 +51,7 @@ public:
 	          idx_t buffer_idx);
 
 	//! Creates a new buffer with the next part of the CSV File
-	shared_ptr<CSVBuffer> Next(CSVFileHandle &file_handle, idx_t buffer_size, bool &has_seeked) const;
+	shared_ptr<CSVBuffer> Next(CSVFileHandle &file_handle, idx_t buffer_size, bool &has_sought) const;
 
 	//! Gets the buffer actual size
 	idx_t GetBufferSize() const;
@@ -65,7 +65,7 @@ public:
 	void Reload(CSVFileHandle &file_handle);
 	//! Wrapper for the Pin Function, if it can seek, it means that the buffer might have been destroyed, hence we must
 	//! Scan it from the disk file again.
-	shared_ptr<CSVBufferHandle> Pin(CSVFileHandle &file_handle, bool &has_seeked);
+	shared_ptr<CSVBufferHandle> Pin(CSVFileHandle &file_handle, bool &has_sought);
 	//! Wrapper for unpin
 	void Unpin();
 	char *Ptr() {

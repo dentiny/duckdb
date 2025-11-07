@@ -1408,7 +1408,7 @@ static idx_t GetFileUrlOffset(const string &path) {
 #endif
 	}
 
-	// unkown file:/ url format
+	// unknown file:/ url format
 	return 0;
 }
 

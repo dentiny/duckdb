@@ -1,0 +1,46 @@
+# Typos configuration file
+
+[files]
+# Exclude third_party directories
+extend-exclude = [
+    "third_party/**",
+    "extension/*/third_party/**",
+]
+
+[type.cpp]
+# Only check C++ source and header files
+extend-glob = ["*.cpp", "*.hpp"]
+
+[default.extend-words]
+# Ignore short words (often variable names, locale codes, or false positives)
+fo = "fo"            # Locale code (Faroese)
+ba = "ba"            # Locale code (Bashkir)
+nd = "nd"            # Variable name
+Nd = "Nd"            # Format specifier part (SCNd64)
+siz = "siz"          # Variable name
+ot = "ot"            # Variable name
+Ot = "Ot"            # Part of identifiers
+Ue = "Ue"            # Part of identifiers
+Sme = "Sme"          # Part of identifiers
+Alo = "Alo"          # Part of identifiers
+OT = "OT"            # Part of identifiers
+Mis = "Mis"          # Part of base64/keys
+BVE = "BVE"          # Part of base64/keys
+whe = "whe"          # Abbreviation
+inh = "inh"          # Abbreviation (inherit)
+larg = "larg"        # Common variable name in parser (left arg)
+ned = "ned"          # Variable name
+shs = "shs"          # Abbreviation
+
+# Longer words that are intentional or domain-specific
+ser = "ser"          # Valid abbreviation
+edn = "edn"          # Valid abbreviation  
+stati = "stati"      # Latin plural, sometimes valid
+PN = "PN"            # Valid abbreviation
+datas = "datas"      # Sometimes used in specific contexts
+anye = "anye"        # Possible typo but might be intentional
+stil = "stil"        # Abbreviation
+conver = "conver"    # Abbreviation
+acount = "acount"    # Variable name (array count)
+nothig = "nothig"    # Keep for now if it's in generated code
+

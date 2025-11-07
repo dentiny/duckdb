@@ -73,7 +73,7 @@ private:
 	//! Because the buffer manager can be accessed in Parallel we need a mutex.
 	mutex main_mutex;
 	//! If the file_handle used seek
-	bool has_seeked = false;
+	bool has_sought = false;
 	unordered_set<idx_t> reset_when_possible;
 	bool is_pipe;
 };

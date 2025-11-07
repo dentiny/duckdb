@@ -36,7 +36,7 @@ bool CSVBufferManager::ReadNextAndCacheIt() {
 	D_ASSERT(last_buffer);
 	for (idx_t i = 0; i < 2; i++) {
 		if (!last_buffer->IsCSVFileLastBuffer()) {
-			auto maybe_last_buffer = last_buffer->Next(*file_handle, buffer_size, has_seeked);
+			auto maybe_last_buffer = last_buffer->Next(*file_handle, buffer_size, has_sought);
 			if (!maybe_last_buffer) {
 				last_buffer->last_buffer = true;
 				return false;
@@ -76,7 +76,7 @@ shared_ptr<CSVBufferHandle> CSVBufferManager::GetBuffer(const idx_t pos) {
 			cached_buffers[pos - 1]->Unpin();
 		}
 	}
-	return cached_buffers[pos]->Pin(*file_handle, has_seeked);
+	return cached_buffers[pos]->Pin(*file_handle, has_sought);
 }
 
 void CSVBufferManager::ResetBuffer(const idx_t buffer_idx) {

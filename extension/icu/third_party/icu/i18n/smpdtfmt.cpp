@@ -227,8 +227,8 @@ static const int32_t gFieldRangeBias[] = {
 
 // When calendar uses hebr numbering (i.e. he@calendar=hebrew),
 // offset the years within the current millenium down to 1-999
-static const int32_t HEBREW_CAL_CUR_MILLENIUM_START_YEAR = 5000;
-static const int32_t HEBREW_CAL_CUR_MILLENIUM_END_YEAR = 6000;
+static const int32_t HEBREW_CAL_CUR_MILLENNIUM_START_YEAR = 5000;
+static const int32_t HEBREW_CAL_CUR_MILLENNIUM_END_YEAR = 6000;
 
 static UMutex LOCK;
 
@@ -1492,8 +1492,8 @@ SimpleDateFormat::subFormat(UnicodeString &appendTo,
 //AD 12345 12345     45   12345    12345     12345
     case UDAT_YEAR_FIELD:
     case UDAT_YEAR_WOY_FIELD:
-        if (fDateOverride.compare(hebr)==0 && value>HEBREW_CAL_CUR_MILLENIUM_START_YEAR && value<HEBREW_CAL_CUR_MILLENIUM_END_YEAR) {
-            value-=HEBREW_CAL_CUR_MILLENIUM_START_YEAR;
+        if (fDateOverride.compare(hebr)==0 && value>HEBREW_CAL_CUR_MILLENNIUM_START_YEAR && value<HEBREW_CAL_CUR_MILLENNIUM_END_YEAR) {
+            value-=HEBREW_CAL_CUR_MILLENNIUM_START_YEAR;
         }
         if(count == 2)
             zeroPaddingNumber(currentNumberFormat, appendTo, value, 2, 2);
@@ -3103,7 +3103,7 @@ int32_t SimpleDateFormat::subParse(const UnicodeString& text, int32_t& start, UC
         // century, for parsed strings from "00" to "99".  Any other string
         // is treated literally:  "2250", "-1", "1", "002".
         if (fDateOverride.compare(hebr)==0 && value < 1000) {
-            value += HEBREW_CAL_CUR_MILLENIUM_START_YEAR;
+            value += HEBREW_CAL_CUR_MILLENNIUM_START_YEAR;
         } else if (text.moveIndex32(start, 2) == pos.getIndex() && !isChineseCalendar
             && u_isdigit(text.char32At(start))
             && u_isdigit(text.char32At(text.moveIndex32(start, 1))))
@@ -3143,7 +3143,7 @@ int32_t SimpleDateFormat::subParse(const UnicodeString& text, int32_t& start, UC
     case UDAT_YEAR_WOY_FIELD:
         // Comment is the same as for UDAT_Year_FIELDs - look above
         if (fDateOverride.compare(hebr)==0 && value < 1000) {
-            value += HEBREW_CAL_CUR_MILLENIUM_START_YEAR;
+            value += HEBREW_CAL_CUR_MILLENNIUM_START_YEAR;
         } else if (text.moveIndex32(start, 2) == pos.getIndex()
             && u_isdigit(text.char32At(start))
             && u_isdigit(text.char32At(text.moveIndex32(start, 1)))
