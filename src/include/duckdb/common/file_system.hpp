@@ -243,7 +243,7 @@ public:
 	//! Unregister a sub-filesystem by name
 	DUCKDB_API virtual void UnregisterSubSystem(const string &name);
 
-	// !Extract a sub-filesystem by name, with ownership transfered, return nullptr if not registered or the subsystem
+	// !Extract a sub-filesystem by name, with ownership transferred, return nullptr if not registered or the subsystem
 	// has been disabled.
 	DUCKDB_API virtual unique_ptr<FileSystem> ExtractSubSystem(const string &name);
 
@@ -273,7 +273,7 @@ public:
 	//! Create a LocalFileSystem.
 	DUCKDB_API static unique_ptr<FileSystem> CreateLocal();
 
-	//! Return the name of the filesytem. Used for forming diagnosis messages.
+	//! Return the name of the filesystem. Used for forming diagnosis messages.
 	DUCKDB_API virtual std::string GetName() const = 0;
 
 	//! Whether or not a file is remote or local, based only on file path
