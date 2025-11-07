@@ -1,21 +1,15 @@
 # Typos configuration file
 
 [files]
-# Only check cpp and hpp files in src directory
-extend-include = [
-    "src/**/*.cpp",
-    "src/**/*.hpp",
-]
-
-# Exclude third-party and generated code
+# Exclude third_party directories
 extend-exclude = [
-    "src/include/duckdb/common/third_party/**",
+    "third_party/**",
+    "extension/*/third_party/**",
 ]
 
-[default]
-# Configuration for typo checking
-check-filenames = false
-check-files = true
+[type.cpp]
+# Only check C++ source and header files
+extend-glob = ["*.cpp", "*.hpp"]
 
 [default.extend-words]
 # Ignore specific words that are ambiguous or have low confidence
@@ -25,7 +19,4 @@ edn = "edn"          # Could be valid abbreviation
 stati = "stati"      # Latin plural, sometimes valid
 PN = "PN"            # Could be valid abbreviation
 datas = "datas"      # Sometimes used in specific contexts
-
-[type.cpp]
-extend-glob = ["*.cpp", "*.hpp", "*.c", "*.h", "*.cc", "*.hh"]
 
