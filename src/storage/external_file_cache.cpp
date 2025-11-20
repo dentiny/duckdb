@@ -130,6 +130,19 @@ ExternalFileCache::CachedFile::Ranges(const unique_ptr<StorageLockKey> &guard) {
 	return ranges;
 }
 
+void ExternalFileCache::CachedFileRange::WaitForCompletion(unique_lock<mutex> &lock) {
+	completion_cv.wait(lock, [this]() { return IsComplete(); });
+}
+
+void ExternalFileCache::CachedFileRange::Complete(shared_ptr<BlockHandle> handle, idx_t offset_in_block) {
+	lock_guard<mutex> lock(completion_mutex);
+	D_ASSERT(!IsComplete()); // Should only complete once
+	D_ASSERT(handle != nullptr);
+	block_handle = std::move(handle);
+	block_offset = offset_in_block;
+	completion_cv.notify_all();
+}
+
 ExternalFileCache::ExternalFileCache(DatabaseInstance &db, bool enable_p)
     : buffer_manager(BufferManager::GetBufferManager(db)), enable(enable_p) {
 }
