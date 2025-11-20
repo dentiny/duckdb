@@ -8,13 +8,14 @@
 
 #pragma once
 
-#include "duckdb/common/winapi.hpp"
 #include "duckdb/common/file_open_flags.hpp"
 #include "duckdb/common/open_file_info.hpp"
 #include "duckdb/common/shared_ptr.hpp"
+#include "duckdb/common/winapi.hpp"
 #include "duckdb/main/client_context.hpp"
-#include "duckdb/storage/storage_lock.hpp"
 #include "duckdb/storage/external_file_cache.hpp"
+#include "duckdb/storage/read_policy.hpp"
+#include "duckdb/storage/storage_lock.hpp"
 
 namespace duckdb {
 
@@ -24,6 +25,7 @@ class BufferHandle;
 class FileOpenFlags;
 class FileSystem;
 struct FileHandle;
+class DatabaseInstance;
 class CachingFileSystem;
 
 struct CachingFileHandle {
@@ -58,17 +60,42 @@ public:
 private:
 	//! Get the version tag of the file (for checking cache invalidation)
 	const string &GetVersionTag(const unique_ptr<StorageLockKey> &guard);
-	//! Tries to read from the cache, filling "overlapping_ranges" with ranges that overlap with the request.
-	//! Returns an invalid BufferHandle if it fails
-	BufferHandle TryReadFromCache(data_ptr_t &buffer, idx_t nr_bytes, idx_t location,
-	                              vector<shared_ptr<CachedFileRange>> &overlapping_ranges,
-	                              optional_idx &start_location_of_next_range);
+
+	// ===== Helper Methods =====
 	//! Try to read from the specified range, return an invalid BufferHandle if it fails
 	BufferHandle TryReadFromFileRange(const unique_ptr<StorageLockKey> &guard, CachedFileRange &file_range,
 	                                  data_ptr_t &buffer, idx_t nr_bytes, idx_t location);
+	
+	//! Legacy TryReadFromCache (kept for non-seeking reads)
+	BufferHandle TryReadFromCache(data_ptr_t &buffer, idx_t nr_bytes, idx_t location,
+	                              vector<shared_ptr<CachedFileRange>> &overlapping_ranges,
+	                              optional_idx &start_location_of_next_range);
+
+	// ===== Stage 1: Read Policy =====
+	//! Calculate read ranges using the configured read policy
+	ReadPolicyRanges CalculateReadRanges(idx_t nr_bytes, idx_t location, optional_idx start_location_of_next_range);
+
+	// ===== Stage 2: Cache Check & Pending Reads =====
+	//! Check if a specific range exists (cached or pending), or create it as pending
+	//! Returns the CachedFileRange (complete if cached, pending if needs IO)
+	//! If the range is pending (another thread reading), waits for it to complete
+	//! Use IsComplete() to check if IO is needed: false = needs IO, true = cache hit
+	//! Note: guard will be released and re-acquired if waiting is needed
+	shared_ptr<CachedFileRange> CheckOrCreatePendingRange(unique_ptr<StorageLockKey> &guard,
+	                                                       const ReadPolicyResult &range);
+
+	// ===== Stage 3: Perform IO =====
+	//! Perform the actual IO operation for multiple ranges, avoiding duplicate IOs
+	//! Uses parallel threads when multiple cache misses need IO
+	void PerformMultiRangeIO(const ReadPolicyRanges &policy_ranges, data_ptr_t buffer,
+	                         vector<shared_ptr<CachedFileRange>> &pending_ranges);
+
+	// ===== Stage 4: Cache Insertion =====
 	//! Try to insert the file range into the cache
 	BufferHandle TryInsertFileRange(BufferHandle &pin, data_ptr_t &buffer, idx_t nr_bytes, idx_t location,
 	                                shared_ptr<CachedFileRange> &new_file_range);
+
+	// ===== Helper Methods =====
 	//! Read from file and copy from cached buffers until the requested read is complete
 	//! If actually_read is false, no reading happens, only the number of non-cached reads is counted and returned
 	idx_t ReadAndCopyInterleaved(const vector<shared_ptr<CachedFileRange>> &overlapping_ranges,
@@ -99,6 +126,9 @@ private:
 
 	//! Current position (if non-seeking reads)
 	idx_t position;
+
+	//! Read policy that determines how many bytes to read and cache
+	unique_ptr<ReadPolicy> read_policy;
 };
 
 //! CachingFileSystem is a read-only file system that closely resembles the FileSystem API.
@@ -109,7 +139,7 @@ private:
 	friend struct CachingFileHandle;
 
 public:
-	DUCKDB_API CachingFileSystem(FileSystem &file_system, DatabaseInstance &db);
+	DUCKDB_API CachingFileSystem(FileSystem &file_system, DatabaseInstance &db_p);
 	DUCKDB_API ~CachingFileSystem();
 
 public:
@@ -124,6 +154,8 @@ private:
 	FileSystem &file_system;
 	//! The External File Cache that caches the files
 	ExternalFileCache &external_file_cache;
+	//! Reference to the database instance to access config
+	DatabaseInstance &db;
 };
 
 } // namespace duckdb
