@@ -22,12 +22,14 @@ CachingFileSystem CachingFileSystem::Get(ClientContext &context) {
 }
 
 unique_ptr<CachingFileHandle> CachingFileSystem::OpenFile(const OpenFileInfo &path, FileOpenFlags flags) {
+	flags |= FileOpenFlags::FILE_FLAGS_DIRECT_IO;
 	return make_uniq<CachingFileHandle>(QueryContext(), *this, path, flags,
 	                                    external_file_cache.GetOrCreateCachedFile(path.path));
 }
 
 unique_ptr<CachingFileHandle> CachingFileSystem::OpenFile(QueryContext context, const OpenFileInfo &path,
                                                           FileOpenFlags flags) {
+	flags |= FileOpenFlags::FILE_FLAGS_DIRECT_IO;
 	return make_uniq<CachingFileHandle>(context, *this, path, flags,
 	                                    external_file_cache.GetOrCreateCachedFile(path.path));
 }
