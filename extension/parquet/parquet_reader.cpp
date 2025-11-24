@@ -1207,17 +1207,13 @@ void ParquetReader::InitializeScan(ClientContext &context, ParquetReaderScanStat
 	state.group_idx_list = std::move(groups_to_read);
 	state.sel.Initialize(STANDARD_VECTOR_SIZE);
 	if (!state.file_handle || state.file_handle->GetPath() != file_handle->GetPath()) {
-		auto flags = FileFlags::FILE_FLAGS_READ;
 		if (ShouldAndCanPrefetch(context, *file_handle)) {
 			state.prefetch_mode = true;
-			if (file_handle->IsRemoteFile()) {
-				flags |= FileFlags::FILE_FLAGS_DIRECT_IO;
-			}
 		} else {
 			state.prefetch_mode = false;
 		}
 
-		state.file_handle = fs.OpenFile(context, file, flags);
+		state.file_handle = fs.OpenFile(context, file, FileFlags::FILE_FLAGS_READ);
 	}
 	state.adaptive_filter.reset();
 	state.scan_filters.clear();

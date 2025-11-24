@@ -64,11 +64,7 @@ AsyncResult DirectFileReader::Scan(ClientContext &context, GlobalTableFunctionSt
 
 	// Given the columns requested, do we even need to open the file?
 	if (state.requires_file_open) {
-		auto flags = FileFlags::FILE_FLAGS_READ;
-		if (FileSystem::IsRemoteFile(file.path)) {
-			flags |= FileFlags::FILE_FLAGS_DIRECT_IO;
-		}
-		file_handle = fs.OpenFile(QueryContext(context), file, flags);
+		file_handle = fs.OpenFile(QueryContext(context), file, FileFlags::FILE_FLAGS_READ);
 	} else {
 		// At least verify that the file exist
 		// The globbing behavior in remote filesystems can lead to files being listed that do not actually exist
