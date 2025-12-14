@@ -15,6 +15,7 @@
 #include "duckdb/common/multi_file/base_file_reader.hpp"
 #include "duckdb/common/multi_file/multi_file_reader.hpp"
 #include "duckdb/storage/caching_file_system_wrapper.hpp"
+#include "duckdb/storage/buffer/buffer_handle.hpp"
 #include "json_reader_options.hpp"
 #include "duckdb/common/mutex.hpp"
 #include "json_common.hpp"
@@ -23,27 +24,6 @@
 namespace duckdb {
 struct JSONScanGlobalState;
 class JSONReader;
-
-struct JSONBufferHandle {
-public:
-	JSONBufferHandle(JSONReader &reader, idx_t buffer_index, idx_t readers, AllocatedData &&buffer, idx_t buffer_size,
-	                 idx_t buffer_start);
-
-public:
-	//! The reader this buffer comes from
-	JSONReader &reader;
-	//! Buffer index (within same file)
-	const idx_t buffer_index;
-
-	//! Number of readers for this buffer
-	atomic<idx_t> readers;
-	//! The buffer
-	AllocatedData buffer;
-	//! The size of the data in the buffer (can be less than buffer.GetSize())
-	const idx_t buffer_size;
-	//! The start position in the buffer
-	idx_t buffer_start;
-};
 
 struct JSONFileHandle {
 public:
@@ -134,7 +114,7 @@ struct JSONReaderScanState {
 	//! If we are scanning the entire file we don't share reads between threads and just read the file until we are done
 	JSONFileReadType file_read_type = JSONFileReadType::SCAN_PARTIAL;
 	// Data for reading (if we have postponed reading)
-	//! Buffer (if we have one)
+	//! Buffer for reading (allocated by allocator)
 	AllocatedData read_buffer;
 	bool needs_to_read = false;
 	idx_t request_size;
@@ -144,7 +124,6 @@ struct JSONReaderScanState {
 	idx_t scan_count = 0;
 	JSONString units[STANDARD_VECTOR_SIZE];
 	yyjson_val *values[STANDARD_VECTOR_SIZE];
-	optional_ptr<JSONBufferHandle> current_buffer_handle;
 	//! Current buffer read info
 	optional_ptr<JSONReader> current_reader;
 	char *buffer_ptr = nullptr;
@@ -168,8 +147,6 @@ public:
 	void ResetForNextParse();
 	//! Reset state for reading the next buffer
 	void ResetForNextBuffer();
-	//! Clear the buffer handle (if any)
-	void ClearBufferHandle();
 };
 
 struct JSONError {
@@ -220,7 +197,7 @@ public:
 	//! Get a new buffer index (must hold the lock)
 	idx_t GetBufferIndex();
 	//! Set line count for a buffer that is done (grabs the lock)
-	void SetBufferLineOrObjectCount(JSONBufferHandle &handle, idx_t count);
+	void SetBufferLineOrObjectCount(idx_t buffer_index, idx_t count);
 	//! Records a parse error in the specified buffer
 	void AddParseError(JSONReaderScanState &scan_state, idx_t line_or_object_in_buf, yyjson_read_err &err,
 	                   const string &extra = "");
@@ -241,24 +218,16 @@ public:
 	//! Scan progress
 	double GetProgress() const;
 
-	void DecrementBufferUsage(JSONBufferHandle &handle, idx_t lines_or_object_in_buffer, AllocatedData &buffer);
-
 private:
 	void SkipOverArrayStart(JSONReaderScanState &scan_state);
 	void AutoDetect(Allocator &allocator, idx_t buffer_size);
 	bool CopyRemainderFromPreviousBuffer(JSONReaderScanState &scan_state);
-	void FinalizeBufferInternal(JSONReaderScanState &scan_state, AllocatedData &buffer, idx_t buffer_index);
 	void PrepareForReadInternal(JSONReaderScanState &scan_state);
 	void PrepareForScan(JSONReaderScanState &scan_state);
 	bool PrepareBufferSeek(JSONReaderScanState &scan_state);
 	void ReadNextBufferSeek(JSONReaderScanState &scan_state);
 	bool ReadNextBufferNoSeek(JSONReaderScanState &scan_state);
 	void FinalizeBuffer(JSONReaderScanState &scan_state);
-
-	//! Insert/get/remove buffer (grabs the lock)
-	void InsertBuffer(idx_t buffer_idx, unique_ptr<JSONBufferHandle> &&buffer);
-	optional_ptr<JSONBufferHandle> GetBuffer(idx_t buffer_idx);
-	AllocatedData RemoveBuffer(JSONBufferHandle &handle);
 
 	void ThrowObjectSizeError(const idx_t object_size);
 
@@ -281,11 +250,11 @@ private:
 	bool initialized;
 	//! Next buffer index within the file
 	idx_t next_buffer_index;
-	//! Mapping from batch index to currently held buffers
-	unordered_map<idx_t, unique_ptr<JSONBufferHandle>> buffer_map;
 
-	//! Line count per buffer
+	//! Line count per buffer (for error reporting)
 	vector<int64_t> buffer_line_or_object_counts;
+	//! File position for each buffer index (for boundary copying)
+	vector<idx_t> buffer_positions;
 	//! Whether any of the reading threads has thrown an error
 	bool thrown;
 
