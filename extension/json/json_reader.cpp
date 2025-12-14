@@ -3,6 +3,7 @@
 #include "duckdb/common/file_opener.hpp"
 #include "duckdb/common/serializer/deserializer.hpp"
 #include "duckdb/common/serializer/serializer.hpp"
+#include "duckdb/storage/caching_file_system_wrapper.hpp"
 #include "json_scan.hpp"
 #include <utility>
 
@@ -182,8 +183,8 @@ JSONReader::JSONReader(ClientContext &context, JSONReaderOptions options_p, Open
 void JSONReader::OpenJSONFile() {
 	lock_guard<mutex> guard(lock);
 	if (!IsOpen()) {
-		auto &fs = FileSystem::GetFileSystem(context);
-		auto regular_file_handle = fs.OpenFile(file, FileFlags::FILE_FLAGS_READ | options.compression);
+		auto caching_fs = CachingFileSystemWrapper::Get(context);
+		auto regular_file_handle = caching_fs.OpenFile(file, FileFlags::FILE_FLAGS_READ | options.compression);
 		file_handle = make_uniq<JSONFileHandle>(context, std::move(regular_file_handle), BufferAllocator::Get(context));
 	}
 	Reset();
@@ -386,7 +387,7 @@ static inline void TrimWhitespace(JSONString &line) {
 }
 
 JSONReaderScanState::JSONReaderScanState(ClientContext &context, Allocator &global_allocator, idx_t buffer_capacity)
-    : fs(FileSystem::GetFileSystem(context)), global_allocator(global_allocator),
+    : fs(CachingFileSystemWrapper::Get(context)), global_allocator(global_allocator),
       allocator(BufferAllocator::Get(context)), buffer_capacity(buffer_capacity) {
 }
 

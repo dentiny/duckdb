@@ -14,6 +14,7 @@
 #include "duckdb/common/file_system.hpp"
 #include "duckdb/common/multi_file/base_file_reader.hpp"
 #include "duckdb/common/multi_file/multi_file_reader.hpp"
+#include "duckdb/storage/caching_file_system_wrapper.hpp"
 #include "json_reader_options.hpp"
 #include "duckdb/common/mutex.hpp"
 #include "json_common.hpp"
@@ -121,7 +122,7 @@ struct JSONReaderScanState {
 	explicit JSONReaderScanState(ClientContext &context, Allocator &global_allocator,
 	                             idx_t reconstruct_buffer_capacity);
 
-	FileSystem &fs;
+	CachingFileSystemWrapper fs;
 	Allocator &global_allocator;
 	//! Thread-local allocator
 	JSONAllocator allocator;
