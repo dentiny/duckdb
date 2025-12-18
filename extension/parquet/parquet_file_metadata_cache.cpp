@@ -23,6 +23,10 @@ string ParquetFileMetadataCache::GetObjectType() {
 	return ObjectType();
 }
 
+optional_idx ParquetFileMetadataCache::GetEstimatedCacheMemory() const {
+	return optional_idx {};
+}
+
 bool ParquetFileMetadataCache::IsValid(CachingFileHandle &new_handle) const {
 	return ExternalFileCache::IsValid(validate, version_tag, last_modified, new_handle.GetVersionTag(),
 	                                  new_handle.GetLastModifiedTime());
