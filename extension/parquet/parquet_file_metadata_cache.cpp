@@ -24,28 +24,7 @@ string ParquetFileMetadataCache::GetObjectType() {
 }
 
 optional_idx ParquetFileMetadataCache::GetEstimatedCacheMemory() const {
-	// Base memory consumption
-	idx_t memory = sizeof(*this);
-
-	if (metadata) {
-		const auto num_cols = metadata->schema.size();
-		memory += sizeof(duckdb_parquet::FileMetaData);
-		memory += num_cols * sizeof(duckdb_parquet::SchemaElement);
-		memory += metadata->row_groups.size() * sizeof(duckdb_parquet::RowGroup) +
-		          num_cols * sizeof(duckdb_parquet::ColumnChunk);
-	}
-	if (geo_metadata) {
-		memory +=
-		    sizeof(GeoParquetFileMetadata) + geo_metadata->GetColumnMeta().size() * sizeof(GeoParquetColumnMetadata);
-	}
-	if (crypto_metadata) {
-		memory += sizeof(FileCryptoMetaData);
-	}
-
-	memory += footer_size;
-	memory += version_tag.size();
-
-	return memory;
+	return optional_idx {};
 }
 
 bool ParquetFileMetadataCache::IsValid(CachingFileHandle &new_handle) const {
