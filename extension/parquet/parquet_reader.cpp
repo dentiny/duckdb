@@ -864,7 +864,7 @@ ParquetReader::ParquetReader(ClientContext &context_p, ParquetOptions parquet_op
 ParquetReader::~ParquetReader() {
 }
 
-shared_ptr<const FileMetadata> ParquetReader::GetFileMetadata() const {
+shared_ptr<const duckdb_parquet::FileMetaData> ParquetReader::GetFileMetadata() const {
 	D_ASSERT(metadata);
 	D_ASSERT(metadata->metadata);
 	return shared_ptr<const FileMetaData>(metadata, metadata->metadata.get());
