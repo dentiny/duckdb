@@ -1,5 +1,6 @@
 #include "parquet_reader.hpp"
 
+#include "duckdb/common/shared_ptr.hpp"
 #include "reader/boolean_column_reader.hpp"
 #include "reader/callback_column_reader.hpp"
 #include "column_reader.hpp"
@@ -863,10 +864,10 @@ ParquetReader::ParquetReader(ClientContext &context_p, ParquetOptions parquet_op
 ParquetReader::~ParquetReader() {
 }
 
-const FileMetaData *ParquetReader::GetFileMetadata() const {
+shared_ptr<const FileMetadata> ParquetReader::GetFileMetadata() const {
 	D_ASSERT(metadata);
 	D_ASSERT(metadata->metadata);
-	return metadata->metadata.get();
+	return shared_ptr<const FileMetaData>(metadata, metadata->metadata.get());
 }
 
 static unique_ptr<BaseStatistics> ReadStatisticsInternal(const FileMetaData &file_meta_data,
