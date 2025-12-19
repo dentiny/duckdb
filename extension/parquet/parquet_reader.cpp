@@ -863,10 +863,10 @@ ParquetReader::ParquetReader(ClientContext &context_p, ParquetOptions parquet_op
 ParquetReader::~ParquetReader() {
 }
 
-const FileMetaData *ParquetReader::GetFileMetadata() const {
+shared_ptr<FileMetaData> ParquetReader::GetFileMetadata() const {
 	D_ASSERT(metadata);
 	D_ASSERT(metadata->metadata);
-	return metadata->metadata.get();
+	return make_shared_ptr<FileMetaData>(*metadata->metadata);
 }
 
 static unique_ptr<BaseStatistics> ReadStatisticsInternal(const FileMetaData &file_meta_data,
