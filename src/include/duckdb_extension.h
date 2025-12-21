@@ -677,6 +677,18 @@ typedef struct {
 	int64_t (*duckdb_file_handle_size)(duckdb_file_handle file_handle);
 #endif
 
+// API to register a custom log storage.
+#ifdef DUCKDB_EXTENSION_API_VERSION_UNSTABLE
+	duckdb_log_storage (*duckdb_create_log_storage)();
+	void (*duckdb_destroy_log_storage)(duckdb_log_storage *log_storage);
+	void (*duckdb_log_storage_set_write_log_entry)(duckdb_log_storage log_storage,
+	                                               duckdb_logger_write_log_entry_t function);
+	void (*duckdb_log_storage_set_extra_data)(duckdb_log_storage log_storage, void *extra_data,
+	                                          duckdb_delete_callback_t delete_callback);
+	void (*duckdb_log_storage_set_name)(duckdb_log_storage log_storage, const char *name);
+	duckdb_state (*duckdb_register_log_storage)(duckdb_database database, duckdb_log_storage log_storage);
+#endif
+
 // New functions around the client context
 #ifdef DUCKDB_EXTENSION_API_VERSION_UNSTABLE
 	idx_t (*duckdb_client_context_get_connection_id)(duckdb_client_context context);
@@ -713,6 +725,17 @@ typedef struct {
 	idx_t (*duckdb_scalar_function_bind_get_argument_count)(duckdb_bind_info info);
 	duckdb_expression (*duckdb_scalar_function_bind_get_argument)(duckdb_bind_info info, idx_t index);
 	void (*duckdb_scalar_function_set_bind_data_copy)(duckdb_bind_info info, duckdb_copy_callback_t copy);
+#endif
+
+// New functions to configure local states for scalar functions
+#ifdef DUCKDB_EXTENSION_API_VERSION_UNSTABLE
+	void *(*duckdb_scalar_function_get_state)(duckdb_function_info info);
+	void (*duckdb_scalar_function_set_init)(duckdb_scalar_function scalar_function, duckdb_scalar_function_init_t init);
+	void (*duckdb_scalar_function_init_set_error)(duckdb_init_info info, const char *error);
+	void (*duckdb_scalar_function_init_set_state)(duckdb_init_info info, void *state, duckdb_delete_callback_t destroy);
+	void (*duckdb_scalar_function_init_get_client_context)(duckdb_init_info info, duckdb_client_context *out_context);
+	void *(*duckdb_scalar_function_init_get_bind_data)(duckdb_init_info info);
+	void *(*duckdb_scalar_function_init_get_extra_info)(duckdb_init_info info);
 #endif
 
 // New string functions that are added
@@ -1281,6 +1304,14 @@ typedef struct {
 #define duckdb_file_handle_sync               duckdb_ext_api.duckdb_file_handle_sync
 #define duckdb_file_handle_close              duckdb_ext_api.duckdb_file_handle_close
 
+// Version unstable_new_logger_functions
+#define duckdb_create_log_storage              duckdb_ext_api.duckdb_create_log_storage
+#define duckdb_destroy_log_storage             duckdb_ext_api.duckdb_destroy_log_storage
+#define duckdb_log_storage_set_write_log_entry duckdb_ext_api.duckdb_log_storage_set_write_log_entry
+#define duckdb_log_storage_set_extra_data      duckdb_ext_api.duckdb_log_storage_set_extra_data
+#define duckdb_log_storage_set_name            duckdb_ext_api.duckdb_log_storage_set_name
+#define duckdb_register_log_storage            duckdb_ext_api.duckdb_register_log_storage
+
 // Version unstable_new_open_connect_functions
 #define duckdb_connection_get_client_context    duckdb_ext_api.duckdb_connection_get_client_context
 #define duckdb_connection_get_arrow_options     duckdb_ext_api.duckdb_connection_get_arrow_options
@@ -1308,6 +1339,15 @@ typedef struct {
 #define duckdb_scalar_function_get_client_context      duckdb_ext_api.duckdb_scalar_function_get_client_context
 #define duckdb_scalar_function_bind_get_argument_count duckdb_ext_api.duckdb_scalar_function_bind_get_argument_count
 #define duckdb_scalar_function_bind_get_argument       duckdb_ext_api.duckdb_scalar_function_bind_get_argument
+
+// Version unstable_new_scalar_function_state_functions
+#define duckdb_scalar_function_get_state               duckdb_ext_api.duckdb_scalar_function_get_state
+#define duckdb_scalar_function_set_init                duckdb_ext_api.duckdb_scalar_function_set_init
+#define duckdb_scalar_function_init_set_error          duckdb_ext_api.duckdb_scalar_function_init_set_error
+#define duckdb_scalar_function_init_set_state          duckdb_ext_api.duckdb_scalar_function_init_set_state
+#define duckdb_scalar_function_init_get_client_context duckdb_ext_api.duckdb_scalar_function_init_get_client_context
+#define duckdb_scalar_function_init_get_bind_data      duckdb_ext_api.duckdb_scalar_function_init_get_bind_data
+#define duckdb_scalar_function_init_get_extra_info     duckdb_ext_api.duckdb_scalar_function_init_get_extra_info
 
 // Version unstable_new_string_functions
 #define duckdb_value_to_string duckdb_ext_api.duckdb_value_to_string
@@ -1374,9 +1414,9 @@ typedef struct {
 	DUCKDB_EXTENSION_EXTERN_C_GUARD_OPEN DUCKDB_CAPI_ENTRY_VISIBILITY DUCKDB_EXTENSION_API bool DUCKDB_EXTENSION_GLUE( \
 	    DUCKDB_EXTENSION_NAME, _init_c_api)(duckdb_extension_info info, struct duckdb_extension_access * access) {     \
 		DUCKDB_EXTENSION_API_INIT(info, access, DUCKDB_EXTENSION_API_VERSION_STRING);                                  \
-		duckdb_database *db = access->get_database(info);                                                              \
+		duckdb_database db = access->get_database(info);                                                               \
 		duckdb_connection conn;                                                                                        \
-		if (duckdb_connect(*db, &conn) == DuckDBError) {                                                               \
+		if (duckdb_connect(db, &conn) == DuckDBError) {                                                                \
 			access->set_error(info, "Failed to open connection to database");                                          \
 			return false;                                                                                              \
 		}                                                                                                              \

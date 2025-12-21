@@ -16,6 +16,7 @@
 #include "duckdb/common/common.hpp"
 #include "duckdb/common/encryption_state.hpp"
 #include "duckdb/common/enums/access_mode.hpp"
+#include "duckdb/common/enums/cache_validation_mode.hpp"
 #include "duckdb/common/enums/thread_pin_mode.hpp"
 #include "duckdb/common/enums/compression_type.hpp"
 #include "duckdb/common/enums/optimizer_type.hpp"
@@ -166,12 +167,18 @@ struct DBConfigOptions {
 	CompressionType force_compression = CompressionType::COMPRESSION_AUTO;
 	//! Force a specific bitpacking mode to be used when using the bitpacking compression method
 	BitpackingMode force_bitpacking_mode = BitpackingMode::AUTO;
+	//! Force a specific schema for VARIANT shredding
+	LogicalType force_variant_shredding = LogicalType::INVALID;
+	//! Minimum size of a rowgroup to enable VARIANT shredding, -1 to disable
+	int64_t variant_minimum_shredding_size = 30000;
 	//! Database configuration variables as controlled by SET
 	case_insensitive_map_t<Value> set_variables;
 	//! Database configuration variable default values;
 	case_insensitive_map_t<Value> set_variable_defaults;
 	//! Directory to store extension binaries in
 	string extension_directory;
+	//! Additional directories to store extension binaries in
+	vector<string> extension_directories;
 	//! Whether unsigned extensions should be loaded
 	bool allow_unsigned_extensions = false;
 	//! Whether community extensions should be loaded
@@ -214,6 +221,8 @@ struct DBConfigOptions {
 	bool enable_external_file_cache = true;
 	//! Read policy name for external file cache (stored as string for extensibility)
 	string external_file_cache_read_policy_name = "default";
+	//! Cache validation mode, by default all cache entries are validated.
+	CacheValidationMode validate_external_file_cache = CacheValidationMode::VALIDATE_ALL;
 	//! Partially process tasks before rescheduling - allows for more scheduler fairness between separate queries
 #ifdef DUCKDB_ALTERNATIVE_VERIFY
 	bool scheduler_process_partial = true;

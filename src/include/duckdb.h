@@ -650,6 +650,12 @@ typedef struct _duckdb_bind_info {
 	void *internal_ptr;
 } * duckdb_bind_info;
 
+//! Additional function initialization info.
+//! When setting this info, it is necessary to pass a destroy-callback function.
+typedef struct _duckdb_init_info {
+	void *internal_ptr;
+} * duckdb_init_info;
+
 //===--------------------------------------------------------------------===//
 // Scalar function types
 //===--------------------------------------------------------------------===//
@@ -666,6 +672,9 @@ typedef struct _duckdb_scalar_function_set {
 
 //! The bind function callback of the scalar function.
 typedef void (*duckdb_scalar_function_bind_t)(duckdb_bind_info info);
+
+//! The thread-local initialization function of the scalar function.
+typedef void (*duckdb_scalar_function_init_t)(duckdb_init_info info);
 
 //! The function to execute the scalar function on an input chunk.
 typedef void (*duckdb_scalar_function_t)(duckdb_function_info info, duckdb_data_chunk input, duckdb_vector output);
@@ -718,12 +727,6 @@ typedef void (*duckdb_aggregate_finalize_t)(duckdb_function_info info, duckdb_ag
 typedef struct _duckdb_table_function {
 	void *internal_ptr;
 } * duckdb_table_function;
-
-//! Additional function initialization info.
-//! When setting this info, it is necessary to pass a destroy-callback function.
-typedef struct _duckdb_init_info {
-	void *internal_ptr;
-} * duckdb_init_info;
 
 //! The bind function of the table function.
 typedef void (*duckdb_table_function_bind_t)(duckdb_bind_info info);
@@ -879,6 +882,19 @@ typedef struct _duckdb_catalog_entry {
 } * duckdb_catalog_entry;
 
 //===--------------------------------------------------------------------===//
+// Logging Types
+//===--------------------------------------------------------------------===//
+
+//! Holds a log storage object.
+typedef struct _duckdb_log_storage {
+	void *internal_ptr;
+} * duckdb_log_storage;
+
+//! This function is missing the logging context, which will be added later.
+typedef void (*duckdb_logger_write_log_entry_t)(void *extra_data, duckdb_timestamp *timestamp, const char *level,
+                                                const char *log_type, const char *log_message);
+
+//===--------------------------------------------------------------------===//
 // DuckDB extension access
 //===--------------------------------------------------------------------===//
 
@@ -887,7 +903,7 @@ struct duckdb_extension_access {
 	//! Indicate that an error has occurred.
 	void (*set_error)(duckdb_extension_info info, const char *error);
 	//! Fetch the database on which to register the extension.
-	duckdb_database *(*get_database)(duckdb_extension_info info);
+	duckdb_database (*get_database)(duckdb_extension_info info);
 	//! Fetch the API struct pointer.
 	const void *(*get_api)(duckdb_extension_info info, const char *version);
 };
@@ -3857,6 +3873,67 @@ Returns the input argument at index of the scalar function.
 */
 DUCKDB_C_API duckdb_expression duckdb_scalar_function_bind_get_argument(duckdb_bind_info info, idx_t index);
 
+/*!
+Retrieves the state pointer of the function info.
+
+* @param info The function info object.
+* @return The state pointer.
+*/
+DUCKDB_C_API void *duckdb_scalar_function_get_state(duckdb_function_info info);
+
+/*!
+Sets the (optional) state init function of the scalar function.
+This is called once for each worker thread that begins executing the function
+* @param scalar_function The scalar function.
+* @param init The init function.
+*/
+DUCKDB_C_API void duckdb_scalar_function_set_init(duckdb_scalar_function scalar_function,
+                                                  duckdb_scalar_function_init_t init);
+
+/*!
+Report that an error has occurred while calling init on a scalar function.
+
+* @param info The init info object.
+* @param error The error message.
+*/
+DUCKDB_C_API void duckdb_scalar_function_init_set_error(duckdb_init_info info, const char *error);
+
+/*!
+Sets the state pointer in the init info of the scalar function.
+
+* @param info The init info object.
+* @param state The state pointer.
+* @param destroy The callback to destroy the state (if any).
+*/
+DUCKDB_C_API void duckdb_scalar_function_init_set_state(duckdb_init_info info, void *state,
+                                                        duckdb_delete_callback_t destroy);
+
+/*!
+Retrieves the client context of the init info of a scalar function.
+
+* @param info The init info object of the scalar function.
+* @param out_context The client context of the init info. Must be destroyed with `duckdb_destroy_client_context`.
+*/
+DUCKDB_C_API void duckdb_scalar_function_init_get_client_context(duckdb_init_info info,
+                                                                 duckdb_client_context *out_context);
+
+/*!
+Gets the scalar function's bind data set by `duckdb_scalar_function_set_bind_data`.
+Note that the bind data is read-only.
+
+* @param info The init info object.
+* @return The bind data object.
+*/
+DUCKDB_C_API void *duckdb_scalar_function_init_get_bind_data(duckdb_init_info info);
+
+/*!
+Retrieves the extra info of the function as set in the init info.
+
+* @param info The init info object.
+* @return The extra info.
+*/
+DUCKDB_C_API void *duckdb_scalar_function_init_get_extra_info(duckdb_init_info info);
+
 //----------------------------------------------------------------------------------------------------------------------
 // Selection Vector Interface
 //----------------------------------------------------------------------------------------------------------------------
@@ -6080,6 +6157,64 @@ Note that this does not actually "drop" the catalog entry from the database cata
 * @param entry The catalog entry instance to destroy.
 */
 DUCKDB_C_API void duckdb_destroy_catalog_entry(duckdb_catalog_entry *entry);
+
+//----------------------------------------------------------------------------------------------------------------------
+// Logging
+//----------------------------------------------------------------------------------------------------------------------
+// DESCRIPTION:
+// Functions exposing the log storage, which allows the configuration of a custom logger. This API is not yet ready to
+// be stabilized.
+//----------------------------------------------------------------------------------------------------------------------
+
+/*!
+Creates a new log storage object.
+
+* @return A log storage object. Must be destroyed with `duckdb_destroy_log_storage`.
+*/
+DUCKDB_C_API duckdb_log_storage duckdb_create_log_storage();
+
+/*!
+Destroys a log storage object.
+
+* @param log_storage The log storage object to destroy.
+*/
+DUCKDB_C_API void duckdb_destroy_log_storage(duckdb_log_storage *log_storage);
+
+/*!
+Sets the callback function for writing log entries.
+
+* @param log_storage The log storage object.
+* @param function The function to call.
+*/
+DUCKDB_C_API void duckdb_log_storage_set_write_log_entry(duckdb_log_storage log_storage,
+                                                         duckdb_logger_write_log_entry_t function);
+
+/*!
+Sets the extra data of the custom log storage.
+
+* @param log_storage The log storage object.
+* @param extra_data The extra data that is passed back into the callbacks.
+* @param delete_callback The delete callback to call on the extra data, if any.
+*/
+DUCKDB_C_API void duckdb_log_storage_set_extra_data(duckdb_log_storage log_storage, void *extra_data,
+                                                    duckdb_delete_callback_t delete_callback);
+
+/*!
+Sets the name of the log storage.
+
+* @param log_storage The log storage object.
+* @param name The name of the log storage.
+*/
+DUCKDB_C_API void duckdb_log_storage_set_name(duckdb_log_storage log_storage, const char *name);
+
+/*!
+Registers a custom log storage for the logger.
+
+* @param database A database object.
+* @param log_storage The log storage object.
+* @return Whether the registration was successful.
+*/
+DUCKDB_C_API duckdb_state duckdb_register_log_storage(duckdb_database database, duckdb_log_storage log_storage);
 
 #endif
 
