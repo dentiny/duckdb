@@ -35,21 +35,6 @@ bool ShouldValidate(const OpenFileInfo &info, optional_ptr<ClientContext> client
 	}
 }
 
-bool ShouldExpandToFillGap(const idx_t current_length, const idx_t added_length) {
-	const idx_t MAX_BOUND_TO_BE_ADDED_LENGTH = 1048576;
-
-	if (added_length > MAX_BOUND_TO_BE_ADDED_LENGTH) {
-		// Absolute value of what would be needed to added is too high
-		return false;
-	}
-	if (added_length > current_length) {
-		// Relative value of what would be needed to added is too high
-		return false;
-	}
-
-	return true;
-}
-
 } // namespace
 
 CachingFileSystem::CachingFileSystem(FileSystem &file_system_p, DatabaseInstance &db_p)
@@ -87,16 +72,6 @@ CachingFileHandle::CachingFileHandle(QueryContext context, CachingFileSystem &ca
 	const auto &policy_name = config.options.external_file_cache_read_policy_name;
 	read_policy = registry.CreatePolicy(policy_name);
 
-	if (path.extended_info) {
-		const auto &open_options = path.extended_info->options;
-		const auto validate_entry = open_options.find("validate_external_file_cache");
-		if (validate_entry != open_options.end()) {
-			if (validate_entry->second.IsNull()) {
-				throw InvalidInputException("Cannot use NULL as argument for validate_external_file_cache");
-			}
-			validate = BooleanValue::Get(validate_entry->second);
-		}
-	}
 	if (!external_file_cache.IsEnabled() || Validate()) {
 		// If caching is disabled, or if we must validate cache entries, we always have to open the file
 		GetFileHandle();
