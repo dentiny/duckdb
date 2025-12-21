@@ -733,32 +733,6 @@ Value EnableExternalFileCacheSetting::GetSetting(const ClientContext &context) {
 }
 
 //===----------------------------------------------------------------------===//
-// External File Cache Read Policy
-//===----------------------------------------------------------------------===//
-void ExternalFileCacheReadPolicySetting::SetGlobal(DatabaseInstance *db, DBConfig &config, const Value &input) {
-	auto str_input = input.GetValue<string>();
-	// Validate that the policy exists.
-	if (db) {
-		auto &registry = ReadPolicyRegistry::Get(*db);
-		if (!registry.HasPolicy(str_input)) {
-			throw InvalidInputException("Invalid read policy type '%s'. Valid options are: %s", str_input,
-			                            StringUtil::Join(registry.GetReadPolicies(), ", "));
-		}
-	}
-	// Store the policy name in the config
-	config.options.external_file_cache_read_policy_name = StringUtil::Lower(str_input);
-}
-
-void ExternalFileCacheReadPolicySetting::ResetGlobal(DatabaseInstance *db, DBConfig &config) {
-	config.options.external_file_cache_read_policy_name = "default";
-}
-
-Value ExternalFileCacheReadPolicySetting::GetSetting(const ClientContext &context) {
-	auto &config = DBConfig::GetConfig(context);
-	return Value(config.options.external_file_cache_read_policy_name);
-}
-
-//===----------------------------------------------------------------------===//
 // Enable Logging
 //===----------------------------------------------------------------------===//
 Value EnableLogging::GetSetting(const ClientContext &context) {
