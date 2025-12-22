@@ -17,7 +17,7 @@ namespace duckdb {
 // Util function to create a test file with known content
 string CreateTestFile(FileSystem &fs, const string &path, idx_t size_mb) {
 	auto handle = fs.OpenFile(path, FileFlags::FILE_FLAGS_WRITE | FileFlags::FILE_FLAGS_FILE_CREATE);
-	vector<uint8_t> data(size_mb * 1024 * 1024);	
+	vector<uint8_t> data(size_mb * 1024 * 1024);
 	for (idx_t idx = 0; idx < data.size(); ++idx) {
 		data[idx] = static_cast<uint8_t>((idx / (1024 * 1024)) % 256);
 	}
@@ -35,8 +35,9 @@ void VerifyData(data_ptr_t buffer, idx_t size, idx_t file_offset) {
 		uint8_t expected = static_cast<uint8_t>(((file_offset + idx) / (1024 * 1024)) % 256);
 		if (buffer[idx] != expected) {
 			idx_t actual_file_offset = file_offset + idx;
-			FAIL("Data mismatch at buffer index " << idx << " (file offset " << actual_file_offset 
-			     << "): got " << static_cast<int>(buffer[idx]) << ", expected " << static_cast<int>(expected));
+			FAIL("Data mismatch at buffer index " << idx << " (file offset " << actual_file_offset << "): got "
+			                                      << static_cast<int>(buffer[idx]) << ", expected "
+			                                      << static_cast<int>(expected));
 		}
 		REQUIRE(buffer[idx] == expected);
 	}
@@ -50,12 +51,12 @@ void ClearCache(ExternalFileCache &cache) {
 
 // Test template for different scenarios
 void TestReadScenario(FileSystem &fs, ExternalFileCache &cache, DatabaseInstance &db, const string &test_file,
-                             const string &policy_name, idx_t read_location, idx_t read_bytes) {
+                      const string &policy_name, idx_t read_location, idx_t read_bytes) {
 	auto &config = DBConfig::GetConfig(db);
 	config.options.external_file_cache_read_policy_name = policy_name;
-	
+
 	ClearCache(cache);
-	
+
 	CachingFileSystem caching_fs(fs, db);
 	OpenFileInfo info;
 	info.path = test_file;
@@ -66,7 +67,7 @@ void TestReadScenario(FileSystem &fs, ExternalFileCache &cache, DatabaseInstance
 	auto result1 = handle->Read(buffer1, read_bytes, read_location);
 	REQUIRE(result1.IsValid());
 	VerifyData(/*buffer=*/buffer1, /*size=*/read_bytes, /*file_offset=*/read_location);
-	
+
 	// Second read, which should hit cache
 	data_ptr_t buffer2;
 	auto result2 = handle->Read(buffer2, read_bytes, read_location);
@@ -83,13 +84,14 @@ TEST_CASE("DefaultReadPolicy - Single block, perfectly aligned", "[caching_file_
 	auto &fs = FileSystem::GetFileSystem(*db.instance);
 	auto &cache = ExternalFileCache::Get(*db.instance);
 	cache.SetEnabled(true);
-	
+
 	ScopedDirectory test_dir(TestJoinPath(TestDirectoryPath(), "test_default_single_aligned"));
 	auto test_file = TestJoinPath(test_dir.GetPath(), "cache_test_default_single_aligned.bin");
 	CreateTestFile(fs, test_file, /*size_mb=*/10);
-	
+
 	// Read exactly 1MiB at 1MiB boundary (aligned to 1MiB)
-	TestReadScenario(fs, cache, *db.instance, test_file, /*policy_name=*/"default", /*read_location=*/1024 * 1024, /*read_bytes=*/1024 * 1024);
+	TestReadScenario(fs, cache, *db.instance, test_file, /*policy_name=*/"default", /*read_location=*/1024 * 1024,
+	                 /*read_bytes=*/1024 * 1024);
 }
 
 TEST_CASE("DefaultReadPolicy - Single block, unaligned", "[caching_file_system][default_policy]") {
@@ -97,13 +99,14 @@ TEST_CASE("DefaultReadPolicy - Single block, unaligned", "[caching_file_system][
 	auto &fs = FileSystem::GetFileSystem(*db.instance);
 	auto &cache = ExternalFileCache::Get(*db.instance);
 	cache.SetEnabled(true);
-	
+
 	ScopedDirectory test_dir(TestJoinPath(TestDirectoryPath(), "test_default_single_unaligned"));
 	auto test_file = TestJoinPath(test_dir.GetPath(), "cache_test_default_single_unaligned.bin");
 	CreateTestFile(fs, test_file, /*size_mb=*/10);
-	
+
 	// Read 512KB starting at 1.5MiB (unaligned)
-	TestReadScenario(fs, cache, *db.instance, test_file, /*policy_name=*/"default", /*read_location=*/static_cast<idx_t>(1.5 * 1024 * 1024), /*read_bytes=*/512 * 1024);
+	TestReadScenario(fs, cache, *db.instance, test_file, /*policy_name=*/"default",
+	                 /*read_location=*/static_cast<idx_t>(1.5 * 1024 * 1024), /*read_bytes=*/512 * 1024);
 }
 
 TEST_CASE("DefaultReadPolicy - Multiple blocks, perfectly aligned", "[caching_file_system][default_policy]") {
@@ -111,13 +114,14 @@ TEST_CASE("DefaultReadPolicy - Multiple blocks, perfectly aligned", "[caching_fi
 	auto &fs = FileSystem::GetFileSystem(*db.instance);
 	auto &cache = ExternalFileCache::Get(*db.instance);
 	cache.SetEnabled(true);
-	
+
 	ScopedDirectory test_dir(TestJoinPath(TestDirectoryPath(), "test_default_multi_aligned"));
 	auto test_file = TestJoinPath(test_dir.GetPath(), "cache_test_default_multi_aligned.bin");
 	CreateTestFile(fs, test_file, /*size_mb=*/10);
-	
+
 	// Read 3MiB starting at 1MiB (aligned to 1MiB boundaries, spans multiple 1MiB segments)
-	TestReadScenario(fs, cache, *db.instance, test_file, /*policy_name=*/"default", /*read_location=*/1024 * 1024, /*read_bytes=*/3 * 1024 * 1024);
+	TestReadScenario(fs, cache, *db.instance, test_file, /*policy_name=*/"default", /*read_location=*/1024 * 1024,
+	                 /*read_bytes=*/3 * 1024 * 1024);
 }
 
 TEST_CASE("DefaultReadPolicy - Multiple blocks, unaligned", "[caching_file_system][default_policy]") {
@@ -125,13 +129,15 @@ TEST_CASE("DefaultReadPolicy - Multiple blocks, unaligned", "[caching_file_syste
 	auto &fs = FileSystem::GetFileSystem(*db.instance);
 	auto &cache = ExternalFileCache::Get(*db.instance);
 	cache.SetEnabled(true);
-	
+
 	ScopedDirectory test_dir(TestJoinPath(TestDirectoryPath(), "test_default_multi_unaligned"));
 	auto test_file = TestJoinPath(test_dir.GetPath(), "cache_test_default_multi_unaligned.bin");
 	CreateTestFile(fs, test_file, /*size_mb=*/10);
-	
+
 	// Read 2.5MiB starting at 1.5MiB (unaligned, spans multiple segments)
-	TestReadScenario(fs, cache, *db.instance, test_file, /*policy_name=*/"default", /*read_location=*/static_cast<idx_t>(1.5 * 1024 * 1024), /*read_bytes=*/static_cast<idx_t>(2.5 * 1024 * 1024));
+	TestReadScenario(fs, cache, *db.instance, test_file, /*policy_name=*/"default",
+	                 /*read_location=*/static_cast<idx_t>(1.5 * 1024 * 1024),
+	                 /*read_bytes=*/static_cast<idx_t>(2.5 * 1024 * 1024));
 }
 
 // ============================================================================
@@ -143,13 +149,14 @@ TEST_CASE("AlignedReadPolicy - Single block, perfectly aligned", "[caching_file_
 	auto &fs = FileSystem::GetFileSystem(*db.instance);
 	auto &cache = ExternalFileCache::Get(*db.instance);
 	cache.SetEnabled(true);
-	
+
 	ScopedDirectory test_dir(TestJoinPath(TestDirectoryPath(), "test_aligned_single_aligned"));
 	auto test_file = TestJoinPath(test_dir.GetPath(), "cache_test_aligned_single_aligned.bin");
 	CreateTestFile(fs, test_file, /*size_mb=*/10);
-	
+
 	// Read 1MiB at 2MiB (aligned to 2MiB boundary, fits in single 2MiB block)
-	TestReadScenario(fs, cache, *db.instance, test_file, /*policy_name=*/"aligned", /*read_location=*/2 * 1024 * 1024, /*read_bytes=*/1024 * 1024);
+	TestReadScenario(fs, cache, *db.instance, test_file, /*policy_name=*/"aligned", /*read_location=*/2 * 1024 * 1024,
+	                 /*read_bytes=*/1024 * 1024);
 }
 
 TEST_CASE("AlignedReadPolicy - Single block, unaligned", "[caching_file_system][aligned_policy]") {
@@ -157,13 +164,14 @@ TEST_CASE("AlignedReadPolicy - Single block, unaligned", "[caching_file_system][
 	auto &fs = FileSystem::GetFileSystem(*db.instance);
 	auto &cache = ExternalFileCache::Get(*db.instance);
 	cache.SetEnabled(true);
-	
+
 	ScopedDirectory test_dir(TestJoinPath(TestDirectoryPath(), "test_aligned_single_unaligned"));
 	auto test_file = TestJoinPath(test_dir.GetPath(), "cache_test_aligned_single_unaligned.bin");
 	CreateTestFile(fs, test_file, /*size_mb=*/10);
-	
+
 	// Read 1MiB at 3MiB (unaligned, but fits in single 2MiB block: 2-4MiB)
-	TestReadScenario(fs, cache, *db.instance, test_file, /*policy_name=*/"aligned", /*read_location=*/3 * 1024 * 1024, /*read_bytes=*/1024 * 1024);
+	TestReadScenario(fs, cache, *db.instance, test_file, /*policy_name=*/"aligned", /*read_location=*/3 * 1024 * 1024,
+	                 /*read_bytes=*/1024 * 1024);
 }
 
 TEST_CASE("AlignedReadPolicy - Multiple blocks, perfectly aligned", "[caching_file_system][aligned_policy]") {
@@ -171,13 +179,14 @@ TEST_CASE("AlignedReadPolicy - Multiple blocks, perfectly aligned", "[caching_fi
 	auto &fs = FileSystem::GetFileSystem(*db.instance);
 	auto &cache = ExternalFileCache::Get(*db.instance);
 	cache.SetEnabled(true);
-	
+
 	ScopedDirectory test_dir(TestJoinPath(TestDirectoryPath(), "test_aligned_multi_aligned"));
 	auto test_file = TestJoinPath(test_dir.GetPath(), "cache_test_aligned_multi_aligned.bin");
 	CreateTestFile(fs, test_file, /*size_mb=*/10);
-	
+
 	// Read 4MiB at 2MiB (aligned to 2MiB boundary, spans two 2MiB blocks: 2-4MiB and 4-6MiB)
-	TestReadScenario(fs, cache, *db.instance, test_file, /*policy_name=*/"aligned", /*read_location=*/2 * 1024 * 1024, /*read_bytes=*/4 * 1024 * 1024);
+	TestReadScenario(fs, cache, *db.instance, test_file, /*policy_name=*/"aligned", /*read_location=*/2 * 1024 * 1024,
+	                 /*read_bytes=*/4 * 1024 * 1024);
 }
 
 TEST_CASE("AlignedReadPolicy - Multiple blocks, unaligned", "[caching_file_system][aligned_policy]") {
@@ -185,13 +194,14 @@ TEST_CASE("AlignedReadPolicy - Multiple blocks, unaligned", "[caching_file_syste
 	auto &fs = FileSystem::GetFileSystem(*db.instance);
 	auto &cache = ExternalFileCache::Get(*db.instance);
 	cache.SetEnabled(true);
-	
+
 	ScopedDirectory test_dir(TestJoinPath(TestDirectoryPath(), "test_aligned_multi_unaligned"));
 	auto test_file = TestJoinPath(test_dir.GetPath(), "cache_test_aligned_multi_unaligned.bin");
 	CreateTestFile(fs, test_file, /*size_mb=*/10);
-	
+
 	// Read 3MiB at 3MiB (unaligned start, spans two 2MiB blocks: 2-4MiB and 4-6MiB)
-	TestReadScenario(fs, cache, *db.instance, test_file, /*policy_name=*/"aligned", /*read_location=*/3 * 1024 * 1024, /*read_bytes=*/3 * 1024 * 1024);
+	TestReadScenario(fs, cache, *db.instance, test_file, /*policy_name=*/"aligned", /*read_location=*/3 * 1024 * 1024,
+	                 /*read_bytes=*/3 * 1024 * 1024);
 }
 
 // ============================================================================
@@ -203,32 +213,32 @@ TEST_CASE("DefaultReadPolicy - Overlapping reads", "[caching_file_system][defaul
 	auto &fs = FileSystem::GetFileSystem(*db.instance);
 	auto &cache = ExternalFileCache::Get(*db.instance);
 	cache.SetEnabled(true);
-	
+
 	auto &config = DBConfig::GetConfig(*db.instance);
 	config.options.external_file_cache_read_policy_name = "default";
-	
+
 	ScopedDirectory test_dir(TestJoinPath(TestDirectoryPath(), "test_default_overlapping"));
 	auto test_file = TestJoinPath(test_dir.GetPath(), "cache_test_default_overlapping.bin");
 	CreateTestFile(fs, test_file, /*size_mb=*/10);
-	
+
 	CachingFileSystem caching_fs(fs, *db.instance);
 	OpenFileInfo info;
 	info.path = test_file;
 	auto handle = caching_fs.OpenFile(info, FileFlags::FILE_FLAGS_READ);
-	
+
 	// First read: 1MiB starting at 1MiB
 	data_ptr_t buffer1;
 	auto result1 = handle->Read(buffer1, 1024 * 1024, 1024 * 1024);
 	REQUIRE(result1.IsValid());
 	VerifyData(/*buffer=*/buffer1, /*size=*/1024 * 1024, /*file_offset=*/1024 * 1024);
-	
+
 	// Second read: 1MiB starting at 1.5MiB (overlaps with first read: 0.5MiB overlap)
 	// This should use the cached portion from the first read and only read the new 0.5MiB
 	data_ptr_t buffer2;
 	auto result2 = handle->Read(buffer2, 1024 * 1024, static_cast<idx_t>(1.5 * 1024 * 1024));
 	REQUIRE(result2.IsValid());
 	VerifyData(/*buffer=*/buffer2, /*size=*/1024 * 1024, /*file_offset=*/static_cast<idx_t>(1.5 * 1024 * 1024));
-	
+
 	// Third read: 2MiB starting at 0.5MiB (overlaps with both previous reads)
 	// Should use cached portions from both previous reads
 	data_ptr_t buffer3;
@@ -242,40 +252,40 @@ TEST_CASE("AlignedReadPolicy - Overlapping reads", "[caching_file_system][aligne
 	auto &fs = FileSystem::GetFileSystem(*db.instance);
 	auto &cache = ExternalFileCache::Get(*db.instance);
 	cache.SetEnabled(true);
-	
+
 	auto &config = DBConfig::GetConfig(*db.instance);
 	config.options.external_file_cache_read_policy_name = "aligned";
-	
+
 	ScopedDirectory test_dir(TestJoinPath(TestDirectoryPath(), "test_aligned_overlapping"));
 	auto test_file = TestJoinPath(test_dir.GetPath(), "cache_test_aligned_overlapping.bin");
 	CreateTestFile(fs, test_file, /*size_mb=*/10);
-	
+
 	CachingFileSystem caching_fs(fs, *db.instance);
 	OpenFileInfo info;
 	info.path = test_file;
 	auto handle = caching_fs.OpenFile(info, FileFlags::FILE_FLAGS_READ);
-	
+
 	// First read: 1MiB starting at 1.5MiB
 	// With aligned policy, this should cache the 0-2MiB block
 	data_ptr_t buffer1;
 	auto result1 = handle->Read(buffer1, 1024 * 1024, static_cast<idx_t>(1.5 * 1024 * 1024));
 	REQUIRE(result1.IsValid());
 	VerifyData(/*buffer=*/buffer1, /*size=*/1024 * 1024, /*file_offset=*/static_cast<idx_t>(1.5 * 1024 * 1024));
-	
+
 	// Second read: 1MiB starting at 0.5MiB (overlaps with first read's cached block: 0-2MiB)
 	// Should hit the cache from the first read
 	data_ptr_t buffer2;
 	auto result2 = handle->Read(buffer2, 1024 * 1024, 512 * 1024);
 	REQUIRE(result2.IsValid());
 	VerifyData(/*buffer=*/buffer2, /*size=*/1024 * 1024, /*file_offset=*/512 * 1024);
-	
+
 	// Third read: 1MiB starting at 3.5MiB
 	// With aligned policy, this should cache the 2-4MiB block
 	data_ptr_t buffer3;
 	auto result3 = handle->Read(buffer3, 1024 * 1024, static_cast<idx_t>(3.5 * 1024 * 1024));
 	REQUIRE(result3.IsValid());
 	VerifyData(/*buffer=*/buffer3, /*size=*/1024 * 1024, /*file_offset=*/static_cast<idx_t>(3.5 * 1024 * 1024));
-	
+
 	// Fourth read: 2MiB starting at 2.5MiB (overlaps with third read's cached block: 2-4MiB)
 	// Should use the cached portion from the third read
 	data_ptr_t buffer4;
@@ -293,33 +303,33 @@ TEST_CASE("CachingFileSystem - Concurrent reads duplicate prevention", "[caching
 	auto &fs = FileSystem::GetFileSystem(*db.instance);
 	auto &cache = ExternalFileCache::Get(*db.instance);
 	cache.SetEnabled(true);
-	
+
 	auto &config = DBConfig::GetConfig(*db.instance);
 	config.options.external_file_cache_read_policy_name = "aligned";
-	
+
 	ScopedDirectory test_dir(TestJoinPath(TestDirectoryPath(), "test_concurrent"));
 	auto test_file = TestJoinPath(test_dir.GetPath(), "cache_test_concurrent.bin");
 	CreateTestFile(fs, test_file, /*size_mb=*/10);
-	
+
 	CachingFileSystem caching_fs(fs, *db.instance);
-	
+
 	// Simulate concurrent reads to same aligned block
 	// Both reads align to 2-4MiB block
 	vector<thread> threads;
-	
+
 	for (idx_t idx = 0; idx < 2; ++idx) {
 		threads.emplace_back([&]() {
 			OpenFileInfo info;
 			info.path = test_file;
 			auto handle = caching_fs.OpenFile(info, FileFlags::FILE_FLAGS_READ);
-			
+
 			data_ptr_t buffer;
 			auto result = handle->Read(buffer, 1024 * 1024, static_cast<idx_t>(2.5 * 1024 * 1024));
 			D_ASSERT(result.IsValid());
 			VerifyData(/*buffer=*/buffer, /*size=*/1024 * 1024, /*file_offset=*/static_cast<idx_t>(2.5 * 1024 * 1024));
 		});
 	}
-	
+
 	for (auto &thread : threads) {
 		thread.join();
 	}
@@ -330,26 +340,26 @@ TEST_CASE("CachingFileSystem - Mixed cached and uncached blocks", "[caching_file
 	auto &fs = FileSystem::GetFileSystem(*db.instance);
 	auto &cache = ExternalFileCache::Get(*db.instance);
 	cache.SetEnabled(true);
-	
+
 	auto &config = DBConfig::GetConfig(*db.instance);
 	config.options.external_file_cache_read_policy_name = "aligned";
-	
+
 	ScopedDirectory test_dir(TestJoinPath(TestDirectoryPath(), "test_mixed"));
 	auto test_file = TestJoinPath(test_dir.GetPath(), "cache_test_mixed.bin");
 	CreateTestFile(fs, test_file, /*size_mb=*/10);
-	
+
 	CachingFileSystem caching_fs(fs, *db.instance);
 	OpenFileInfo info;
 	info.path = test_file;
 	auto handle = caching_fs.OpenFile(info, FileFlags::FILE_FLAGS_READ);
-	
+
 	// Cache blocks 0-2MiB and 4-6MiB
 	data_ptr_t buffer1;
 	handle->Read(buffer1, 1024 * 1024, 512 * 1024); // Caches 0-2MiB
-	
+
 	data_ptr_t buffer2;
 	handle->Read(buffer2, 1024 * 1024, static_cast<idx_t>(4.5 * 1024 * 1024)); // Caches 4-6MiB
-	
+
 	// Now read 5MiB starting at 0
 	// Blocks: 0-2MiB (cached), 2-4MiB (miss), 4-6MiB (cached)
 	data_ptr_t buffer3;
@@ -363,25 +373,25 @@ TEST_CASE("CachingFileSystem - Cache invalidation", "[caching_file_system]") {
 	auto &fs = FileSystem::GetFileSystem(*db.instance);
 	auto &cache = ExternalFileCache::Get(*db.instance);
 	cache.SetEnabled(true);
-	
+
 	ScopedDirectory test_dir(TestJoinPath(TestDirectoryPath(), "test_invalidation"));
 	auto test_file = TestJoinPath(test_dir.GetPath(), "cache_test_invalidation.bin");
 	CreateTestFile(fs, test_file, /*size_mb=*/5);
-	
+
 	CachingFileSystem caching_fs(fs, *db.instance);
 	OpenFileInfo info;
 	info.path = test_file;
-	
+
 	// Read and cache
 	{
 		auto handle = caching_fs.OpenFile(info, FileFlags::FILE_FLAGS_READ);
 		data_ptr_t buffer;
 		handle->Read(buffer, 1024 * 1024, 0);
 	}
-	
+
 	// Clear cache
 	ClearCache(cache);
-	
+
 	// Read again - should read from file
 	{
 		auto handle = caching_fs.OpenFile(info, FileFlags::FILE_FLAGS_READ);
@@ -397,46 +407,46 @@ TEST_CASE("CachingFileSystem - Multi-threaded reads", "[caching_file_system]") {
 	auto &fs = FileSystem::GetFileSystem(*db.instance);
 	auto &cache = ExternalFileCache::Get(*db.instance);
 	cache.SetEnabled(true);
-	
+
 	auto &config = DBConfig::GetConfig(*db.instance);
 	config.options.external_file_cache_read_policy_name = "aligned";
-	
+
 	ScopedDirectory test_dir(TestJoinPath(TestDirectoryPath(), "test_multithreaded"));
 	auto test_file = TestJoinPath(test_dir.GetPath(), "cache_test_multithreaded.bin");
 	CreateTestFile(fs, test_file, /*size_mb=*/20);
-	
+
 	CachingFileSystem caching_fs(fs, *db.instance);
-	
+
 	// Test with multiple threads reading different ranges concurrently
 	constexpr idx_t num_threads = 8;
 	vector<thread> threads;
-	
+
 	// Each thread reads a different 1MiB range starting at different offsets
 	for (idx_t i = 0; i < num_threads; i++) {
 		threads.emplace_back([&, i]() {
 			OpenFileInfo info;
 			info.path = test_file;
 			auto handle = caching_fs.OpenFile(info, FileFlags::FILE_FLAGS_READ);
-			
+
 			// Each thread reads 1MiB at different locations: 0MiB, 2MiB, 4MiB, 6MiB, etc.
 			idx_t read_location = i * 2 * 1024 * 1024;
 			idx_t read_bytes = 1024 * 1024;
-			
+
 			data_ptr_t buffer;
 			auto result = handle->Read(buffer, read_bytes, read_location);
 			D_ASSERT(result.IsValid());
 			VerifyData(/*buffer=*/buffer, /*size=*/read_bytes, /*file_offset=*/read_location);
 		});
 	}
-	
+
 	// Wait for all threads to complete
 	for (auto &thread : threads) {
 		thread.join();
 	}
-	
+
 	// Now test concurrent reads to the same cached block (cache hits)
 	ClearCache(cache);
-	
+
 	// First, populate cache with one read
 	{
 		OpenFileInfo info;
@@ -445,28 +455,28 @@ TEST_CASE("CachingFileSystem - Multi-threaded reads", "[caching_file_system]") {
 		data_ptr_t buffer;
 		handle->Read(buffer, 1024 * 1024, 2 * 1024 * 1024);
 	}
-	
+
 	// Now multiple threads read from the same cached block
 	vector<thread> cache_hit_threads;
-	
+
 	for (idx_t i = 0; i < 4; i++) {
 		cache_hit_threads.emplace_back([&, i]() {
 			OpenFileInfo info;
 			info.path = test_file;
 			auto handle = caching_fs.OpenFile(info, FileFlags::FILE_FLAGS_READ);
-			
+
 			// All threads read from the same cached block (2-4MiB aligned block)
 			// But at slightly different offsets within that block
 			idx_t read_location = (2 * 1024 * 1024) + (i * 256 * 1024);
 			idx_t read_bytes = 256 * 1024;
-			
+
 			data_ptr_t buffer;
 			auto result = handle->Read(buffer, read_bytes, read_location);
 			D_ASSERT(result.IsValid());
 			VerifyData(/*buffer=*/buffer, /*size=*/read_bytes, /*file_offset=*/read_location);
 		});
 	}
-	
+
 	for (auto &thread : cache_hit_threads) {
 		thread.join();
 	}
@@ -477,31 +487,31 @@ TEST_CASE("CachingFileSystem - Concurrent same block requests", "[caching_file_s
 	auto &fs = FileSystem::GetFileSystem(*db.instance);
 	auto &cache = ExternalFileCache::Get(*db.instance);
 	cache.SetEnabled(true);
-	
+
 	ScopedDirectory test_dir(TestJoinPath(TestDirectoryPath(), "test_concurrent_same_block"));
 	auto test_file = TestJoinPath(test_dir.GetPath(), "cache_test_concurrent_same_block.bin");
 	CreateTestFile(fs, test_file, /*size_mb=*/10);
-	
+
 	// Test with both read policies
 	for (const auto &policy_name : {"default", "aligned"}) {
 		auto &config = DBConfig::GetConfig(*db.instance);
 		config.options.external_file_cache_read_policy_name = policy_name;
-		
+
 		// Clear cache for each policy test
 		ClearCache(cache);
-		
+
 		CachingFileSystem caching_fs(fs, *db.instance);
-		
+
 		// Test 1: Multiple threads requesting the same block (cache miss)
 		// All threads try to read the same 1MiB range starting at 2MiB
 		constexpr idx_t num_threads = 16;
 		constexpr idx_t read_location = 2 * 1024 * 1024;
 		constexpr idx_t read_bytes = 1024 * 1024;
-		
+
 		vector<thread> cache_miss_threads;
 		vector<bool> success_flags(num_threads, false);
 		atomic<idx_t> threads_ready(0);
-		
+
 		// Use a barrier-like mechanism to maximize contention
 		for (idx_t i = 0; i < num_threads; i++) {
 			cache_miss_threads.emplace_back([&, i]() {
@@ -510,11 +520,11 @@ TEST_CASE("CachingFileSystem - Concurrent same block requests", "[caching_file_s
 				while (threads_ready.load() < num_threads) {
 					std::this_thread::yield();
 				}
-				
+
 				OpenFileInfo info;
 				info.path = test_file;
 				auto handle = caching_fs.OpenFile(info, FileFlags::FILE_FLAGS_READ);
-				
+
 				data_ptr_t buffer;
 				auto result = handle->Read(buffer, read_bytes, read_location);
 				if (result.IsValid()) {
@@ -523,23 +533,23 @@ TEST_CASE("CachingFileSystem - Concurrent same block requests", "[caching_file_s
 				}
 			});
 		}
-		
+
 		// Wait for all threads to complete
 		for (auto &thread : cache_miss_threads) {
 			thread.join();
 		}
-		
+
 		// Verify all threads succeeded
 		for (idx_t i = 0; i < num_threads; i++) {
 			REQUIRE(success_flags[i] == true);
 		}
-		
+
 		// Test 2: Multiple threads requesting the same already-cached block (cache hit)
 		// The block should already be in cache from the previous test
 		vector<thread> cache_hit_threads;
 		vector<bool> cache_hit_success_flags(num_threads, false);
 		atomic<idx_t> cache_hit_threads_ready(0);
-		
+
 		for (idx_t i = 0; i < num_threads; i++) {
 			cache_hit_threads.emplace_back([&, i]() {
 				cache_hit_threads_ready.fetch_add(1);
@@ -547,16 +557,16 @@ TEST_CASE("CachingFileSystem - Concurrent same block requests", "[caching_file_s
 				while (cache_hit_threads_ready.load() < num_threads) {
 					std::this_thread::yield();
 				}
-				
+
 				OpenFileInfo info;
 				info.path = test_file;
 				auto handle = caching_fs.OpenFile(info, FileFlags::FILE_FLAGS_READ);
-				
+
 				// Read from the same cached block, but potentially at different offsets within it
 				idx_t offset_within_block = (i % 4) * 256 * 1024; // Different offsets within the same block
 				idx_t thread_read_location = read_location + offset_within_block;
 				idx_t thread_read_bytes = 256 * 1024;
-				
+
 				data_ptr_t buffer;
 				auto result = handle->Read(buffer, thread_read_bytes, thread_read_location);
 				if (result.IsValid()) {
@@ -565,26 +575,26 @@ TEST_CASE("CachingFileSystem - Concurrent same block requests", "[caching_file_s
 				}
 			});
 		}
-		
+
 		// Wait for all threads to complete
 		for (auto &thread : cache_hit_threads) {
 			thread.join();
 		}
-		
+
 		// Verify all threads succeeded
 		for (idx_t i = 0; i < num_threads; i++) {
 			REQUIRE(cache_hit_success_flags[i] == true);
 		}
-		
+
 		// Test 3: Multiple threads requesting overlapping ranges that map to the same block
 		// This tests the case where reads are not perfectly aligned but still hit the same cached block
 		ClearCache(cache);
-		
+
 		constexpr idx_t overlap_num_threads = 8;
 		vector<thread> overlap_threads;
 		vector<bool> overlap_success_flags(overlap_num_threads, false);
 		atomic<idx_t> overlap_threads_ready(0);
-		
+
 		// All threads read overlapping ranges that all fall within the same 2MiB aligned block
 		// For aligned policy, this should still use the same underlying cached block
 		for (idx_t i = 0; i < overlap_num_threads; i++) {
@@ -594,15 +604,15 @@ TEST_CASE("CachingFileSystem - Concurrent same block requests", "[caching_file_s
 				while (overlap_threads_ready.load() < overlap_num_threads) {
 					std::this_thread::yield();
 				}
-				
+
 				OpenFileInfo info;
 				info.path = test_file;
 				auto handle = caching_fs.OpenFile(info, FileFlags::FILE_FLAGS_READ);
-				
+
 				// Each thread reads a slightly different offset, but all within the same block
 				idx_t thread_read_location = read_location + (i * 128 * 1024);
 				idx_t thread_read_bytes = 512 * 1024;
-				
+
 				data_ptr_t buffer;
 				auto result = handle->Read(buffer, thread_read_bytes, thread_read_location);
 				if (result.IsValid()) {
@@ -611,12 +621,12 @@ TEST_CASE("CachingFileSystem - Concurrent same block requests", "[caching_file_s
 				}
 			});
 		}
-		
+
 		// Wait for all threads to complete
 		for (auto &thread : overlap_threads) {
 			thread.join();
 		}
-		
+
 		// Verify all threads succeeded
 		for (idx_t i = 0; i < overlap_num_threads; i++) {
 			REQUIRE(overlap_success_flags[i] == true);

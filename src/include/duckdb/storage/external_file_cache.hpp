@@ -47,11 +47,13 @@ public:
 
 		//! Check if this range is complete.
 		//! TODO(hjiang): This function could be improved for better error propagation.
-		bool IsComplete() const { return block_handle != nullptr; }
-		
+		bool IsComplete() const {
+			return block_handle != nullptr;
+		}
+
 		//! Wait for this range to complete.
 		void WaitForCompletion(unique_lock<mutex> &lock);
-		
+
 		//! Mark this range as complete and notify waiting threads
 		void MarkIoComplete(shared_ptr<BlockHandle> handle);
 
@@ -61,7 +63,7 @@ public:
 		const idx_t location;
 		const string version_tag;
 		idx_t block_offset; // Offset within the block_handle where this range's data starts
-		
+
 		// Fields used to coordinate parallel reads of the same range
 		mutex completion_mutex;
 		std::condition_variable completion_cv;

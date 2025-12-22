@@ -171,7 +171,8 @@ BufferHandle CachingFileHandle::Read(data_ptr_t &buffer, const idx_t nr_bytes, c
 	buffer = result.Ptr();
 
 	// Copy data from cache blocks into the result buffer (NO MORE IO)
-	CopyCacheBlocksToResultBuffer(buffer, std::move(cache_blocks), std::move(pinned_buffer_handles), actual_read_location, actual_read_bytes);
+	CopyCacheBlocksToResultBuffer(buffer, std::move(cache_blocks), std::move(pinned_buffer_handles),
+	                              actual_read_location, actual_read_bytes);
 
 	// Set buffer pointer to requested location
 	const idx_t buffer_offset = location - actual_read_location;
@@ -301,28 +302,31 @@ CachingFileHandle::GetOrCreatePendingRangeWithLock(unique_ptr<StorageLockKey> &g
 	return pending_range;
 }
 
-vector<BufferHandle> CachingFileHandle::PerformParallelBlockIO(const vector<shared_ptr<CachedFileRange>> &pending_blocks) {
-	ParallelIOState state(pending_blocks.size());	
+vector<BufferHandle>
+CachingFileHandle::PerformParallelBlockIO(const vector<shared_ptr<CachedFileRange>> &pending_blocks) {
+	ParallelIOState state(pending_blocks.size());
 	TaskExecutor executor(TaskScheduler::GetScheduler(caching_file_system.db));
 	for (idx_t idx = 0; idx < pending_blocks.size(); ++idx) {
 		auto task = make_uniq<BlockIOTask>(executor, *this, pending_blocks[idx], state, idx);
 		executor.ScheduleTask(std::move(task));
 	}
-	executor.WorkOnTasks();	
+	executor.WorkOnTasks();
 	return std::move(state.buffer_handles);
 }
 
-void CachingFileHandle::CopyCacheBlocksToResultBuffer(data_ptr_t buffer, vector<shared_ptr<CachedFileRange>> cache_blocks,
-                                                vector<BufferHandle> pinned_buffer_handles, idx_t actual_read_location, idx_t actual_read_bytes) {
+void CachingFileHandle::CopyCacheBlocksToResultBuffer(data_ptr_t buffer,
+                                                      vector<shared_ptr<CachedFileRange>> cache_blocks,
+                                                      vector<BufferHandle> pinned_buffer_handles,
+                                                      idx_t actual_read_location, idx_t actual_read_bytes) {
 	D_ASSERT(cache_blocks.size() == pinned_buffer_handles.size());
-	
+
 	// Verify that cache_blocks are sorted by location
 	for (idx_t i = 1; i < cache_blocks.size(); ++i) {
 		D_ASSERT(cache_blocks[i - 1]->location < cache_blocks[i]->location);
 	}
 
 	const idx_t end_pos = actual_read_location + actual_read_bytes;
-	
+
 	// Process blocks in order and copy data from each block
 	for (idx_t idx = 0; idx < cache_blocks.size(); ++idx) {
 		auto &block = cache_blocks[idx];
@@ -333,7 +337,7 @@ void CachingFileHandle::CopyCacheBlocksToResultBuffer(data_ptr_t buffer, vector<
 		const idx_t block_end = block->location + block->nr_bytes;
 		const idx_t copy_start = MaxValue(block_start, actual_read_location);
 		const idx_t copy_end = MinValue(block_end, end_pos);
-		
+
 		// Copy from this block if it overlaps
 		if (copy_start < copy_end) {
 			const idx_t bytes_to_copy = copy_end - copy_start;
@@ -341,7 +345,8 @@ void CachingFileHandle::CopyCacheBlocksToResultBuffer(data_ptr_t buffer, vector<
 			const idx_t offset_in_buffer = copy_start - actual_read_location;
 
 			D_ASSERT(cur_buffer_handle.IsValid());
-			memcpy(buffer + offset_in_buffer, cur_buffer_handle.Ptr() + block->block_offset + offset_in_block, bytes_to_copy);
+			memcpy(buffer + offset_in_buffer, cur_buffer_handle.Ptr() + block->block_offset + offset_in_block,
+			       bytes_to_copy);
 		}
 	}
 }

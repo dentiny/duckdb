@@ -25,14 +25,15 @@ struct ParallelIOState {
 	// Used to protect `pins`.
 	mutex lock;
 
-	explicit ParallelIOState(idx_t count) : buffer_handles(count) {}
+	explicit ParallelIOState(idx_t count) : buffer_handles(count) {
+	}
 };
 
 //! Task for performing a single block IO operation in parallel
 class BlockIOTask : public BaseExecutorTask {
 public:
-	BlockIOTask(TaskExecutor &executor, CachingFileHandle &handle_p, shared_ptr<ExternalFileCache::CachedFileRange> block_p,
-	            ParallelIOState &state_p, idx_t index_p);
+	BlockIOTask(TaskExecutor &executor, CachingFileHandle &handle_p,
+	            shared_ptr<ExternalFileCache::CachedFileRange> block_p, ParallelIOState &state_p, idx_t index_p);
 
 	void ExecuteTask() override;
 

@@ -68,7 +68,7 @@ private:
 
 	//! Get file range to read, return directly if already exists, otherwise creates a new one.
 	shared_ptr<CachedFileRange> GetOrCreatePendingRangeWithLock(unique_ptr<StorageLockKey> &guard,
-	                                                       const ReadPolicyResult &range);
+	                                                            const ReadPolicyResult &range);
 
 	//! Perform IO for multiple pending blocks in parallel
 	vector<BufferHandle> PerformParallelBlockIO(const vector<shared_ptr<CachedFileRange>> &pending_blocks);
@@ -79,7 +79,8 @@ private:
 	//! - cache blocks are sorted by location in ascending order
 	//! - cache blocks and pinned buffer handles correspond to each other
 	void CopyCacheBlocksToResultBuffer(data_ptr_t buffer, vector<shared_ptr<CachedFileRange>> cache_blocks,
-	                             vector<BufferHandle> pinned_buffer_handles, idx_t actual_read_location, idx_t actual_read_bytes);
+	                                   vector<BufferHandle> pinned_buffer_handles, idx_t actual_read_location,
+	                                   idx_t actual_read_bytes);
 
 private:
 	QueryContext context;

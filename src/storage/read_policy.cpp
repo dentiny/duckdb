@@ -42,7 +42,7 @@ ReadPolicyRanges DefaultReadPolicy::CalculateRangesToRead(idx_t nr_bytes, idx_t 
 	if (location + read_bytes > file_size) {
 		read_bytes = file_size - location;
 	}
-	
+
 	ReadPolicyRanges ranges;
 	ranges.ranges.push_back({location, read_bytes});
 	ranges.total_location = location;
