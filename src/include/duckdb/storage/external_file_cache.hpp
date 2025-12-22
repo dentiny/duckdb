@@ -29,7 +29,7 @@ class ExternalFileCache {
 public:
 	enum class CachedFileRangeOverlap { NONE, PARTIAL, FULL };
 
-	//! Cached reads (immutable)
+	//! Cached reads - can be in pending (IO in progress) or complete (data available) state
 	struct CachedFileRange {
 	public:
 		CachedFileRange(shared_ptr<BlockHandle> block_handle, idx_t nr_bytes, idx_t location, string version_tag);
@@ -44,11 +44,27 @@ public:
 		void AddCheckSum();
 		void VerifyCheckSum();
 
+		//! Check if this range is complete (IO finished) or pending (IO in progress)
+		bool IsComplete() const { return block_handle != nullptr; }
+		
+		//! Wait for this range to complete (if it's pending)
+		void WaitForCompletion(unique_lock<mutex> &lock);
+		
+		//! Mark this range as complete and notify waiting threads
+		void Complete(shared_ptr<BlockHandle> handle, idx_t offset_in_block = 0);
+
 	public:
-		shared_ptr<BlockHandle> block_handle;
+		shared_ptr<BlockHandle> block_handle; // nullptr if pending, valid if complete
 		const idx_t nr_bytes;
 		const idx_t location;
 		const string version_tag;
+		idx_t block_offset; // Offset within the block_handle where this range's data starts
+		
+		// For coordinating parallel reads of the same range
+		mutex completion_mutex;
+		std::condition_variable completion_cv;
+		atomic<bool> io_in_progress; // True if a thread is currently performing IO for this block
+		
 #ifdef DEBUG
 		hash_t checksum = 0;
 #endif
@@ -93,6 +109,7 @@ public:
 		StorageLock lock;
 
 	private:
+		// Ranges can be pending (block_handle=nullptr) or complete (block_handle set)
 		map<idx_t, shared_ptr<CachedFileRange>> ranges;
 
 		idx_t file_size;

@@ -62,17 +62,34 @@ public:
 private:
 	//! Get the version tag of the file (for checking cache invalidation)
 	const string &GetVersionTag(const unique_ptr<StorageLockKey> &guard);
-	//! Tries to read from the cache, filling "overlapping_ranges" with ranges that overlap with the request.
-	//! Returns an invalid BufferHandle if it fails
-	BufferHandle TryReadFromCache(data_ptr_t &buffer, idx_t nr_bytes, idx_t location,
-	                              vector<shared_ptr<CachedFileRange>> &overlapping_ranges,
-	                              optional_idx &start_location_of_next_range);
+
 	//! Try to read from the specified range, return an invalid BufferHandle if it fails
 	BufferHandle TryReadFromFileRange(const unique_ptr<StorageLockKey> &guard, CachedFileRange &file_range,
 	                                  data_ptr_t &buffer, idx_t nr_bytes, idx_t location);
+	
+	//! Legacy TryReadFromCache (kept for non-seeking reads)
+	BufferHandle TryReadFromCache(data_ptr_t &buffer, idx_t nr_bytes, idx_t location,
+	                              vector<shared_ptr<CachedFileRange>> &overlapping_ranges,
+	                              optional_idx &start_location_of_next_range);
+
+	//! Check if a specific range exists (cached or pending), or create it as pending
+	//! Returns the CachedFileRange (complete if cached, pending if needs IO)
+	shared_ptr<CachedFileRange> CheckOrCreatePendingRangeWithLock(unique_ptr<StorageLockKey> &guard,
+	                                                       const ReadPolicyResult &range);
+
+	//! Perform IO for multiple pending blocks in parallel
+	//! Returns pins for all completed blocks (both newly completed and already complete)
+	vector<BufferHandle> PerformParallelBlockIO(vector<shared_ptr<CachedFileRange>> &pending_blocks);
+
+	//! Copy data from cache blocks into the result buffer, filling gaps by reading from file
+	//! pins should contain pre-pinned BufferHandles for each block in cache_blocks (in the same order)
+	void CopyCacheBlocksToResultBuffer(data_ptr_t buffer, const vector<shared_ptr<CachedFileRange>> &cache_blocks,
+	                             const vector<BufferHandle> &pins, idx_t actual_read_location, idx_t actual_read_bytes);
+
 	//! Try to insert the file range into the cache
 	BufferHandle TryInsertFileRange(BufferHandle &pin, data_ptr_t &buffer, idx_t nr_bytes, idx_t location,
 	                                shared_ptr<CachedFileRange> &new_file_range);
+
 	//! Read from file and copy from cached buffers until the requested read is complete
 	//! If actually_read is false, no reading happens, only the number of non-cached reads is counted and returned
 	idx_t ReadAndCopyInterleaved(const vector<shared_ptr<CachedFileRange>> &overlapping_ranges,
