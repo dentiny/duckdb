@@ -30,7 +30,7 @@ class ExternalFileCache {
 public:
 	enum class CachedFileRangeOverlap { NONE, PARTIAL, FULL };
 
-	//! Cached reads - can be in pending (IO in progress) or complete (data available) state
+	//! Cached reads (immutable)
 	struct CachedFileRange {
 	public:
 		CachedFileRange(shared_ptr<BlockHandle> block_handle, idx_t nr_bytes, idx_t location, string version_tag);
@@ -46,13 +46,14 @@ public:
 		void VerifyCheckSum();
 
 		//! Check if this range is complete.
+		//! TODO(hjiang): This function could be improved for better error propagation.
 		bool IsComplete() const { return block_handle != nullptr; }
 		
 		//! Wait for this range to complete.
 		void WaitForCompletion(unique_lock<mutex> &lock);
 		
 		//! Mark this range as complete and notify waiting threads
-		void Complete(shared_ptr<BlockHandle> handle, idx_t offset_in_block = 0);
+		void MarkIoComplete(shared_ptr<BlockHandle> handle);
 
 	public:
 		shared_ptr<BlockHandle> block_handle; // nullptr if pending, valid if complete
@@ -61,7 +62,7 @@ public:
 		const string version_tag;
 		idx_t block_offset; // Offset within the block_handle where this range's data starts
 		
-		// For coordinating parallel reads of the same range
+		// Fields used to coordinate parallel reads of the same range
 		mutex completion_mutex;
 		std::condition_variable completion_cv;
 		// Indicates whether a thread is currently performing IO for this block.
@@ -70,13 +71,6 @@ public:
 #ifdef DEBUG
 		hash_t checksum = 0;
 #endif
-	};
-
-	//! Structure to track pending reads for aligned blocks
-	struct PendingRead {
-		std::condition_variable cv;
-		bool is_reading = false;
-		idx_t waiting_count = 0; // Number of threads currently waiting
 	};
 
 	//! Cached files
@@ -104,7 +98,6 @@ public:
 		StorageLock lock;
 
 	private:
-		// Ranges can be pending (block_handle=nullptr) or complete (block_handle set)
 		map<idx_t, shared_ptr<CachedFileRange>> ranges;
 
 		idx_t file_size;
@@ -112,11 +105,6 @@ public:
 		string version_tag;
 		bool can_seek;
 		bool on_disk_file;
-
-		//! Mutex for coordinating pending reads
-		mutex pending_reads_mutex;
-		//! Map from aligned location to pending read information
-		unordered_map<idx_t, unique_ptr<PendingRead>> pending_reads;
 	};
 
 public:

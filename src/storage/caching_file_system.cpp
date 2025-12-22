@@ -183,6 +183,7 @@ BufferHandle CachingFileHandle::Read(data_ptr_t &buffer, const idx_t nr_bytes, c
 BufferHandle CachingFileHandle::Read(data_ptr_t &buffer, idx_t &nr_bytes) {
 	auto buffer_handle = Read(buffer, nr_bytes, position);
 	position += nr_bytes;
+	Seek(position);
 	return buffer_handle;
 }
 
@@ -308,7 +309,7 @@ vector<BufferHandle> CachingFileHandle::PerformParallelBlockIO(const vector<shar
 		executor.ScheduleTask(std::move(task));
 	}
 	executor.WorkOnTasks();	
-	return std::move(state.pins);
+	return std::move(state.buffer_handles);
 }
 
 void CachingFileHandle::CopyCacheBlocksToResultBuffer(data_ptr_t buffer, vector<shared_ptr<CachedFileRange>> cache_blocks,

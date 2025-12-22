@@ -624,4 +624,151 @@ TEST_CASE("CachingFileSystem - Concurrent same block requests", "[caching_file_s
 	}
 }
 
+TEST_CASE("CachingFileSystem - Position-based Read overload", "[caching_file_system]") {
+	DuckDB db(nullptr);
+	auto &base_fs = FileSystem::GetFileSystem(*db.instance);
+	auto &cache = ExternalFileCache::Get(*db.instance);
+	CachingFileSystem fs(base_fs, *db.instance);
+
+	ScopedDirectory test_dir("test_position_read");
+	string test_file = test_dir.GetPath() + "/test_data.bin";
+
+	// Create test file with 10MB of sequential data
+	CreateTestFile(base_fs, test_file, /*size_mb=*/10);
+
+	SECTION("Sequential reads using position-based overload") {
+		// Test with DefaultReadPolicy
+		DBConfig::GetConfig(*db.instance).options.external_file_cache_read_policy_name = "default";
+		ClearCache(cache);
+
+		auto handle = fs.OpenFile(test_file, FileFlags::FILE_FLAGS_READ);
+
+		// First read: 1MB at position 0
+		data_ptr_t buffer1 = nullptr;
+		idx_t bytes1 = 1024 * 1024;
+		auto buffer_handle1 = handle->Read(buffer1, bytes1);
+		REQUIRE(buffer1 != nullptr);
+		REQUIRE(bytes1 == 1024 * 1024);
+		VerifyData(/*buffer=*/buffer1, /*size=*/bytes1, /*file_offset=*/0);
+
+		// Second read: should start at position 1MB (position was updated)
+		data_ptr_t buffer2 = nullptr;
+		idx_t bytes2 = 512 * 1024;
+		auto buffer_handle2 = handle->Read(buffer2, bytes2);
+		REQUIRE(buffer2 != nullptr);
+		REQUIRE(bytes2 == 512 * 1024);
+		VerifyData(/*buffer=*/buffer2, /*size=*/bytes2, /*file_offset=*/1024 * 1024);
+
+		// Third read: should start at position 1.5MB
+		data_ptr_t buffer3 = nullptr;
+		idx_t bytes3 = 256 * 1024;
+		auto buffer_handle3 = handle->Read(buffer3, bytes3);
+		REQUIRE(buffer3 != nullptr);
+		REQUIRE(bytes3 == 256 * 1024);
+		VerifyData(/*buffer=*/buffer3, /*size=*/bytes3, /*file_offset=*/static_cast<idx_t>(1.5 * 1024 * 1024));
+	}
+
+	SECTION("Sequential reads with AlignedReadPolicy") {
+		DBConfig::GetConfig(*db.instance).options.external_file_cache_read_policy_name = "aligned";
+		ClearCache(cache);
+
+		auto handle = fs.OpenFile(test_file, FileFlags::FILE_FLAGS_READ);
+
+		// Read 1MB starting from position 0
+		data_ptr_t buffer1 = nullptr;
+		idx_t bytes1 = 1024 * 1024;
+		auto buffer_handle1 = handle->Read(buffer1, bytes1);
+		VerifyData(/*buffer=*/buffer1, /*size=*/bytes1, /*file_offset=*/0);
+
+		// Next read should continue from 1MB
+		data_ptr_t buffer2 = nullptr;
+		idx_t bytes2 = 1024 * 1024;
+		auto buffer_handle2 = handle->Read(buffer2, bytes2);
+		VerifyData(/*buffer=*/buffer2, /*size=*/bytes2, /*file_offset=*/1024 * 1024);
+	}
+
+	SECTION("Seek and position-based reads") {
+		DBConfig::GetConfig(*db.instance).options.external_file_cache_read_policy_name = "default";
+		ClearCache(cache);
+
+		auto handle = fs.OpenFile(test_file, FileFlags::FILE_FLAGS_READ);
+
+		// Read at position 0
+		data_ptr_t buffer1 = nullptr;
+		idx_t bytes1 = 512 * 1024;
+		auto buffer_handle1 = handle->Read(buffer1, bytes1);
+		VerifyData(/*buffer=*/buffer1, /*size=*/bytes1, /*file_offset=*/0);
+
+		// Seek to 2MB
+		handle->Seek(2 * 1024 * 1024);
+
+		// Read should now be at 2MB
+		data_ptr_t buffer2 = nullptr;
+		idx_t bytes2 = 512 * 1024;
+		auto buffer_handle2 = handle->Read(buffer2, bytes2);
+		VerifyData(/*buffer=*/buffer2, /*size=*/bytes2, /*file_offset=*/2 * 1024 * 1024);
+
+		// Next read should continue from 2.5MB
+		data_ptr_t buffer3 = nullptr;
+		idx_t bytes3 = 512 * 1024;
+		auto buffer_handle3 = handle->Read(buffer3, bytes3);
+		VerifyData(/*buffer=*/buffer3, /*size=*/bytes3, /*file_offset=*/static_cast<idx_t>(2.5 * 1024 * 1024));
+	}
+
+	SECTION("Position-based reads should hit cache") {
+		DBConfig::GetConfig(*db.instance).options.external_file_cache_read_policy_name = "default";
+		ClearCache(cache);
+
+		auto handle1 = fs.OpenFile(test_file, FileFlags::FILE_FLAGS_READ);
+
+		// First read - cache miss
+		data_ptr_t buffer1 = nullptr;
+		idx_t bytes1 = 1024 * 1024;
+		auto buffer_handle1 = handle1->Read(buffer1, bytes1);
+		VerifyData(/*buffer=*/buffer1, /*size=*/bytes1, /*file_offset=*/0);
+
+		// Open another handle
+		auto handle2 = fs.OpenFile(test_file, FileFlags::FILE_FLAGS_READ);
+
+		// Read the same data - should be cache hit
+		data_ptr_t buffer2 = nullptr;
+		idx_t bytes2 = 1024 * 1024;
+		auto buffer_handle2 = handle2->Read(buffer2, bytes2);
+		VerifyData(/*buffer=*/buffer2, /*size=*/bytes2, /*file_offset=*/0);
+
+		// Verify data is cached
+		auto cache_info = cache.GetCachedFileInformation();
+		bool found = false;
+		for (auto &file : cache_info) {
+			if (file.path == test_file) {
+				found = true;
+				REQUIRE(file.loaded);
+				REQUIRE(file.nr_bytes > 0);
+				break;
+			}
+		}
+		REQUIRE(found);
+	}
+
+	SECTION("Multiple sequential position-based reads across blocks") {
+		DBConfig::GetConfig(*db.instance).options.external_file_cache_read_policy_name = "aligned";
+		ClearCache(cache);
+
+		auto handle = fs.OpenFile(test_file, FileFlags::FILE_FLAGS_READ);
+
+		// Read in 512KB chunks, crossing block boundaries (2MiB blocks)
+		const idx_t chunk_size = 512 * 1024;
+		const idx_t num_chunks = 8; // Total 4MB
+
+		for (idx_t i = 0; i < num_chunks; ++i) {
+			data_ptr_t buffer = nullptr;
+			idx_t bytes = chunk_size;
+			auto buffer_handle = handle->Read(buffer, bytes);
+			REQUIRE(buffer != nullptr);
+			REQUIRE(bytes == chunk_size);
+			VerifyData(/*buffer=*/buffer, /*size=*/bytes, /*file_offset=*/i * chunk_size);
+		}
+	}
+}
+
 } // namespace duckdb

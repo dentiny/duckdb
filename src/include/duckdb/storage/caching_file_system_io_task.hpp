@@ -20,18 +20,19 @@ struct CachingFileHandle;
 
 //! Shared state for parallel IO operations for caching file handle
 struct ParallelIOState {
-	vector<BufferHandle> pins;
+	// Invariant: if buffer handle is valid, it's pinned in buffer manager.
+	vector<BufferHandle> buffer_handles;
 	// Used to protect `pins`.
 	mutex lock;
-	
-	explicit ParallelIOState(idx_t count) : pins(count) {}
+
+	explicit ParallelIOState(idx_t count) : buffer_handles(count) {}
 };
 
 //! Task for performing a single block IO operation in parallel
 class BlockIOTask : public BaseExecutorTask {
 public:
-	BlockIOTask(TaskExecutor &executor, CachingFileHandle &handle, shared_ptr<ExternalFileCache::CachedFileRange> block,
-	            ParallelIOState &state, idx_t index);
+	BlockIOTask(TaskExecutor &executor, CachingFileHandle &handle_p, shared_ptr<ExternalFileCache::CachedFileRange> block_p,
+	            ParallelIOState &state_p, idx_t index_p);
 
 	void ExecuteTask() override;
 

@@ -39,9 +39,7 @@ ExternalFileCache::CachedFileRange::GetOverlap(const CachedFileRange &other) con
 void ExternalFileCache::CachedFileRange::AddCheckSum() {
 #ifdef DEBUG
 	D_ASSERT(checksum == 0);
-	if (!block_handle) {
-		return; // Pending range, no checksum yet
-	}
+	D_ASSERT(block_handle != nullptr);
 	auto buffer_handle = block_handle->block_manager.buffer_manager.Pin(block_handle);
 	checksum = Checksum(buffer_handle.Ptr(), nr_bytes);
 #endif
@@ -137,12 +135,12 @@ void ExternalFileCache::CachedFileRange::WaitForCompletion(unique_lock<mutex> &l
 	completion_cv.wait(lock, [this]() { return IsComplete(); });
 }
 
-void ExternalFileCache::CachedFileRange::Complete(shared_ptr<BlockHandle> handle, idx_t offset_in_block) {
+void ExternalFileCache::CachedFileRange::MarkIoComplete(shared_ptr<BlockHandle> handle) {
 	lock_guard<mutex> lock(completion_mutex);
 	D_ASSERT(!IsComplete()); // Should only complete once
 	D_ASSERT(handle != nullptr);
 	block_handle = std::move(handle);
-	block_offset = offset_in_block;
+	block_offset = 0;
 	io_in_progress = false; // Mark IO as complete
 	completion_cv.notify_all();
 }

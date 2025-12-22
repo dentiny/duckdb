@@ -33,9 +33,6 @@ public:
 	//! If the policy name hasn't been registered before, InvalidInput exception is thrown.
 	unique_ptr<ReadPolicy> CreatePolicy(const string &name);
 
-	//! Check if a policy is registered
-	bool HasPolicy(const string &name);
-
 	//! Get all registered policy names
 	vector<string> GetReadPolicies();
 

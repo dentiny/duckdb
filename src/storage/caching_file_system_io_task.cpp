@@ -14,9 +14,9 @@
 
 namespace duckdb {
 
-BlockIOTask::BlockIOTask(TaskExecutor &executor, CachingFileHandle &handle,
-                         shared_ptr<ExternalFileCache::CachedFileRange> block, ParallelIOState &state, idx_t index)
-    : BaseExecutorTask(executor), handle(handle), block(std::move(block)), state(state), index(index) {
+BlockIOTask::BlockIOTask(TaskExecutor &executor, CachingFileHandle &handle_p,
+                         shared_ptr<ExternalFileCache::CachedFileRange> block_p, ParallelIOState &state_p, idx_t index_p)
+    : BaseExecutorTask(executor), handle(handle_p), block(std::move(block_p)), state(state_p), index(index_p) {
 }
 
 void BlockIOTask::ExecuteTask() {
@@ -28,7 +28,7 @@ void BlockIOTask::ExecuteTask() {
 		lock.unlock();
 		{
 			const lock_guard<mutex> state_guard(state.lock);
-			state.pins[index] = handle.external_file_cache.GetBufferManager().Pin(block->block_handle);
+			state.buffer_handles[index] = handle.external_file_cache.GetBufferManager().Pin(block->block_handle);
 		}
 		return;
 	}
@@ -41,28 +41,26 @@ void BlockIOTask::ExecuteTask() {
 		lock.unlock();
 		{
 			const lock_guard<mutex> state_guard(state.lock);
-			state.pins[index] = handle.external_file_cache.GetBufferManager().Pin(block->block_handle);
+			state.buffer_handles[index] = handle.external_file_cache.GetBufferManager().Pin(block->block_handle);
 		}
 		return;
 	}
 
-	// We're the one doing the IO, mark read in progress
+	// No need to release block here, all accessors are waiting for the IO operation completion anyway.
 	block->io_in_progress = true;
 	lock.unlock();
-	
-	// Perform the actual IO
+
 	auto io_buffer = handle.external_file_cache.GetBufferManager().Allocate(MemoryTag::EXTERNAL_FILE_CACHE,
 	                                                                         block->nr_bytes);
+	// TODO(hjiang): I think we could do better on error propagation, for example, capture IO error and record in the request struct, so other requesters could retry.
+	// Currently we simply throw exception on the IO thread.
 	handle.GetFileHandle().Read(handle.context, io_buffer.Ptr(), block->nr_bytes, block->location);
-	
-	// Complete the block (this will set io_in_progress = false inside Complete())
-	D_ASSERT(!block->IsComplete());
-	block->Complete(io_buffer.GetBlockHandle(), /*offset_in_block=*/0);
+	block->MarkIoComplete(io_buffer.GetBlockHandle());
 
 	// Pin the block and store in shared state.
 	{
 		const lock_guard<mutex> state_guard(state.lock);
-		state.pins[index] = handle.external_file_cache.GetBufferManager().Pin(block->block_handle);
+		state.buffer_handles[index] = handle.external_file_cache.GetBufferManager().Pin(block->block_handle);
 	}
 }
 

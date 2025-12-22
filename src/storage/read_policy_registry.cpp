@@ -43,11 +43,6 @@ unique_ptr<ReadPolicy> ReadPolicyRegistry::CreatePolicy(const string &name) {
 	return it->second();
 }
 
-bool ReadPolicyRegistry::HasPolicy(const string &name) {
-	lock_guard<mutex> guard(policy_lock);
-	return policies.find(name) != policies.end();
-}
-
 vector<string> ReadPolicyRegistry::GetReadPolicies() {
 	vector<string> names;
 	names.reserve(policies.size());
