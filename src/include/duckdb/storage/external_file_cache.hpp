@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <condition_variable>
+
 #include "duckdb/common/atomic.hpp"
 #include "duckdb/common/map.hpp"
 #include "duckdb/common/mutex.hpp"
@@ -16,7 +18,6 @@
 #include "duckdb/storage/buffer/temporary_file_information.hpp"
 #include "duckdb/storage/storage_lock.hpp"
 #include "duckdb/common/types/timestamp.hpp"
-#include <condition_variable>
 
 namespace duckdb {
 
@@ -44,10 +45,10 @@ public:
 		void AddCheckSum();
 		void VerifyCheckSum();
 
-		//! Check if this range is complete (IO finished) or pending (IO in progress)
+		//! Check if this range is complete.
 		bool IsComplete() const { return block_handle != nullptr; }
 		
-		//! Wait for this range to complete (if it's pending)
+		//! Wait for this range to complete.
 		void WaitForCompletion(unique_lock<mutex> &lock);
 		
 		//! Mark this range as complete and notify waiting threads
@@ -63,8 +64,9 @@ public:
 		// For coordinating parallel reads of the same range
 		mutex completion_mutex;
 		std::condition_variable completion_cv;
-		atomic<bool> io_in_progress; // True if a thread is currently performing IO for this block
-		
+		// Indicates whether a thread is currently performing IO for this block.
+		bool io_in_progress = false;
+
 #ifdef DEBUG
 		hash_t checksum = 0;
 #endif
@@ -96,13 +98,6 @@ public:
 		bool &CanSeek(const unique_ptr<StorageLockKey> &guard);
 		bool &OnDiskFile(const unique_ptr<StorageLockKey> &guard);
 		map<idx_t, shared_ptr<CachedFileRange>> &Ranges(const unique_ptr<StorageLockKey> &guard);
-
-		//! Wait for a pending read at the given aligned location, or register a new pending read
-		//! Returns true if this thread should do the read, false if it should wait and retry
-		bool WaitForPendingRead(idx_t aligned_location, unique_lock<mutex> &pending_lock);
-
-		//! Notify waiting threads that a read has completed
-		void NotifyPendingReadComplete(idx_t aligned_location, unique_lock<mutex> &pending_lock);
 
 	public:
 		const string path;

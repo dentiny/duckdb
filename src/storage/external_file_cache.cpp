@@ -11,7 +11,7 @@ namespace duckdb {
 ExternalFileCache::CachedFileRange::CachedFileRange(shared_ptr<BlockHandle> block_handle_p, idx_t nr_bytes_p,
                                                     idx_t location_p, string version_tag_p)
     : block_handle(std::move(block_handle_p)), nr_bytes(nr_bytes_p), location(location_p),
-      version_tag(std::move(version_tag_p)), block_offset(0), io_in_progress(false) {
+      version_tag(std::move(version_tag_p)), block_offset(0) {
 }
 
 ExternalFileCache::CachedFileRange::~CachedFileRange() {
@@ -62,49 +62,6 @@ void ExternalFileCache::CachedFileRange::VerifyCheckSum() {
 
 ExternalFileCache::CachedFile::CachedFile(string path_p)
     : path(std::move(path_p)), file_size(0), last_modified(0), can_seek(false), on_disk_file(false) {
-}
-
-bool ExternalFileCache::CachedFile::WaitForPendingRead(idx_t aligned_location, unique_lock<mutex> &pending_lock) {
-	// Check if there's already a pending read for this aligned location
-	auto it = pending_reads.find(aligned_location);
-	if (it != pending_reads.end()) {
-		// Another thread is already reading this block, wait for it
-		auto &pending = *it->second;
-		pending.waiting_count++; // Increment waiting count
-		pending.cv.wait(pending_lock, [&pending]() { return !pending.is_reading; });
-
-		// The read is complete, decrement waiting count
-		pending.waiting_count--;
-		
-		// Only the last waiting thread cleans up the entry
-		if (pending.waiting_count == 0) {
-			pending_reads.erase(it);
-		}
-		return false; // Don't do the read, retry cache lookup instead
-	}
-
-	// No pending read exists, create one and mark this thread as the reader
-	auto pending = make_uniq<PendingRead>();
-	pending->is_reading = true;
-	pending->waiting_count = 0;
-	pending_reads[aligned_location] = std::move(pending);
-	return true; // This thread should do the read
-}
-
-void ExternalFileCache::CachedFile::NotifyPendingReadComplete(idx_t aligned_location,
-                                                               unique_lock<mutex> &pending_lock) {
-	auto it = pending_reads.find(aligned_location);
-	if (it != pending_reads.end()) {
-		auto &pending = *it->second;
-		pending.is_reading = false;
-		// Notify all waiting threads
-		pending.cv.notify_all();
-		// If no threads are waiting, clean up the entry now
-		// Otherwise, the last waiting thread will clean it up
-		if (pending.waiting_count == 0) {
-			pending_reads.erase(it);
-		}
-	}
 }
 
 void ExternalFileCache::CachedFile::Verify(const unique_ptr<StorageLockKey> &guard) const {
@@ -186,6 +143,7 @@ void ExternalFileCache::CachedFileRange::Complete(shared_ptr<BlockHandle> handle
 	D_ASSERT(handle != nullptr);
 	block_handle = std::move(handle);
 	block_offset = offset_in_block;
+	io_in_progress = false; // Mark IO as complete
 	completion_cv.notify_all();
 }
 

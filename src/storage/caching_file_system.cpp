@@ -130,8 +130,10 @@ BufferHandle CachingFileHandle::Read(data_ptr_t &buffer, const idx_t nr_bytes, c
 	const idx_t actual_read_bytes = policy_ranges.total_bytes;
 
 	// Get or create cache blocks for each range and identify pending blocks that need IO
-	// Pin complete blocks immediately to prevent eviction
+	//
+	// Contains all cache blocks, whether completed or pending.
 	vector<shared_ptr<CachedFileRange>> cache_blocks;
+	// Only contains pending cache blocks.
 	vector<shared_ptr<CachedFileRange>> pending_blocks;
 	vector<BufferHandle> pins;
 	cache_blocks.reserve(policy_ranges.ranges.size());
@@ -139,10 +141,10 @@ BufferHandle CachingFileHandle::Read(data_ptr_t &buffer, const idx_t nr_bytes, c
 	{
 		auto guard = cached_file.lock.GetExclusiveLock();
 		for (auto &policy_range : policy_ranges.ranges) {
-			auto block = CheckOrCreatePendingRangeWithLock(guard, policy_range);
+			auto block = GetOrCreatePendingRangeWithLock(guard, policy_range);
 			cache_blocks.emplace_back(block);
 			if (block->IsComplete()) {
-				// Pin immediately when found in cache.
+				// Pin immediately when found in cache so it won't get evicted.
 				pins.emplace_back(external_file_cache.GetBufferManager().Pin(block->block_handle));
 				continue;
 			}
@@ -154,7 +156,6 @@ BufferHandle CachingFileHandle::Read(data_ptr_t &buffer, const idx_t nr_bytes, c
 	}
 
 	// Perform IO for pending blocks and pin them as they complete
-	// TODO(hjiang): Current IO operations are still sequential.
 	if (!pending_blocks.empty()) {
 		auto pending_pins = PerformParallelBlockIO(pending_blocks);
 		idx_t pending_idx = 0;
@@ -168,6 +169,7 @@ BufferHandle CachingFileHandle::Read(data_ptr_t &buffer, const idx_t nr_bytes, c
 	}
 
 	// Compose all blocks into a single buffer
+	// TODO(hjiang): Optimize for cases with one single block.
 	result = external_file_cache.GetBufferManager().Allocate(MemoryTag::EXTERNAL_FILE_CACHE, actual_read_bytes);
 	buffer = result.Ptr();
 
@@ -182,43 +184,9 @@ BufferHandle CachingFileHandle::Read(data_ptr_t &buffer, const idx_t nr_bytes, c
 }
 
 BufferHandle CachingFileHandle::Read(data_ptr_t &buffer, idx_t &nr_bytes) {
-	BufferHandle result;
-
-	// If we can't seek, we can't use the cache for these calls,
-	// because we won't be able to seek over any parts we skipped by reading from the cache
-	if (!external_file_cache.IsEnabled() || !CanSeek()) {
-		result = external_file_cache.GetBufferManager().Allocate(MemoryTag::EXTERNAL_FILE_CACHE, nr_bytes);
-		buffer = result.Ptr();
-		nr_bytes = NumericCast<idx_t>(GetFileHandle().Read(context, buffer, nr_bytes));
-		position += NumericCast<idx_t>(nr_bytes);
-		return result;
-	}
-
-	// Try to read from the cache first
-	vector<shared_ptr<CachedFileRange>> overlapping_ranges;
-	{
-		optional_idx start_location_of_next_range;
-		result = TryReadFromCache(buffer, nr_bytes, position, overlapping_ranges, start_location_of_next_range);
-		// start_location_of_next_range is in this case discarded
-	}
-
-	if (result.IsValid()) {
-		position += nr_bytes;
-		return result; // Success
-	}
-
-	// Finally, if we weren't able to find the file range in the cache, we have to create a new file range
-	result = external_file_cache.GetBufferManager().Allocate(MemoryTag::EXTERNAL_FILE_CACHE, nr_bytes);
-	buffer = result.Ptr();
-
-	GetFileHandle().Seek(position);
-	nr_bytes = NumericCast<idx_t>(GetFileHandle().Read(context, buffer, nr_bytes));
-	auto new_file_range = make_shared_ptr<CachedFileRange>(result.GetBlockHandle(), nr_bytes, position, version_tag);
-
-	result = TryInsertFileRange(result, buffer, nr_bytes, position, new_file_range);
-	position += NumericCast<idx_t>(nr_bytes);
-
-	return result;
+	auto buffer_handle = Read(buffer, nr_bytes, position);
+	position += nr_bytes;
+	return buffer_handle;
 }
 
 string CachingFileHandle::GetPath() const {
@@ -294,198 +262,8 @@ void CachingFileHandle::Seek(idx_t location) {
 	}
 }
 
-BufferHandle CachingFileHandle::TryReadFromCache(data_ptr_t &buffer, idx_t nr_bytes, idx_t location,
-                                                 vector<shared_ptr<CachedFileRange>> &overlapping_ranges,
-                                                 optional_idx &start_location_of_next_range) {
-	BufferHandle result;
-
-	// Get read lock for cached ranges
-	auto guard = cached_file.lock.GetSharedLock();
-	auto &ranges = cached_file.Ranges(guard);
-
-	// First, try to see if we've read from the exact same location before
-	auto it = ranges.find(location);
-	if (it != ranges.end()) {
-		// We have read from the exact same location before
-		if (it->second->GetOverlap(nr_bytes, location) == CachedFileRangeOverlap::FULL) {
-			// The file range contains the requested file range
-			// FIXME: if we ever start persisting this stuff, this read needs to happen outside of the lock
-			result = TryReadFromFileRange(guard, *it->second, buffer, nr_bytes, location);
-			if (result.IsValid()) {
-				return result;
-			}
-		}
-	}
-
-	// Second, loop through file ranges (ordered by location) to see if any contain the requested file range
-	const auto this_end = location + nr_bytes;
-
-	// Start at lower_bound (first range with location not less than location of requested range) minus one
-	// This works because we don't allow fully overlapping ranges in the files
-	it = ranges.lower_bound(location);
-	if (it != ranges.begin()) {
-		--it;
-	}
-	while (it != ranges.end()) {
-		if (it->second->location >= this_end) {
-			// We're past the requested location, we are going to bail out, save start_location_of_next_range
-			start_location_of_next_range = it->second->location;
-			break;
-		}
-		// Check if the cached range overlaps the requested one
-		switch (it->second->GetOverlap(nr_bytes, location)) {
-		case CachedFileRangeOverlap::NONE:
-			// No overlap at all
-			break;
-		case CachedFileRangeOverlap::PARTIAL:
-			// Partial overlap, store for potential use later
-			overlapping_ranges.push_back(it->second);
-			break;
-		case CachedFileRangeOverlap::FULL:
-			// The file range fully contains the requested file range, if the buffer is still valid we're done
-			// FIXME: if we ever start persisting this stuff, this read needs to happen outside of the lock
-			result = TryReadFromFileRange(guard, *it->second, buffer, nr_bytes, location);
-			if (result.IsValid()) {
-				return result;
-			}
-			break;
-		default:
-			throw InternalException("Unknown CachedFileRangeOverlap");
-		}
-		++it;
-	}
-
-	return result;
-}
-
-BufferHandle CachingFileHandle::TryReadFromFileRange(const unique_ptr<StorageLockKey> &guard,
-                                                     CachedFileRange &file_range, data_ptr_t &buffer, idx_t nr_bytes,
-                                                     idx_t location) {
-	D_ASSERT(file_range.GetOverlap(nr_bytes, location) == CachedFileRangeOverlap::FULL);
-	auto result = external_file_cache.GetBufferManager().Pin(file_range.block_handle);
-	if (result.IsValid()) {
-		buffer = result.Ptr() + (location - file_range.location);
-	}
-	return result;
-}
-
-BufferHandle CachingFileHandle::TryInsertFileRange(BufferHandle &pin, data_ptr_t &buffer, idx_t nr_bytes,
-                                                   idx_t location, shared_ptr<CachedFileRange> &new_file_range) {
-	// Grab the lock again (write lock this time) to insert the newly created buffer into the ranges
-	auto guard = cached_file.lock.GetExclusiveLock();
-	auto &ranges = cached_file.Ranges(guard);
-
-	// Start at lower_bound (first range with location not less than location of newly created range)
-	const auto this_end = location + nr_bytes;
-	auto it = ranges.lower_bound(location);
-	if (it != ranges.begin()) {
-		--it;
-	}
-	while (it != ranges.end()) {
-		if (it->second->location >= this_end) {
-			// We're past the requested location
-			break;
-		}
-		if (it->second->GetOverlap(*new_file_range) == CachedFileRangeOverlap::FULL) {
-			// Another thread has read a range that fully contains the requested range in the meantime
-			auto other_pin = TryReadFromFileRange(guard, *it->second, buffer, nr_bytes, location);
-			if (other_pin.IsValid()) {
-				return other_pin;
-			}
-			it = ranges.erase(it);
-			continue;
-		}
-		// Check if the new range overlaps with a cached one
-		switch (new_file_range->GetOverlap(*it->second)) {
-		case CachedFileRangeOverlap::NONE:
-			break; // No overlap, still useful
-		case CachedFileRangeOverlap::PARTIAL:
-			break; // The newly created range does not fully contain this range, so it is still useful
-		case CachedFileRangeOverlap::FULL:
-			// Full overlap, this range will be obsolete when we insert the current one
-			// Since we have the write lock here, we can do some cleanup
-			it = ranges.erase(it);
-			continue;
-		default:
-			throw InternalException("Unknown CachedFileRangeOverlap");
-		}
-
-		++it;
-	}
-	D_ASSERT(pin.IsValid());
-
-	// Finally, insert newly created buffer into the map
-	new_file_range->AddCheckSum();
-	ranges[location] = std::move(new_file_range);
-	cached_file.Verify(guard);
-
-	return std::move(pin);
-}
-
-idx_t CachingFileHandle::ReadAndCopyInterleaved(const vector<shared_ptr<CachedFileRange>> &overlapping_ranges,
-                                                const shared_ptr<CachedFileRange> &new_file_range, data_ptr_t buffer,
-                                                const idx_t nr_bytes, const idx_t location, const bool actually_read) {
-	idx_t non_cached_read_count = 0;
-
-	idx_t current_location = location;
-	idx_t remaining_bytes = nr_bytes;
-	for (auto &overlapping_range : overlapping_ranges) {
-		D_ASSERT(new_file_range->GetOverlap(*overlapping_range) != CachedFileRangeOverlap::NONE);
-
-		if (remaining_bytes == 0) {
-			break; // All requested bytes were read
-		}
-
-		if (overlapping_range->location > current_location) {
-			// We need to read from the file until we're at the location of the current overlapping file range
-			const auto buffer_offset = nr_bytes - remaining_bytes;
-			const auto bytes_to_read = overlapping_range->location - current_location;
-			D_ASSERT(bytes_to_read < remaining_bytes);
-			if (actually_read) {
-				GetFileHandle().Read(context, buffer + buffer_offset, bytes_to_read, current_location);
-			}
-			current_location += bytes_to_read;
-			remaining_bytes -= bytes_to_read;
-			non_cached_read_count++;
-		}
-
-		if (overlapping_range->GetOverlap(remaining_bytes, current_location) == CachedFileRangeOverlap::NONE) {
-			continue; // Remainder does not overlap with the current overlapping file range
-		}
-
-		// Try to pin the current overlapping file range
-		auto overlapping_file_range_pin = external_file_cache.GetBufferManager().Pin(overlapping_range->block_handle);
-		if (!overlapping_file_range_pin.IsValid()) {
-			continue; // No longer valid
-		}
-
-		// Finally, we can copy the data over
-		D_ASSERT(current_location >= overlapping_range->location);
-		const auto buffer_offset = nr_bytes - remaining_bytes;
-		const auto overlapping_range_offset = current_location - overlapping_range->location;
-		D_ASSERT(overlapping_range->nr_bytes > overlapping_range_offset);
-		const auto bytes_to_read = MinValue(overlapping_range->nr_bytes - overlapping_range_offset, remaining_bytes);
-		if (actually_read) {
-			memcpy(buffer + buffer_offset, overlapping_file_range_pin.Ptr() + overlapping_range_offset, bytes_to_read);
-		}
-		current_location += bytes_to_read;
-		remaining_bytes -= bytes_to_read;
-	}
-
-	// Read the remaining bytes (if any)
-	if (remaining_bytes != 0) {
-		const auto buffer_offset = nr_bytes - remaining_bytes;
-		if (actually_read) {
-			GetFileHandle().Read(context, buffer + buffer_offset, remaining_bytes, current_location);
-		}
-		non_cached_read_count++;
-	}
-
-	return non_cached_read_count;
-}
-
 shared_ptr<CachingFileHandle::CachedFileRange>
-CachingFileHandle::CheckOrCreatePendingRangeWithLock(unique_ptr<StorageLockKey> &guard, const ReadPolicyResult &range) {
+CachingFileHandle::GetOrCreatePendingRangeWithLock(unique_ptr<StorageLockKey> &guard, const ReadPolicyResult &range) {
 	auto &ranges = cached_file.Ranges(guard);
 
 	// Check if this exact range already exists, which could be pending or completed.
@@ -526,70 +304,29 @@ CachingFileHandle::CheckOrCreatePendingRangeWithLock(unique_ptr<StorageLockKey> 
 	// block_handle = nullptr indicates this range needs IO
 	auto pending_range = make_shared_ptr<CachedFileRange>(nullptr, range.read_bytes, range.read_location, version_tag);
 	ranges[range.read_location] = pending_range;
-	
+
 	return pending_range;
 }
 
-vector<BufferHandle> CachingFileHandle::PerformParallelBlockIO(vector<shared_ptr<CachedFileRange>> &pending_blocks) {
+vector<BufferHandle> CachingFileHandle::PerformParallelBlockIO(const vector<shared_ptr<CachedFileRange>> &pending_blocks) {
 	vector<BufferHandle> pins;
 	if (pending_blocks.empty()) {
 		return pins;
 	}
 
-	// Create shared state for parallel IO results
-	ParallelIOState state(pending_blocks.size());
-	
-	// Create TaskExecutor for parallel execution
+	ParallelIOState state(pending_blocks.size());	
 	TaskExecutor executor(TaskScheduler::GetScheduler(caching_file_system.db));
 	
-	// Track which blocks need IO vs which are already complete
-	vector<idx_t> task_indices;
-	task_indices.reserve(pending_blocks.size());
-	
-	// First pass: check status of each block and handle already-complete or in-progress blocks
-	for (idx_t i = 0; i < pending_blocks.size(); i++) {
-		auto &block = pending_blocks[i];
-		unique_lock<mutex> lock(block->completion_mutex);
-		
-		// Check if already complete (another thread finished it)
-		if (block->IsComplete()) {
-			// Pin immediately when we find it's already complete
-			lock.unlock();
-			{
-				lock_guard<mutex> state_lock(state.lock);
-				state.pins[i] = external_file_cache.GetBufferManager().Pin(block->block_handle);
-			}
-			continue;
-		}
-		
-		// If another thread is already doing IO, wait for its completion
-		if (block->io_in_progress.load()) {
-			block->WaitForCompletion(lock);
-			// Now it should be complete, pin it
-			D_ASSERT(block->IsComplete());
-			lock.unlock();
-			{
-				lock_guard<mutex> state_lock(state.lock);
-				state.pins[i] = external_file_cache.GetBufferManager().Pin(block->block_handle);
-			}
-			continue;
-		}
-
-		// We're the one doing the IO, mark read in progress
-		block->io_in_progress.store(true);
-		lock.unlock();
-		
-		// Schedule task for this block
-		task_indices.push_back(i);
-		auto task = make_uniq<BlockIOTask>(executor, *this, block, state, i);
+	// Schedule a task for each pending block
+	for (idx_t idx = 0; idx < pending_blocks.size(); ++idx) {
+		auto task = make_uniq<BlockIOTask>(executor, *this, pending_blocks[idx], state, idx);
 		executor.ScheduleTask(std::move(task));
 	}
 	
 	// Wait for all scheduled tasks to complete
-	// This will throw if any task encountered an error
 	executor.WorkOnTasks();
 	
-	// Return all pins (both from tasks and from already-complete blocks)
+	// Return all pins
 	return std::move(state.pins);
 }
 

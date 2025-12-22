@@ -1,4 +1,5 @@
 #include "catch.hpp"
+#include "duckdb/common/atomic.hpp"
 #include "duckdb/common/file_system.hpp"
 #include "duckdb/common/scoped_directory.hpp"
 #include "duckdb/common/string.hpp"
@@ -468,6 +469,158 @@ TEST_CASE("CachingFileSystem - Multi-threaded reads", "[caching_file_system]") {
 	
 	for (auto &thread : cache_hit_threads) {
 		thread.join();
+	}
+}
+
+TEST_CASE("CachingFileSystem - Concurrent same block requests", "[caching_file_system]") {
+	DuckDB db(nullptr);
+	auto &fs = FileSystem::GetFileSystem(*db.instance);
+	auto &cache = ExternalFileCache::Get(*db.instance);
+	cache.SetEnabled(true);
+	
+	ScopedDirectory test_dir(TestJoinPath(TestDirectoryPath(), "test_concurrent_same_block"));
+	auto test_file = TestJoinPath(test_dir.GetPath(), "cache_test_concurrent_same_block.bin");
+	CreateTestFile(fs, test_file, /*size_mb=*/10);
+	
+	// Test with both read policies
+	for (const auto &policy_name : {"default", "aligned"}) {
+		auto &config = DBConfig::GetConfig(*db.instance);
+		config.options.external_file_cache_read_policy_name = policy_name;
+		
+		// Clear cache for each policy test
+		ClearCache(cache);
+		
+		CachingFileSystem caching_fs(fs, *db.instance);
+		
+		// Test 1: Multiple threads requesting the same block (cache miss)
+		// All threads try to read the same 1MiB range starting at 2MiB
+		constexpr idx_t num_threads = 16;
+		constexpr idx_t read_location = 2 * 1024 * 1024;
+		constexpr idx_t read_bytes = 1024 * 1024;
+		
+		vector<thread> cache_miss_threads;
+		vector<bool> success_flags(num_threads, false);
+		atomic<idx_t> threads_ready(0);
+		
+		// Use a barrier-like mechanism to maximize contention
+		for (idx_t i = 0; i < num_threads; i++) {
+			cache_miss_threads.emplace_back([&, i]() {
+				threads_ready.fetch_add(1);
+				// Wait for all threads to be ready
+				while (threads_ready.load() < num_threads) {
+					std::this_thread::yield();
+				}
+				
+				OpenFileInfo info;
+				info.path = test_file;
+				auto handle = caching_fs.OpenFile(info, FileFlags::FILE_FLAGS_READ);
+				
+				data_ptr_t buffer;
+				auto result = handle->Read(buffer, read_bytes, read_location);
+				if (result.IsValid()) {
+					VerifyData(/*buffer=*/buffer, /*size=*/read_bytes, /*file_offset=*/read_location);
+					success_flags[i] = true;
+				}
+			});
+		}
+		
+		// Wait for all threads to complete
+		for (auto &thread : cache_miss_threads) {
+			thread.join();
+		}
+		
+		// Verify all threads succeeded
+		for (idx_t i = 0; i < num_threads; i++) {
+			REQUIRE(success_flags[i] == true);
+		}
+		
+		// Test 2: Multiple threads requesting the same already-cached block (cache hit)
+		// The block should already be in cache from the previous test
+		vector<thread> cache_hit_threads;
+		vector<bool> cache_hit_success_flags(num_threads, false);
+		atomic<idx_t> cache_hit_threads_ready(0);
+		
+		for (idx_t i = 0; i < num_threads; i++) {
+			cache_hit_threads.emplace_back([&, i]() {
+				cache_hit_threads_ready.fetch_add(1);
+				// Wait for all threads to be ready
+				while (cache_hit_threads_ready.load() < num_threads) {
+					std::this_thread::yield();
+				}
+				
+				OpenFileInfo info;
+				info.path = test_file;
+				auto handle = caching_fs.OpenFile(info, FileFlags::FILE_FLAGS_READ);
+				
+				// Read from the same cached block, but potentially at different offsets within it
+				idx_t offset_within_block = (i % 4) * 256 * 1024; // Different offsets within the same block
+				idx_t thread_read_location = read_location + offset_within_block;
+				idx_t thread_read_bytes = 256 * 1024;
+				
+				data_ptr_t buffer;
+				auto result = handle->Read(buffer, thread_read_bytes, thread_read_location);
+				if (result.IsValid()) {
+					VerifyData(/*buffer=*/buffer, /*size=*/thread_read_bytes, /*file_offset=*/thread_read_location);
+					cache_hit_success_flags[i] = true;
+				}
+			});
+		}
+		
+		// Wait for all threads to complete
+		for (auto &thread : cache_hit_threads) {
+			thread.join();
+		}
+		
+		// Verify all threads succeeded
+		for (idx_t i = 0; i < num_threads; i++) {
+			REQUIRE(cache_hit_success_flags[i] == true);
+		}
+		
+		// Test 3: Multiple threads requesting overlapping ranges that map to the same block
+		// This tests the case where reads are not perfectly aligned but still hit the same cached block
+		ClearCache(cache);
+		
+		constexpr idx_t overlap_num_threads = 8;
+		vector<thread> overlap_threads;
+		vector<bool> overlap_success_flags(overlap_num_threads, false);
+		atomic<idx_t> overlap_threads_ready(0);
+		
+		// All threads read overlapping ranges that all fall within the same 2MiB aligned block
+		// For aligned policy, this should still use the same underlying cached block
+		for (idx_t i = 0; i < overlap_num_threads; i++) {
+			overlap_threads.emplace_back([&, i]() {
+				overlap_threads_ready.fetch_add(1);
+				// Wait for all threads to be ready
+				while (overlap_threads_ready.load() < overlap_num_threads) {
+					std::this_thread::yield();
+				}
+				
+				OpenFileInfo info;
+				info.path = test_file;
+				auto handle = caching_fs.OpenFile(info, FileFlags::FILE_FLAGS_READ);
+				
+				// Each thread reads a slightly different offset, but all within the same block
+				idx_t thread_read_location = read_location + (i * 128 * 1024);
+				idx_t thread_read_bytes = 512 * 1024;
+				
+				data_ptr_t buffer;
+				auto result = handle->Read(buffer, thread_read_bytes, thread_read_location);
+				if (result.IsValid()) {
+					VerifyData(/*buffer=*/buffer, /*size=*/thread_read_bytes, /*file_offset=*/thread_read_location);
+					overlap_success_flags[i] = true;
+				}
+			});
+		}
+		
+		// Wait for all threads to complete
+		for (auto &thread : overlap_threads) {
+			thread.join();
+		}
+		
+		// Verify all threads succeeded
+		for (idx_t i = 0; i < overlap_num_threads; i++) {
+			REQUIRE(overlap_success_flags[i] == true);
+		}
 	}
 }
 
