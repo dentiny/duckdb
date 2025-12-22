@@ -271,19 +271,30 @@ CachingFileHandle::GetOrCreatePendingRangeWithLock(unique_ptr<StorageLockKey> &g
 		return it->second;
 	}
 
-	// Check if any existing range fully covers this range
+	// Check overlapping ranges and prepare for potential cleanup
 	const idx_t range_end = range.read_location + range.read_bytes;
+	// Collect ranges to erase after iteration
+	vector<idx_t> ranges_to_erase; 
+	
 	it = ranges.lower_bound(range.read_location);
 	if (it != ranges.begin()) {
 		--it;
 	}
+	
 	while (it != ranges.end() && it->first < range_end) {
 		auto overlap = it->second->GetOverlap(range.read_bytes, range.read_location);
 		if (overlap == CachedFileRangeOverlap::FULL) {
-			return it->second; // Return existing block that fully covers this range
+			// Existing range fully covers the requested range
+			return it->second;
 		}
-		// For partial overlap or no overlap, create the exact block requested by the read policy
-		// Don't return partially overlapping blocks as they create gaps
+		
+		// Check if the new range would fully contain this existing range
+		const idx_t existing_start = it->second->location;
+		const idx_t existing_end = existing_start + it->second->nr_bytes;
+		if (existing_start >= range.read_location && existing_end <= range_end) {
+			// The new range will fully contain this existing range, mark for removal
+			ranges_to_erase.emplace_back(it->first);
+		}
 		++it;
 	}
 
@@ -293,9 +304,13 @@ CachingFileHandle::GetOrCreatePendingRangeWithLock(unique_ptr<StorageLockKey> &g
 		return it->second; // Return existing pending range
 	}
 
+	// Erase superseded ranges before creating the new one
+	for (auto location : ranges_to_erase) {
+		ranges.erase(location);
+	}
+
 	const string &version_tag = GetVersionTag(guard);
-	// No suitable cached or pending range found, create a new pending range
-	// block_handle = nullptr indicates this range needs IO
+	// Create and insert the new pending range
 	auto pending_range = make_shared_ptr<CachedFileRange>(nullptr, range.read_bytes, range.read_location, version_tag);
 	ranges[range.read_location] = pending_range;
 

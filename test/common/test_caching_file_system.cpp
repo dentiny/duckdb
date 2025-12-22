@@ -29,8 +29,11 @@ string CreateTestFile(FileSystem &fs, const string &path, idx_t size_mb) {
 	return path;
 }
 
-// Util function to verify buffer content
-void VerifyData(data_ptr_t buffer, idx_t size, idx_t file_offset) {
+// Util function to verify buffer content using BufferHandle
+void VerifyData(const BufferHandle &buffer_handle, idx_t size, idx_t file_offset) {
+	REQUIRE(buffer_handle.IsValid());
+	data_ptr_t buffer = buffer_handle.Ptr();
+
 	for (idx_t idx = 0; idx < size; ++idx) {
 		uint8_t expected = static_cast<uint8_t>(((file_offset + idx) / (1024 * 1024)) % 256);
 		if (buffer[idx] != expected) {
@@ -64,15 +67,13 @@ void TestReadScenario(FileSystem &fs, ExternalFileCache &cache, DatabaseInstance
 
 	// First read, which should miss cache
 	data_ptr_t buffer1;
-	auto result1 = handle->Read(buffer1, read_bytes, read_location);
-	REQUIRE(result1.IsValid());
-	VerifyData(/*buffer=*/buffer1, /*size=*/read_bytes, /*file_offset=*/read_location);
-
+	auto buffer_handle1 = handle->Read(buffer1, read_bytes, read_location);
+	VerifyData(/*buffer_handle=*/buffer_handle1, /*size=*/read_bytes, /*file_offset=*/read_location);
+	
 	// Second read, which should hit cache
 	data_ptr_t buffer2;
-	auto result2 = handle->Read(buffer2, read_bytes, read_location);
-	REQUIRE(result2.IsValid());
-	VerifyData(/*buffer=*/buffer2, /*size=*/read_bytes, /*file_offset=*/read_location);
+	auto buffer_handle2 = handle->Read(buffer2, read_bytes, read_location);
+	VerifyData(/*buffer_handle=*/buffer_handle2, /*size=*/read_bytes, /*file_offset=*/read_location);
 }
 
 // ============================================================================
@@ -228,23 +229,20 @@ TEST_CASE("DefaultReadPolicy - Overlapping reads", "[caching_file_system][defaul
 
 	// First read: 1MiB starting at 1MiB
 	data_ptr_t buffer1;
-	auto result1 = handle->Read(buffer1, 1024 * 1024, 1024 * 1024);
-	REQUIRE(result1.IsValid());
-	VerifyData(/*buffer=*/buffer1, /*size=*/1024 * 1024, /*file_offset=*/1024 * 1024);
+	auto buffer_handle1 = handle->Read(buffer1, 1024 * 1024, 1024 * 1024);
+	VerifyData(/*buffer_handle=*/buffer_handle1, /*size=*/1024 * 1024, /*file_offset=*/1024 * 1024);
 
 	// Second read: 1MiB starting at 1.5MiB (overlaps with first read: 0.5MiB overlap)
 	// This should use the cached portion from the first read and only read the new 0.5MiB
 	data_ptr_t buffer2;
-	auto result2 = handle->Read(buffer2, 1024 * 1024, static_cast<idx_t>(1.5 * 1024 * 1024));
-	REQUIRE(result2.IsValid());
-	VerifyData(/*buffer=*/buffer2, /*size=*/1024 * 1024, /*file_offset=*/static_cast<idx_t>(1.5 * 1024 * 1024));
+	auto buffer_handle2 = handle->Read(buffer2, 1024 * 1024, static_cast<idx_t>(1.5 * 1024 * 1024));
+	VerifyData(/*buffer_handle=*/buffer_handle2, /*size=*/1024 * 1024, /*file_offset=*/static_cast<idx_t>(1.5 * 1024 * 1024));
 
 	// Third read: 2MiB starting at 0.5MiB (overlaps with both previous reads)
 	// Should use cached portions from both previous reads
 	data_ptr_t buffer3;
-	auto result3 = handle->Read(buffer3, 2 * 1024 * 1024, 512 * 1024);
-	REQUIRE(result3.IsValid());
-	VerifyData(/*buffer=*/buffer3, /*size=*/2 * 1024 * 1024, /*file_offset=*/512 * 1024);
+	auto buffer_handle3 = handle->Read(buffer3, 2 * 1024 * 1024, 512 * 1024);
+	VerifyData(/*buffer_handle=*/buffer_handle3, /*size=*/2 * 1024 * 1024, /*file_offset=*/512 * 1024);
 }
 
 TEST_CASE("AlignedReadPolicy - Overlapping reads", "[caching_file_system][aligned_policy]") {
@@ -268,30 +266,26 @@ TEST_CASE("AlignedReadPolicy - Overlapping reads", "[caching_file_system][aligne
 	// First read: 1MiB starting at 1.5MiB
 	// With aligned policy, this should cache the 0-2MiB block
 	data_ptr_t buffer1;
-	auto result1 = handle->Read(buffer1, 1024 * 1024, static_cast<idx_t>(1.5 * 1024 * 1024));
-	REQUIRE(result1.IsValid());
-	VerifyData(/*buffer=*/buffer1, /*size=*/1024 * 1024, /*file_offset=*/static_cast<idx_t>(1.5 * 1024 * 1024));
+	auto buffer_handle1 = handle->Read(buffer1, 1024 * 1024, static_cast<idx_t>(1.5 * 1024 * 1024));
+	VerifyData(/*buffer_handle=*/buffer_handle1, /*size=*/1024 * 1024, /*file_offset=*/static_cast<idx_t>(1.5 * 1024 * 1024));
 
 	// Second read: 1MiB starting at 0.5MiB (overlaps with first read's cached block: 0-2MiB)
 	// Should hit the cache from the first read
 	data_ptr_t buffer2;
-	auto result2 = handle->Read(buffer2, 1024 * 1024, 512 * 1024);
-	REQUIRE(result2.IsValid());
-	VerifyData(/*buffer=*/buffer2, /*size=*/1024 * 1024, /*file_offset=*/512 * 1024);
+	auto buffer_handle2 = handle->Read(buffer2, 1024 * 1024, 512 * 1024);
+	VerifyData(/*buffer_handle=*/buffer_handle2, /*size=*/1024 * 1024, /*file_offset=*/512 * 1024);
 
 	// Third read: 1MiB starting at 3.5MiB
 	// With aligned policy, this should cache the 2-4MiB block
 	data_ptr_t buffer3;
-	auto result3 = handle->Read(buffer3, 1024 * 1024, static_cast<idx_t>(3.5 * 1024 * 1024));
-	REQUIRE(result3.IsValid());
-	VerifyData(/*buffer=*/buffer3, /*size=*/1024 * 1024, /*file_offset=*/static_cast<idx_t>(3.5 * 1024 * 1024));
+	auto buffer_handle3 = handle->Read(buffer3, 1024 * 1024, static_cast<idx_t>(3.5 * 1024 * 1024));
+	VerifyData(/*buffer_handle=*/buffer_handle3, /*size=*/1024 * 1024, /*file_offset=*/static_cast<idx_t>(3.5 * 1024 * 1024));
 
 	// Fourth read: 2MiB starting at 2.5MiB (overlaps with third read's cached block: 2-4MiB)
 	// Should use the cached portion from the third read
 	data_ptr_t buffer4;
-	auto result4 = handle->Read(buffer4, 2 * 1024 * 1024, static_cast<idx_t>(2.5 * 1024 * 1024));
-	REQUIRE(result4.IsValid());
-	VerifyData(/*buffer=*/buffer4, /*size=*/2 * 1024 * 1024, /*file_offset=*/static_cast<idx_t>(2.5 * 1024 * 1024));
+	auto buffer_handle4 = handle->Read(buffer4, 2 * 1024 * 1024, static_cast<idx_t>(2.5 * 1024 * 1024));
+	VerifyData(/*buffer_handle=*/buffer_handle4, /*size=*/2 * 1024 * 1024, /*file_offset=*/static_cast<idx_t>(2.5 * 1024 * 1024));
 }
 
 // ============================================================================
@@ -324,9 +318,8 @@ TEST_CASE("CachingFileSystem - Concurrent reads duplicate prevention", "[caching
 			auto handle = caching_fs.OpenFile(info, FileFlags::FILE_FLAGS_READ);
 
 			data_ptr_t buffer;
-			auto result = handle->Read(buffer, 1024 * 1024, static_cast<idx_t>(2.5 * 1024 * 1024));
-			D_ASSERT(result.IsValid());
-			VerifyData(/*buffer=*/buffer, /*size=*/1024 * 1024, /*file_offset=*/static_cast<idx_t>(2.5 * 1024 * 1024));
+			auto buffer_handle = handle->Read(buffer, 1024 * 1024, static_cast<idx_t>(2.5 * 1024 * 1024));
+			VerifyData(/*buffer_handle=*/buffer_handle, /*size=*/1024 * 1024, /*file_offset=*/static_cast<idx_t>(2.5 * 1024 * 1024));
 		});
 	}
 
@@ -355,17 +348,18 @@ TEST_CASE("CachingFileSystem - Mixed cached and uncached blocks", "[caching_file
 
 	// Cache blocks 0-2MiB and 4-6MiB
 	data_ptr_t buffer1;
-	handle->Read(buffer1, 1024 * 1024, 512 * 1024); // Caches 0-2MiB
+	auto buffer_handle1 = handle->Read(buffer1, 1024 * 1024, 512 * 1024); // Caches 0-2MiB
+	(void)buffer_handle1; // Keep buffer1 valid
 
 	data_ptr_t buffer2;
-	handle->Read(buffer2, 1024 * 1024, static_cast<idx_t>(4.5 * 1024 * 1024)); // Caches 4-6MiB
+	auto buffer_handle2 = handle->Read(buffer2, 1024 * 1024, static_cast<idx_t>(4.5 * 1024 * 1024)); // Caches 4-6MiB
+	(void)buffer_handle2; // Keep buffer2 valid
 
 	// Now read 5MiB starting at 0
 	// Blocks: 0-2MiB (cached), 2-4MiB (miss), 4-6MiB (cached)
 	data_ptr_t buffer3;
-	auto result3 = handle->Read(buffer3, 5 * 1024 * 1024, 0);
-	REQUIRE(result3.IsValid());
-	VerifyData(/*buffer=*/buffer3, /*size=*/5 * 1024 * 1024, /*file_offset=*/0);
+	auto buffer_handle3 = handle->Read(buffer3, 5 * 1024 * 1024, 0);
+	VerifyData(/*buffer_handle=*/buffer_handle3, /*size=*/5 * 1024 * 1024, /*file_offset=*/0);
 }
 
 TEST_CASE("CachingFileSystem - Cache invalidation", "[caching_file_system]") {
@@ -396,9 +390,8 @@ TEST_CASE("CachingFileSystem - Cache invalidation", "[caching_file_system]") {
 	{
 		auto handle = caching_fs.OpenFile(info, FileFlags::FILE_FLAGS_READ);
 		data_ptr_t buffer;
-		auto result = handle->Read(buffer, 1024 * 1024, 0);
-		REQUIRE(result.IsValid());
-		VerifyData(/*buffer=*/buffer, /*size=*/1024 * 1024, /*file_offset=*/0);
+		auto buffer_handle = handle->Read(buffer, 1024 * 1024, 0);
+		VerifyData(/*buffer_handle=*/buffer_handle, /*size=*/1024 * 1024, /*file_offset=*/0);
 	}
 }
 
@@ -433,9 +426,9 @@ TEST_CASE("CachingFileSystem - Multi-threaded reads", "[caching_file_system]") {
 			idx_t read_bytes = 1024 * 1024;
 
 			data_ptr_t buffer;
-			auto result = handle->Read(buffer, read_bytes, read_location);
-			D_ASSERT(result.IsValid());
-			VerifyData(/*buffer=*/buffer, /*size=*/read_bytes, /*file_offset=*/read_location);
+			auto buffer_handle = handle->Read(buffer, read_bytes, read_location);
+			D_ASSERT(buffer_handle.IsValid());
+			VerifyData(/*buffer_handle=*/buffer_handle, /*size=*/read_bytes, /*file_offset=*/read_location);
 		});
 	}
 
@@ -471,9 +464,9 @@ TEST_CASE("CachingFileSystem - Multi-threaded reads", "[caching_file_system]") {
 			idx_t read_bytes = 256 * 1024;
 
 			data_ptr_t buffer;
-			auto result = handle->Read(buffer, read_bytes, read_location);
-			D_ASSERT(result.IsValid());
-			VerifyData(/*buffer=*/buffer, /*size=*/read_bytes, /*file_offset=*/read_location);
+			auto buffer_handle = handle->Read(buffer, read_bytes, read_location);
+			D_ASSERT(buffer_handle.IsValid());
+			VerifyData(/*buffer_handle=*/buffer_handle, /*size=*/read_bytes, /*file_offset=*/read_location);
 		});
 	}
 
@@ -526,9 +519,9 @@ TEST_CASE("CachingFileSystem - Concurrent same block requests", "[caching_file_s
 				auto handle = caching_fs.OpenFile(info, FileFlags::FILE_FLAGS_READ);
 
 				data_ptr_t buffer;
-				auto result = handle->Read(buffer, read_bytes, read_location);
-				if (result.IsValid()) {
-					VerifyData(/*buffer=*/buffer, /*size=*/read_bytes, /*file_offset=*/read_location);
+				auto buffer_handle = handle->Read(buffer, read_bytes, read_location);
+				if (buffer_handle.IsValid()) {
+					VerifyData(/*buffer_handle=*/buffer_handle, /*size=*/read_bytes, /*file_offset=*/read_location);
 					success_flags[i] = true;
 				}
 			});
@@ -568,9 +561,9 @@ TEST_CASE("CachingFileSystem - Concurrent same block requests", "[caching_file_s
 				idx_t thread_read_bytes = 256 * 1024;
 
 				data_ptr_t buffer;
-				auto result = handle->Read(buffer, thread_read_bytes, thread_read_location);
-				if (result.IsValid()) {
-					VerifyData(/*buffer=*/buffer, /*size=*/thread_read_bytes, /*file_offset=*/thread_read_location);
+				auto buffer_handle = handle->Read(buffer, thread_read_bytes, thread_read_location);
+				if (buffer_handle.IsValid()) {
+					VerifyData(/*buffer_handle=*/buffer_handle, /*size=*/thread_read_bytes, /*file_offset=*/thread_read_location);
 					cache_hit_success_flags[i] = true;
 				}
 			});
@@ -614,9 +607,9 @@ TEST_CASE("CachingFileSystem - Concurrent same block requests", "[caching_file_s
 				idx_t thread_read_bytes = 512 * 1024;
 
 				data_ptr_t buffer;
-				auto result = handle->Read(buffer, thread_read_bytes, thread_read_location);
-				if (result.IsValid()) {
-					VerifyData(/*buffer=*/buffer, /*size=*/thread_read_bytes, /*file_offset=*/thread_read_location);
+				auto buffer_handle = handle->Read(buffer, thread_read_bytes, thread_read_location);
+				if (buffer_handle.IsValid()) {
+					VerifyData(/*buffer_handle=*/buffer_handle, /*size=*/thread_read_bytes, /*file_offset=*/thread_read_location);
 					overlap_success_flags[i] = true;
 				}
 			});
@@ -659,7 +652,7 @@ TEST_CASE("CachingFileSystem - Position-based Read overload", "[caching_file_sys
 		auto buffer_handle1 = handle->Read(buffer1, bytes1);
 		REQUIRE(buffer1 != nullptr);
 		REQUIRE(bytes1 == 1024 * 1024);
-		VerifyData(/*buffer=*/buffer1, /*size=*/bytes1, /*file_offset=*/0);
+		VerifyData(/*buffer_handle=*/buffer_handle1, /*size=*/bytes1, /*file_offset=*/0);
 
 		// Second read: should start at position 1MB (position was updated)
 		data_ptr_t buffer2 = nullptr;
@@ -667,7 +660,7 @@ TEST_CASE("CachingFileSystem - Position-based Read overload", "[caching_file_sys
 		auto buffer_handle2 = handle->Read(buffer2, bytes2);
 		REQUIRE(buffer2 != nullptr);
 		REQUIRE(bytes2 == 512 * 1024);
-		VerifyData(/*buffer=*/buffer2, /*size=*/bytes2, /*file_offset=*/1024 * 1024);
+		VerifyData(/*buffer_handle=*/buffer_handle2, /*size=*/bytes2, /*file_offset=*/1024 * 1024);
 
 		// Third read: should start at position 1.5MB
 		data_ptr_t buffer3 = nullptr;
@@ -675,7 +668,7 @@ TEST_CASE("CachingFileSystem - Position-based Read overload", "[caching_file_sys
 		auto buffer_handle3 = handle->Read(buffer3, bytes3);
 		REQUIRE(buffer3 != nullptr);
 		REQUIRE(bytes3 == 256 * 1024);
-		VerifyData(/*buffer=*/buffer3, /*size=*/bytes3, /*file_offset=*/static_cast<idx_t>(1.5 * 1024 * 1024));
+		VerifyData(/*buffer_handle=*/buffer_handle3, /*size=*/bytes3, /*file_offset=*/static_cast<idx_t>(1.5 * 1024 * 1024));
 	}
 
 	SECTION("Sequential reads with AlignedReadPolicy") {
@@ -688,13 +681,13 @@ TEST_CASE("CachingFileSystem - Position-based Read overload", "[caching_file_sys
 		data_ptr_t buffer1 = nullptr;
 		idx_t bytes1 = 1024 * 1024;
 		auto buffer_handle1 = handle->Read(buffer1, bytes1);
-		VerifyData(/*buffer=*/buffer1, /*size=*/bytes1, /*file_offset=*/0);
+		VerifyData(/*buffer_handle=*/buffer_handle1, /*size=*/bytes1, /*file_offset=*/0);
 
 		// Next read should continue from 1MB
 		data_ptr_t buffer2 = nullptr;
 		idx_t bytes2 = 1024 * 1024;
 		auto buffer_handle2 = handle->Read(buffer2, bytes2);
-		VerifyData(/*buffer=*/buffer2, /*size=*/bytes2, /*file_offset=*/1024 * 1024);
+		VerifyData(/*buffer_handle=*/buffer_handle2, /*size=*/bytes2, /*file_offset=*/1024 * 1024);
 	}
 
 	SECTION("Seek and position-based reads") {
@@ -707,7 +700,7 @@ TEST_CASE("CachingFileSystem - Position-based Read overload", "[caching_file_sys
 		data_ptr_t buffer1 = nullptr;
 		idx_t bytes1 = 512 * 1024;
 		auto buffer_handle1 = handle->Read(buffer1, bytes1);
-		VerifyData(/*buffer=*/buffer1, /*size=*/bytes1, /*file_offset=*/0);
+		VerifyData(/*buffer_handle=*/buffer_handle1, /*size=*/bytes1, /*file_offset=*/0);
 
 		// Seek to 2MB
 		handle->Seek(2 * 1024 * 1024);
@@ -716,13 +709,13 @@ TEST_CASE("CachingFileSystem - Position-based Read overload", "[caching_file_sys
 		data_ptr_t buffer2 = nullptr;
 		idx_t bytes2 = 512 * 1024;
 		auto buffer_handle2 = handle->Read(buffer2, bytes2);
-		VerifyData(/*buffer=*/buffer2, /*size=*/bytes2, /*file_offset=*/2 * 1024 * 1024);
+		VerifyData(/*buffer_handle=*/buffer_handle2, /*size=*/bytes2, /*file_offset=*/2 * 1024 * 1024);
 
 		// Next read should continue from 2.5MB
 		data_ptr_t buffer3 = nullptr;
 		idx_t bytes3 = 512 * 1024;
 		auto buffer_handle3 = handle->Read(buffer3, bytes3);
-		VerifyData(/*buffer=*/buffer3, /*size=*/bytes3, /*file_offset=*/static_cast<idx_t>(2.5 * 1024 * 1024));
+		VerifyData(/*buffer_handle=*/buffer_handle3, /*size=*/bytes3, /*file_offset=*/static_cast<idx_t>(2.5 * 1024 * 1024));
 	}
 
 	SECTION("Position-based reads should hit cache") {
@@ -735,7 +728,7 @@ TEST_CASE("CachingFileSystem - Position-based Read overload", "[caching_file_sys
 		data_ptr_t buffer1 = nullptr;
 		idx_t bytes1 = 1024 * 1024;
 		auto buffer_handle1 = handle1->Read(buffer1, bytes1);
-		VerifyData(/*buffer=*/buffer1, /*size=*/bytes1, /*file_offset=*/0);
+		VerifyData(/*buffer_handle=*/buffer_handle1, /*size=*/bytes1, /*file_offset=*/0);
 
 		// Open another handle
 		auto handle2 = fs.OpenFile(test_file, FileFlags::FILE_FLAGS_READ);
@@ -744,7 +737,7 @@ TEST_CASE("CachingFileSystem - Position-based Read overload", "[caching_file_sys
 		data_ptr_t buffer2 = nullptr;
 		idx_t bytes2 = 1024 * 1024;
 		auto buffer_handle2 = handle2->Read(buffer2, bytes2);
-		VerifyData(/*buffer=*/buffer2, /*size=*/bytes2, /*file_offset=*/0);
+		VerifyData(/*buffer_handle=*/buffer_handle2, /*size=*/bytes2, /*file_offset=*/0);
 
 		// Verify data is cached
 		auto cache_info = cache.GetCachedFileInformation();
@@ -776,7 +769,7 @@ TEST_CASE("CachingFileSystem - Position-based Read overload", "[caching_file_sys
 			auto buffer_handle = handle->Read(buffer, bytes);
 			REQUIRE(buffer != nullptr);
 			REQUIRE(bytes == chunk_size);
-			VerifyData(/*buffer=*/buffer, /*size=*/bytes, /*file_offset=*/i * chunk_size);
+			VerifyData(/*buffer_handle=*/buffer_handle, /*size=*/bytes, /*file_offset=*/i * chunk_size);
 		}
 	}
 }
