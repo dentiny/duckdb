@@ -348,8 +348,6 @@ enum class QueryResultOutputType : uint8_t;
 
 enum class QueryResultType : uint8_t;
 
-enum class ReadPolicyType : uint8_t;
-
 enum class RecoveryMode : uint8_t;
 
 enum class RelationType : uint8_t;
@@ -960,9 +958,6 @@ const char* EnumUtil::ToChars<QueryResultOutputType>(QueryResultOutputType value
 
 template<>
 const char* EnumUtil::ToChars<QueryResultType>(QueryResultType value);
-
-template<>
-const char* EnumUtil::ToChars<ReadPolicyType>(ReadPolicyType value);
 
 template<>
 const char* EnumUtil::ToChars<RecoveryMode>(RecoveryMode value);
@@ -1642,9 +1637,6 @@ QueryResultOutputType EnumUtil::FromString<QueryResultOutputType>(const char *va
 
 template<>
 QueryResultType EnumUtil::FromString<QueryResultType>(const char *value);
-
-template<>
-ReadPolicyType EnumUtil::FromString<ReadPolicyType>(const char *value);
 
 template<>
 RecoveryMode EnumUtil::FromString<RecoveryMode>(const char *value);
