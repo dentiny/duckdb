@@ -10,6 +10,7 @@ add_library_unity(
   test_numeric_cast.cpp
   test_parse_logical_type.cpp
   test_read_policy.cpp
+  test_scoped_directory.cpp
   test_storage_fuzz.cpp
   test_strftime.cpp
   test_string_util.cpp
