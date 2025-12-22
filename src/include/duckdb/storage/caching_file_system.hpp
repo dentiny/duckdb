@@ -11,11 +11,12 @@
 #include "duckdb/common/enums/cache_validation_mode.hpp"
 #include "duckdb/common/file_open_flags.hpp"
 #include "duckdb/common/open_file_info.hpp"
-#include "duckdb/common/winapi.hpp"
 #include "duckdb/common/shared_ptr.hpp"
+#include "duckdb/common/winapi.hpp"
 #include "duckdb/main/client_context.hpp"
-#include "duckdb/storage/storage_lock.hpp"
 #include "duckdb/storage/external_file_cache.hpp"
+#include "duckdb/storage/read_policy.hpp"
+#include "duckdb/storage/storage_lock.hpp"
 
 namespace duckdb {
 
@@ -26,12 +27,15 @@ class FileOpenFlags;
 class FileSystem;
 struct FileHandle;
 class CachingFileSystem;
+class BlockIOTask;
 
 struct CachingFileHandle {
 public:
 	using CachedFileRangeOverlap = ExternalFileCache::CachedFileRangeOverlap;
 	using CachedFileRange = ExternalFileCache::CachedFileRange;
 	using CachedFile = ExternalFileCache::CachedFile;
+
+	friend class BlockIOTask;
 
 public:
 	DUCKDB_API CachingFileHandle(QueryContext context, CachingFileSystem &caching_file_system, const OpenFileInfo &path,
@@ -61,22 +65,22 @@ public:
 private:
 	//! Get the version tag of the file (for checking cache invalidation)
 	const string &GetVersionTag(const unique_ptr<StorageLockKey> &guard);
-	//! Tries to read from the cache, filling "overlapping_ranges" with ranges that overlap with the request.
-	//! Returns an invalid BufferHandle if it fails
-	BufferHandle TryReadFromCache(data_ptr_t &buffer, idx_t nr_bytes, idx_t location,
-	                              vector<shared_ptr<CachedFileRange>> &overlapping_ranges,
-	                              optional_idx &start_location_of_next_range);
-	//! Try to read from the specified range, return an invalid BufferHandle if it fails
-	BufferHandle TryReadFromFileRange(const unique_ptr<StorageLockKey> &guard, CachedFileRange &file_range,
-	                                  data_ptr_t &buffer, idx_t nr_bytes, idx_t location);
-	//! Try to insert the file range into the cache
-	BufferHandle TryInsertFileRange(BufferHandle &pin, data_ptr_t &buffer, idx_t nr_bytes, idx_t location,
-	                                shared_ptr<CachedFileRange> &new_file_range);
-	//! Read from file and copy from cached buffers until the requested read is complete
-	//! If actually_read is false, no reading happens, only the number of non-cached reads is counted and returned
-	idx_t ReadAndCopyInterleaved(const vector<shared_ptr<CachedFileRange>> &overlapping_ranges,
-	                             const shared_ptr<CachedFileRange> &new_file_range, data_ptr_t buffer, idx_t nr_bytes,
-	                             idx_t location, bool actually_read);
+
+	//! Get file range to read, return directly if already exists, otherwise creates a new one.
+	shared_ptr<CachedFileRange> GetOrCreatePendingRangeWithLock(unique_ptr<StorageLockKey> &guard,
+	                                                            const ReadPolicyResult &range);
+
+	//! Perform IO for multiple pending blocks in parallel
+	vector<BufferHandle> PerformParallelBlockIO(const vector<shared_ptr<CachedFileRange>> &pending_blocks);
+
+	//! Copy data from cache blocks into the result buffer
+	//!
+	//! Preconditions:
+	//! - cache blocks are sorted by location in ascending order
+	//! - cache blocks and pinned buffer handles correspond to each other
+	void CopyCacheBlocksToResultBuffer(data_ptr_t buffer, vector<shared_ptr<CachedFileRange>> cache_blocks,
+	                                   vector<BufferHandle> pinned_buffer_handles, idx_t actual_read_location,
+	                                   idx_t actual_read_bytes);
 
 private:
 	QueryContext context;
@@ -102,6 +106,9 @@ private:
 
 	//! Current position (if non-seeking reads)
 	idx_t position;
+
+	//! Read policy that determines how many bytes to read and cache
+	unique_ptr<ReadPolicy> read_policy;
 };
 
 //! CachingFileSystem is a read-only file system that closely resembles the FileSystem API.

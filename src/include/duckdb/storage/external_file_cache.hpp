@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <condition_variable>
+
 #include "duckdb/common/atomic.hpp"
 #include "duckdb/common/map.hpp"
 #include "duckdb/common/mutex.hpp"
@@ -43,11 +45,31 @@ public:
 		void AddCheckSum();
 		void VerifyCheckSum();
 
+		//! Check if this range is complete.
+		//! TODO(hjiang): This function could be improved for better error propagation.
+		bool IsComplete() const {
+			return block_handle != nullptr;
+		}
+
+		//! Wait for this range to complete.
+		void WaitForCompletion(unique_lock<mutex> &lock);
+
+		//! Mark this range as complete and notify waiting threads
+		void MarkIoComplete(shared_ptr<BlockHandle> handle);
+
 	public:
-		shared_ptr<BlockHandle> block_handle;
+		shared_ptr<BlockHandle> block_handle; // nullptr if pending, valid if complete
 		const idx_t nr_bytes;
 		const idx_t location;
 		const string version_tag;
+		idx_t block_offset; // Offset within the block_handle where this range's data starts
+
+		// Fields used to coordinate parallel reads of the same range
+		mutex completion_mutex;
+		std::condition_variable completion_cv;
+		// Indicates whether a thread is currently performing IO for this block.
+		bool io_in_progress = false;
+
 #ifdef DEBUG
 		hash_t checksum = 0;
 #endif

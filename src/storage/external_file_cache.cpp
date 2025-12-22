@@ -11,7 +11,7 @@ namespace duckdb {
 ExternalFileCache::CachedFileRange::CachedFileRange(shared_ptr<BlockHandle> block_handle_p, idx_t nr_bytes_p,
                                                     idx_t location_p, string version_tag_p)
     : block_handle(std::move(block_handle_p)), nr_bytes(nr_bytes_p), location(location_p),
-      version_tag(std::move(version_tag_p)) {
+      version_tag(std::move(version_tag_p)), block_offset(0) {
 }
 
 ExternalFileCache::CachedFileRange::~CachedFileRange() {
@@ -39,6 +39,7 @@ ExternalFileCache::CachedFileRange::GetOverlap(const CachedFileRange &other) con
 void ExternalFileCache::CachedFileRange::AddCheckSum() {
 #ifdef DEBUG
 	D_ASSERT(checksum == 0);
+	D_ASSERT(block_handle != nullptr);
 	auto buffer_handle = block_handle->block_manager.buffer_manager.Pin(block_handle);
 	checksum = Checksum(buffer_handle.Ptr(), nr_bytes);
 #endif
@@ -46,7 +47,7 @@ void ExternalFileCache::CachedFileRange::AddCheckSum() {
 
 void ExternalFileCache::CachedFileRange::VerifyCheckSum() {
 #ifdef DEBUG
-	if (checksum == 0) {
+	if (checksum == 0 || !block_handle) {
 		return;
 	}
 	auto buffer_handle = block_handle->block_manager.buffer_manager.Pin(block_handle);
@@ -130,6 +131,20 @@ ExternalFileCache::CachedFile::Ranges(const unique_ptr<StorageLockKey> &guard) {
 	return ranges;
 }
 
+void ExternalFileCache::CachedFileRange::WaitForCompletion(unique_lock<mutex> &lock) {
+	completion_cv.wait(lock, [this]() { return IsComplete(); });
+}
+
+void ExternalFileCache::CachedFileRange::MarkIoComplete(shared_ptr<BlockHandle> handle) {
+	lock_guard<mutex> lock(completion_mutex);
+	D_ASSERT(!IsComplete()); // Should only complete once
+	D_ASSERT(handle != nullptr);
+	block_handle = std::move(handle);
+	block_offset = 0;
+	io_in_progress = false; // Mark IO as complete
+	completion_cv.notify_all();
+}
+
 ExternalFileCache::ExternalFileCache(DatabaseInstance &db, bool enable_p)
     : buffer_manager(BufferManager::GetBufferManager(db)), enable(enable_p) {
 }
@@ -153,7 +168,10 @@ vector<CachedFileInformation> ExternalFileCache::GetCachedFileInformation() cons
 		auto ranges_guard = file.second->lock.GetSharedLock();
 		for (const auto &range_entry : file.second->Ranges(ranges_guard)) {
 			const auto &range = *range_entry.second;
-			result.push_back({file.first, range.nr_bytes, range.location, !range.block_handle->IsUnloaded()});
+			// Only include complete ranges (pending ranges don't have block_handle yet)
+			if (range.block_handle) {
+				result.push_back({file.first, range.nr_bytes, range.location, !range.block_handle->IsUnloaded()});
+			}
 		}
 	}
 	return result;
