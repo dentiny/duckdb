@@ -13,7 +13,7 @@
 
 namespace duckdb {
 
-// Result of read policy calculation
+// Indicates a range read request
 struct ReadPolicyResult {
 	// The actual file location to read from.
 	idx_t read_location;
@@ -23,10 +23,10 @@ struct ReadPolicyResult {
 
 // Multiple read ranges from read policy calculation
 struct ReadPolicyRanges {
-	// The ranges to read (sorted by location in ascending order)
+	// The ranges to read, which are sorted by location in ascending order
 	vector<ReadPolicyResult> ranges;
 	// Start of first range
-	idx_t total_location;  
+	idx_t total_location;
 	// Total bytes from start to end
 	idx_t total_bytes;     
 };

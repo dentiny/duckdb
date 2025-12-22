@@ -27,8 +27,6 @@ class FileOpenFlags;
 class FileSystem;
 struct FileHandle;
 class CachingFileSystem;
-
-// Forward declaration
 class BlockIOTask;
 
 struct CachingFileHandle {
@@ -68,8 +66,7 @@ private:
 	//! Get the version tag of the file (for checking cache invalidation)
 	const string &GetVersionTag(const unique_ptr<StorageLockKey> &guard);
 
-	//! Check if a specific range exists (cached or pending), or create it as pending
-	//! Returns the CachedFileRange (complete if cached, pending if needs IO)
+	//! Get file range to read, return directly if already exists, otherwise creates a new one.
 	shared_ptr<CachedFileRange> GetOrCreatePendingRangeWithLock(unique_ptr<StorageLockKey> &guard,
 	                                                       const ReadPolicyResult &range);
 
@@ -77,8 +74,12 @@ private:
 	vector<BufferHandle> PerformParallelBlockIO(const vector<shared_ptr<CachedFileRange>> &pending_blocks);
 
 	//! Copy data from cache blocks into the result buffer
-	void CopyCacheBlocksToResultBuffer(data_ptr_t buffer, const vector<shared_ptr<CachedFileRange>> &cache_blocks,
-	                             const vector<BufferHandle> &pins, idx_t actual_read_location, idx_t actual_read_bytes);
+	//!
+	//! Preconditions:
+	//! - cache blocks are sorted by location in ascending order
+	//! - cache blocks and pinned buffer handles correspond to each other
+	void CopyCacheBlocksToResultBuffer(data_ptr_t buffer, vector<shared_ptr<CachedFileRange>> cache_blocks,
+	                             vector<BufferHandle> pinned_buffer_handles, idx_t actual_read_location, idx_t actual_read_bytes);
 
 private:
 	QueryContext context;

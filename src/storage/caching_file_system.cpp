@@ -129,15 +129,13 @@ BufferHandle CachingFileHandle::Read(data_ptr_t &buffer, const idx_t nr_bytes, c
 	const idx_t actual_read_location = policy_ranges.total_location;
 	const idx_t actual_read_bytes = policy_ranges.total_bytes;
 
-	// Get or create cache blocks for each range and identify pending blocks that need IO
-	//
-	// Contains all cache blocks, whether completed or pending.
+	// Get or create cache blocks for each range
+	// Read policy guarantees: ranges are sorted by location, non-overlapping, and cover the entire requested range
 	vector<shared_ptr<CachedFileRange>> cache_blocks;
-	// Only contains pending cache blocks.
 	vector<shared_ptr<CachedFileRange>> pending_blocks;
-	vector<BufferHandle> pins;
+	vector<BufferHandle> pinned_buffer_handles;
 	cache_blocks.reserve(policy_ranges.ranges.size());
-	pins.reserve(policy_ranges.ranges.size());
+	pinned_buffer_handles.reserve(policy_ranges.ranges.size());
 	{
 		auto guard = cached_file.lock.GetExclusiveLock();
 		for (auto &policy_range : policy_ranges.ranges) {
@@ -145,24 +143,23 @@ BufferHandle CachingFileHandle::Read(data_ptr_t &buffer, const idx_t nr_bytes, c
 			cache_blocks.emplace_back(block);
 			if (block->IsComplete()) {
 				// Pin immediately when found in cache so it won't get evicted.
-				pins.emplace_back(external_file_cache.GetBufferManager().Pin(block->block_handle));
-				continue;
+				pinned_buffer_handles.emplace_back(external_file_cache.GetBufferManager().Pin(block->block_handle));
+			} else {
+				pending_blocks.emplace_back(block);
+				// Reserve space for pinned block handle, which will be addressed after IO completion.
+				pinned_buffer_handles.emplace_back();
 			}
-
-			pending_blocks.emplace_back(block);
-			// Reserve space for pinned block handle, which will be addressed after IO completion.
-			pins.emplace_back();
 		}
 	}
 
-	// Perform IO for pending blocks and pin them as they complete
+	// Perform ALL IO for pending blocks in parallel
 	if (!pending_blocks.empty()) {
 		auto pending_pins = PerformParallelBlockIO(pending_blocks);
 		idx_t pending_idx = 0;
 		for (idx_t idx = 0; idx < cache_blocks.size(); ++idx) {
 			// Fill in the uncompleted buffer handle.
-			if (!pins[idx].IsValid()) {
-				pins[idx] = std::move(pending_pins[pending_idx++]);
+			if (!pinned_buffer_handles[idx].IsValid()) {
+				pinned_buffer_handles[idx] = std::move(pending_pins[pending_idx++]);
 			}
 		}
 		D_ASSERT(pending_idx == pending_blocks.size());
@@ -173,8 +170,8 @@ BufferHandle CachingFileHandle::Read(data_ptr_t &buffer, const idx_t nr_bytes, c
 	result = external_file_cache.GetBufferManager().Allocate(MemoryTag::EXTERNAL_FILE_CACHE, actual_read_bytes);
 	buffer = result.Ptr();
 
-	// Copy data from cache blocks into the result buffer
-	CopyCacheBlocksToResultBuffer(buffer, cache_blocks, pins, actual_read_location, actual_read_bytes);
+	// Copy data from cache blocks into the result buffer (NO MORE IO)
+	CopyCacheBlocksToResultBuffer(buffer, std::move(cache_blocks), std::move(pinned_buffer_handles), actual_read_location, actual_read_bytes);
 
 	// Set buffer pointer to requested location
 	const idx_t buffer_offset = location - actual_read_location;
@@ -283,13 +280,8 @@ CachingFileHandle::GetOrCreatePendingRangeWithLock(unique_ptr<StorageLockKey> &g
 		if (overlap == CachedFileRangeOverlap::FULL) {
 			return it->second; // Return existing block that fully covers this range
 		}
-		if (overlap == CachedFileRangeOverlap::PARTIAL) {
-			// Partial overlap - we should not create a new overlapping block
-			// Instead, return the existing block and let the composition logic handle the gap
-			// Note: This means the read policy should ideally give us non-overlapping ranges
-			// For now, we'll return the existing block and the caller will need to handle gaps
-			return it->second;
-		}
+		// For partial overlap or no overlap, create the exact block requested by the read policy
+		// Don't return partially overlapping blocks as they create gaps
 		++it;
 	}
 
@@ -309,55 +301,31 @@ CachingFileHandle::GetOrCreatePendingRangeWithLock(unique_ptr<StorageLockKey> &g
 }
 
 vector<BufferHandle> CachingFileHandle::PerformParallelBlockIO(const vector<shared_ptr<CachedFileRange>> &pending_blocks) {
-	vector<BufferHandle> pins;
-	if (pending_blocks.empty()) {
-		return pins;
-	}
-
 	ParallelIOState state(pending_blocks.size());	
 	TaskExecutor executor(TaskScheduler::GetScheduler(caching_file_system.db));
-	
-	// Schedule a task for each pending block
 	for (idx_t idx = 0; idx < pending_blocks.size(); ++idx) {
 		auto task = make_uniq<BlockIOTask>(executor, *this, pending_blocks[idx], state, idx);
 		executor.ScheduleTask(std::move(task));
 	}
-	
-	// Wait for all scheduled tasks to complete
-	executor.WorkOnTasks();
-	
-	// Return all pins
+	executor.WorkOnTasks();	
 	return std::move(state.pins);
 }
 
-void CachingFileHandle::CopyCacheBlocksToResultBuffer(data_ptr_t buffer, const vector<shared_ptr<CachedFileRange>> &cache_blocks,
-                                                const vector<BufferHandle> &pins, idx_t actual_read_location, idx_t actual_read_bytes) {
-	D_ASSERT(cache_blocks.size() == pins.size());
+void CachingFileHandle::CopyCacheBlocksToResultBuffer(data_ptr_t buffer, vector<shared_ptr<CachedFileRange>> cache_blocks,
+                                                vector<BufferHandle> pinned_buffer_handles, idx_t actual_read_location, idx_t actual_read_bytes) {
+	D_ASSERT(cache_blocks.size() == pinned_buffer_handles.size());
+	
+	// Verify that cache_blocks are sorted by location
+	for (idx_t i = 1; i < cache_blocks.size(); ++i) {
+		D_ASSERT(cache_blocks[i - 1]->location < cache_blocks[i]->location);
+	}
 
 	const idx_t end_pos = actual_read_location + actual_read_bytes;
-	idx_t current_pos = actual_read_location;
 	
-	// Sort blocks by location to process in order
-	vector<idx_t> block_indices(cache_blocks.size());
-	for (idx_t i = 0; i < cache_blocks.size(); ++i) {
-		block_indices[i] = i;
-	}
-	std::sort(block_indices.begin(), block_indices.end(), [&](idx_t a, idx_t b) {
-		return cache_blocks[a]->location < cache_blocks[b]->location;
-	});
-	
-	for (idx_t sorted_idx = 0; sorted_idx < block_indices.size(); ++sorted_idx) {
-		idx_t idx = block_indices[sorted_idx];
+	// Process blocks in order and copy data from each block
+	for (idx_t idx = 0; idx < cache_blocks.size(); ++idx) {
 		auto &block = cache_blocks[idx];
-		auto &pin = pins[idx];
-
-		// Fill gap before this block if needed
-		if (block->location > current_pos) {
-			const idx_t gap_size = block->location - current_pos;
-			const idx_t buffer_offset = current_pos - actual_read_location;
-			GetFileHandle().Read(context, buffer + buffer_offset, gap_size, current_pos);
-			current_pos = block->location;
-		}
+		auto &cur_buffer_handle = pinned_buffer_handles[idx];
 
 		// Calculate the overlap between this block and the range we need to copy
 		const idx_t block_start = block->location;
@@ -367,23 +335,13 @@ void CachingFileHandle::CopyCacheBlocksToResultBuffer(data_ptr_t buffer, const v
 		
 		// Copy from this block if it overlaps
 		if (copy_start < copy_end) {
-			// Calculate offsets and bytes to copy
 			const idx_t bytes_to_copy = copy_end - copy_start;
 			const idx_t offset_in_block = copy_start - block_start;
 			const idx_t offset_in_buffer = copy_start - actual_read_location;
 
-			// Copy block data
-			D_ASSERT(pin.IsValid());
-			memcpy(buffer + offset_in_buffer, pin.Ptr() + block->block_offset + offset_in_block, bytes_to_copy);
-			current_pos = copy_end;
+			D_ASSERT(cur_buffer_handle.IsValid());
+			memcpy(buffer + offset_in_buffer, cur_buffer_handle.Ptr() + block->block_offset + offset_in_block, bytes_to_copy);
 		}
-	}
-	
-	// Fill gap after last block if needed
-	if (current_pos < end_pos) {
-		const idx_t gap_size = end_pos - current_pos;
-		const idx_t buffer_offset = current_pos - actual_read_location;
-		GetFileHandle().Read(context, buffer + buffer_offset, gap_size, current_pos);
 	}
 }
 
