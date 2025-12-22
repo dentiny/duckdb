@@ -35,28 +35,22 @@ struct ReadPolicyRanges {
 class ReadPolicy {
 public:
 	virtual ~ReadPolicy() = default;
-	//! Calculate the number of bytes to read and cache given the requested bytes, location, and next range location.
-	virtual ReadPolicyResult CalculateBytesToRead(idx_t nr_bytes, idx_t location, idx_t file_size,
-	                                              optional_idx start_location_of_next_range) = 0;
 	
 	//! Calculate multiple ranges to read
 	//! Ranges are returned sorted by location in ascending order, and they don't overlap
-	virtual ReadPolicyRanges CalculateRangesToRead(idx_t nr_bytes, idx_t location, idx_t file_size);
+	virtual ReadPolicyRanges CalculateRangesToRead(idx_t nr_bytes, idx_t location, idx_t file_size) = 0;
 };
 
-//! Default read policy that fills gaps between cached ranges
+//! Default read policy that returns a single range covering the requested bytes
 class DefaultReadPolicy : public ReadPolicy {
 public:
-	ReadPolicyResult CalculateBytesToRead(idx_t nr_bytes, idx_t location, idx_t file_size,
-	                                      optional_idx start_location_of_next_range) override;
+	ReadPolicyRanges CalculateRangesToRead(idx_t nr_bytes, idx_t location, idx_t file_size) override;
 };
 
 //! Read policy that aligns reads to block boundaries (hardcoded to 2MiB)
 class AlignedReadPolicy : public ReadPolicy {
 public:
 	AlignedReadPolicy() = default;
-	ReadPolicyResult CalculateBytesToRead(idx_t nr_bytes, idx_t location, idx_t file_size,
-	                                      optional_idx start_location_of_next_range) override;
 	
 	//! Returns multiple ranges, one for each block that needs to be read
 	ReadPolicyRanges CalculateRangesToRead(idx_t nr_bytes, idx_t location, idx_t file_size) override;

@@ -35,54 +35,18 @@ bool ShouldExpandToFillGap(const idx_t current_length, const idx_t added_length)
 
 } // namespace
 
-ReadPolicyResult DefaultReadPolicy::CalculateBytesToRead(idx_t nr_bytes, idx_t location, idx_t file_size,
-                                                         optional_idx start_location_of_next_range) {
-	idx_t new_nr_bytes = nr_bytes;
-	if (start_location_of_next_range.IsValid()) {
-		const idx_t nr_bytes_to_be_added = start_location_of_next_range.GetIndex() - location - nr_bytes;
-		if (ShouldExpandToFillGap(nr_bytes, nr_bytes_to_be_added)) {
-			// Grow the range from location to start_location_of_next_range, so that to fill gaps in the cached ranges
-			new_nr_bytes = nr_bytes + nr_bytes_to_be_added;
-		}
-	}
+ReadPolicyRanges DefaultReadPolicy::CalculateRangesToRead(idx_t nr_bytes, idx_t location, idx_t file_size) {
+	// Default implementation: single range covering the requested bytes
+	idx_t read_bytes = nr_bytes;
 	// Make sure we don't read past the end of the file
-	if (location + new_nr_bytes > file_size) {
-		new_nr_bytes = file_size - location;
+	if (location + read_bytes > file_size) {
+		read_bytes = file_size - location;
 	}
-	return {location, new_nr_bytes};
-}
-
-ReadPolicyResult AlignedReadPolicy::CalculateBytesToRead(idx_t nr_bytes, idx_t location, idx_t file_size,
-                                                         optional_idx start_location_of_next_range) {
-	const idx_t aligned_start = AlignDown(location);
-	const idx_t requested_end = location + nr_bytes;
-	idx_t aligned_end = AlignUp(requested_end);
-
-	// Adjust aligned_end if we have a known next range location.
-	if (start_location_of_next_range.IsValid()) {
-		D_ASSERT(start_location_of_next_range.GetIndex() % ALIGNED_READ_BLOCK_SIZE == 0);
-		const idx_t next_range_start = start_location_of_next_range.GetIndex();
-		if (aligned_end > next_range_start) {
-			aligned_end = next_range_start;
-		}
-	}
-
-	// Ensure we don't read past the end of the file.
-	if (aligned_end > file_size) {
-		aligned_end = file_size;
-	}
-
-	const idx_t aligned_nr_bytes = aligned_end - aligned_start;
-	return {aligned_start, aligned_nr_bytes};
-}
-
-ReadPolicyRanges ReadPolicy::CalculateRangesToRead(idx_t nr_bytes, idx_t location, idx_t file_size) {
-	// Default implementation: single range
-	auto result = CalculateBytesToRead(nr_bytes, location, file_size, optional_idx());
+	
 	ReadPolicyRanges ranges;
-	ranges.ranges.push_back(result);
-	ranges.total_location = result.read_location;
-	ranges.total_bytes = result.read_bytes;
+	ranges.ranges.push_back({location, read_bytes});
+	ranges.total_location = location;
+	ranges.total_bytes = read_bytes;
 	return ranges;
 }
 
