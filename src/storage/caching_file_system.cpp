@@ -14,10 +14,13 @@
 #include "duckdb/main/config.hpp"
 #include "duckdb/storage/buffer_manager.hpp"
 #include "duckdb/storage/buffer/block_handle.hpp"
+#include "duckdb/storage/caching_file_system_io_task.hpp"
 #include "duckdb/storage/external_file_cache.hpp"
 #include "duckdb/storage/external_file_cache_util.hpp"
 #include "duckdb/storage/read_policy.hpp"
 #include "duckdb/storage/read_policy_registry.hpp"
+#include "duckdb/parallel/task_executor.hpp"
+#include "duckdb/parallel/task_scheduler.hpp"
 
 namespace duckdb {
 
@@ -518,6 +521,7 @@ CachingFileHandle::CheckOrCreatePendingRangeWithLock(unique_ptr<StorageLockKey> 
 		return it->second; // Return existing pending range
 	}
 
+	const string &version_tag = GetVersionTag(guard);
 	// No suitable cached or pending range found, create a new pending range
 	// block_handle = nullptr indicates this range needs IO
 	auto pending_range = make_shared_ptr<CachedFileRange>(nullptr, range.read_bytes, range.read_location, version_tag);
@@ -532,49 +536,61 @@ vector<BufferHandle> CachingFileHandle::PerformParallelBlockIO(vector<shared_ptr
 		return pins;
 	}
 
-	pins.reserve(pending_blocks.size());
-
-	// Perform IO for each pending block
-	// If not already requested, issue IO operation and mark as complete
-	// If already requested, block and wait for its completion
-	for (auto &block : pending_blocks) {
+	// Create shared state for parallel IO results
+	ParallelIOState state(pending_blocks.size());
+	
+	// Create TaskExecutor for parallel execution
+	TaskExecutor executor(TaskScheduler::GetScheduler(caching_file_system.db));
+	
+	// Track which blocks need IO vs which are already complete
+	vector<idx_t> task_indices;
+	task_indices.reserve(pending_blocks.size());
+	
+	// First pass: check status of each block and handle already-complete or in-progress blocks
+	for (idx_t i = 0; i < pending_blocks.size(); i++) {
+		auto &block = pending_blocks[i];
 		unique_lock<mutex> lock(block->completion_mutex);
 		
 		// Check if already complete (another thread finished it)
 		if (block->IsComplete()) {
 			// Pin immediately when we find it's already complete
-			pins.emplace_back(external_file_cache.GetBufferManager().Pin(block->block_handle));
+			lock.unlock();
+			{
+				lock_guard<mutex> state_lock(state.lock);
+				state.pins[i] = external_file_cache.GetBufferManager().Pin(block->block_handle);
+			}
 			continue;
 		}
 		
-		// If another thread is already doing IO, block wait its completion.
+		// If another thread is already doing IO, wait for its completion
 		if (block->io_in_progress.load()) {
 			block->WaitForCompletion(lock);
 			// Now it should be complete, pin it
 			D_ASSERT(block->IsComplete());
-			pins.emplace_back(external_file_cache.GetBufferManager().Pin(block->block_handle));
+			lock.unlock();
+			{
+				lock_guard<mutex> state_lock(state.lock);
+				state.pins[i] = external_file_cache.GetBufferManager().Pin(block->block_handle);
+			}
 			continue;
 		}
 
-		// We're the one doing the IO, mark read in progress.
+		// We're the one doing the IO, mark read in progress
 		block->io_in_progress.store(true);
-		BufferHandle io_buffer = external_file_cache.GetBufferManager().Allocate(MemoryTag::EXTERNAL_FILE_CACHE, block->nr_bytes);
-
 		lock.unlock();
-		GetFileHandle().Read(context, io_buffer.Ptr(), block->nr_bytes, block->location);
-		lock.lock();
 		
-		// Mark IO as no longer in progress
-		block->io_in_progress.store(false);
-		D_ASSERT(!block->IsComplete());
-		// Mark as complete and notify waiting threads
-		block->Complete(io_buffer.GetBlockHandle(), /*offset_in_block=*/0);
-		
-		// Pin immediately after completing IO
-		pins.emplace_back(external_file_cache.GetBufferManager().Pin(block->block_handle));
+		// Schedule task for this block
+		task_indices.push_back(i);
+		auto task = make_uniq<BlockIOTask>(executor, *this, block, state, i);
+		executor.ScheduleTask(std::move(task));
 	}
 	
-	return pins;
+	// Wait for all scheduled tasks to complete
+	// This will throw if any task encountered an error
+	executor.WorkOnTasks();
+	
+	// Return all pins (both from tasks and from already-complete blocks)
+	return std::move(state.pins);
 }
 
 void CachingFileHandle::CopyCacheBlocksToResultBuffer(data_ptr_t buffer, const vector<shared_ptr<CachedFileRange>> &cache_blocks,
@@ -582,10 +598,29 @@ void CachingFileHandle::CopyCacheBlocksToResultBuffer(data_ptr_t buffer, const v
 	D_ASSERT(cache_blocks.size() == pins.size());
 
 	const idx_t end_pos = actual_read_location + actual_read_bytes;
+	idx_t current_pos = actual_read_location;
 	
-	for (idx_t idx = 0; idx < cache_blocks.size(); ++idx) {
+	// Sort blocks by location to process in order
+	vector<idx_t> block_indices(cache_blocks.size());
+	for (idx_t i = 0; i < cache_blocks.size(); ++i) {
+		block_indices[i] = i;
+	}
+	std::sort(block_indices.begin(), block_indices.end(), [&](idx_t a, idx_t b) {
+		return cache_blocks[a]->location < cache_blocks[b]->location;
+	});
+	
+	for (idx_t sorted_idx = 0; sorted_idx < block_indices.size(); ++sorted_idx) {
+		idx_t idx = block_indices[sorted_idx];
 		auto &block = cache_blocks[idx];
 		auto &pin = pins[idx];
+
+		// Fill gap before this block if needed
+		if (block->location > current_pos) {
+			const idx_t gap_size = block->location - current_pos;
+			const idx_t buffer_offset = current_pos - actual_read_location;
+			GetFileHandle().Read(context, buffer + buffer_offset, gap_size, current_pos);
+			current_pos = block->location;
+		}
 
 		// Calculate the overlap between this block and the range we need to copy
 		const idx_t block_start = block->location;
@@ -593,19 +628,25 @@ void CachingFileHandle::CopyCacheBlocksToResultBuffer(data_ptr_t buffer, const v
 		const idx_t copy_start = MaxValue(block_start, actual_read_location);
 		const idx_t copy_end = MinValue(block_end, end_pos);
 		
-		// Skip if no overlap
-		if (copy_start >= copy_end) {
-			continue;
+		// Copy from this block if it overlaps
+		if (copy_start < copy_end) {
+			// Calculate offsets and bytes to copy
+			const idx_t bytes_to_copy = copy_end - copy_start;
+			const idx_t offset_in_block = copy_start - block_start;
+			const idx_t offset_in_buffer = copy_start - actual_read_location;
+
+			// Copy block data
+			D_ASSERT(pin.IsValid());
+			memcpy(buffer + offset_in_buffer, pin.Ptr() + block->block_offset + offset_in_block, bytes_to_copy);
+			current_pos = copy_end;
 		}
-
-		// Calculate offsets and bytes to copy
-		const idx_t bytes_to_copy = copy_end - copy_start;
-		const idx_t offset_in_block = copy_start - block_start;
-		const idx_t offset_in_buffer = copy_start - actual_read_location;
-
-		// Copy block data
-		D_ASSERT(pin.IsValid());
-		memcpy(buffer + offset_in_buffer, pin.Ptr() + block->block_offset + offset_in_block, bytes_to_copy);
+	}
+	
+	// Fill gap after last block if needed
+	if (current_pos < end_pos) {
+		const idx_t gap_size = end_pos - current_pos;
+		const idx_t buffer_offset = current_pos - actual_read_location;
+		GetFileHandle().Read(context, buffer + buffer_offset, gap_size, current_pos);
 	}
 }
 

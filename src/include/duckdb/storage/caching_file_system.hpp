@@ -28,11 +28,16 @@ class FileSystem;
 struct FileHandle;
 class CachingFileSystem;
 
+// Forward declaration
+class BlockIOTask;
+
 struct CachingFileHandle {
 public:
 	using CachedFileRangeOverlap = ExternalFileCache::CachedFileRangeOverlap;
 	using CachedFileRange = ExternalFileCache::CachedFileRange;
 	using CachedFile = ExternalFileCache::CachedFile;
+
+	friend class BlockIOTask;
 
 public:
 	DUCKDB_API CachingFileHandle(QueryContext context, CachingFileSystem &caching_file_system, const OpenFileInfo &path,
