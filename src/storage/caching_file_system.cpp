@@ -131,6 +131,38 @@ BufferHandle CachingFileHandle::Read(data_ptr_t &buffer, const idx_t nr_bytes, c
 	const idx_t actual_read_location = policy_result.read_location;
 	const idx_t actual_read_bytes = policy_result.read_bytes;
 
+	// Check if another thread is already reading the same aligned block
+	// This prevents duplicate reads when multiple threads request nearby offsets
+	unique_lock<mutex> pending_lock(cached_file.pending_reads_mutex);
+	bool should_do_read = cached_file.WaitForPendingRead(actual_read_location, pending_lock);
+	pending_lock.unlock();
+
+	if (!should_do_read) {
+		// Another thread completed the read, retry cache lookup
+		// The other thread's read should now be available in the cache
+		result = TryReadFromCache(buffer, nr_bytes, location, overlapping_ranges, start_location_of_next_range);
+		if (result.IsValid()) {
+			return result; // Success
+		}
+		// If still not in cache (should be rare), we need to do our own read
+		// Re-register as the reader and proceed
+		pending_lock.lock();
+		should_do_read = cached_file.WaitForPendingRead(actual_read_location, pending_lock);
+		pending_lock.unlock();
+		// If should_do_read is still false, another thread started reading again
+		// In this case, retry one more time, then proceed anyway to avoid infinite loops
+		if (!should_do_read) {
+			result = TryReadFromCache(buffer, nr_bytes, location, overlapping_ranges, start_location_of_next_range);
+			if (result.IsValid()) {
+				return result;
+			}
+			// Last resort: register ourselves and do the read
+			pending_lock.lock();
+			cached_file.WaitForPendingRead(actual_read_location, pending_lock);
+			pending_lock.unlock();
+		}
+	}
+
 	// Finally, if we weren't able to find the file range in the cache, we have to create a new file range
 	result = external_file_cache.GetBufferManager().Allocate(MemoryTag::EXTERNAL_FILE_CACHE, actual_read_bytes);
 	auto new_file_range =
@@ -162,9 +194,16 @@ BufferHandle CachingFileHandle::Read(data_ptr_t &buffer, const idx_t nr_bytes, c
 	// Set the buffer pointer to the requested location within the allocated buffer
 	buffer = read_buffer;
 
-	// TryInsertFileRange needs the original location and nr_bytes for overlap checking,
-	// but the new_file_range already has the actual read location and bytes
-	return TryInsertFileRange(result, buffer, nr_bytes, location, new_file_range);
+	// Insert the file range into the cache and notify waiting threads
+	BufferHandle final_result = TryInsertFileRange(result, buffer, nr_bytes, location, new_file_range);
+
+	// Notify any threads waiting for this read to complete
+	{
+		unique_lock<mutex> notify_lock(cached_file.pending_reads_mutex);
+		cached_file.NotifyPendingReadComplete(actual_read_location, notify_lock);
+	}
+
+	return final_result;
 }
 
 BufferHandle CachingFileHandle::Read(data_ptr_t &buffer, idx_t &nr_bytes) {

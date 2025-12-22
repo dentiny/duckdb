@@ -16,6 +16,7 @@
 #include "duckdb/storage/buffer/temporary_file_information.hpp"
 #include "duckdb/storage/storage_lock.hpp"
 #include "duckdb/common/types/timestamp.hpp"
+#include <condition_variable>
 
 namespace duckdb {
 
@@ -53,6 +54,13 @@ public:
 #endif
 	};
 
+	//! Structure to track pending reads for aligned blocks
+	struct PendingRead {
+		std::condition_variable cv;
+		bool is_reading = false;
+		idx_t waiting_count = 0; // Number of threads currently waiting
+	};
+
 	//! Cached files
 	struct CachedFile {
 	public:
@@ -73,6 +81,13 @@ public:
 		bool &OnDiskFile(const unique_ptr<StorageLockKey> &guard);
 		map<idx_t, shared_ptr<CachedFileRange>> &Ranges(const unique_ptr<StorageLockKey> &guard);
 
+		//! Wait for a pending read at the given aligned location, or register a new pending read
+		//! Returns true if this thread should do the read, false if it should wait and retry
+		bool WaitForPendingRead(idx_t aligned_location, unique_lock<mutex> &pending_lock);
+
+		//! Notify waiting threads that a read has completed
+		void NotifyPendingReadComplete(idx_t aligned_location, unique_lock<mutex> &pending_lock);
+
 	public:
 		const string path;
 		StorageLock lock;
@@ -85,6 +100,11 @@ public:
 		string version_tag;
 		bool can_seek;
 		bool on_disk_file;
+
+		//! Mutex for coordinating pending reads
+		mutex pending_reads_mutex;
+		//! Map from aligned location to pending read information
+		unordered_map<idx_t, unique_ptr<PendingRead>> pending_reads;
 	};
 
 public:
