@@ -274,20 +274,20 @@ CachingFileHandle::GetOrCreatePendingRangeWithLock(unique_ptr<StorageLockKey> &g
 	// Check overlapping ranges and prepare for potential cleanup
 	const idx_t range_end = range.read_location + range.read_bytes;
 	// Collect ranges to erase after iteration
-	vector<idx_t> ranges_to_erase; 
-	
+	vector<idx_t> ranges_to_erase;
+
 	it = ranges.lower_bound(range.read_location);
 	if (it != ranges.begin()) {
 		--it;
 	}
-	
+
 	while (it != ranges.end() && it->first < range_end) {
 		auto overlap = it->second->GetOverlap(range.read_bytes, range.read_location);
 		if (overlap == CachedFileRangeOverlap::FULL) {
 			// Existing range fully covers the requested range
 			return it->second;
 		}
-		
+
 		// Check if the new range would fully contain this existing range
 		const idx_t existing_start = it->second->location;
 		const idx_t existing_end = existing_start + it->second->nr_bytes;

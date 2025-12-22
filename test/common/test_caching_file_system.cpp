@@ -69,7 +69,7 @@ void TestReadScenario(FileSystem &fs, ExternalFileCache &cache, DatabaseInstance
 	data_ptr_t buffer1;
 	auto buffer_handle1 = handle->Read(buffer1, read_bytes, read_location);
 	VerifyData(/*buffer_handle=*/buffer_handle1, /*size=*/read_bytes, /*file_offset=*/read_location);
-	
+
 	// Second read, which should hit cache
 	data_ptr_t buffer2;
 	auto buffer_handle2 = handle->Read(buffer2, read_bytes, read_location);
@@ -236,7 +236,8 @@ TEST_CASE("DefaultReadPolicy - Overlapping reads", "[caching_file_system][defaul
 	// This should use the cached portion from the first read and only read the new 0.5MiB
 	data_ptr_t buffer2;
 	auto buffer_handle2 = handle->Read(buffer2, 1024 * 1024, static_cast<idx_t>(1.5 * 1024 * 1024));
-	VerifyData(/*buffer_handle=*/buffer_handle2, /*size=*/1024 * 1024, /*file_offset=*/static_cast<idx_t>(1.5 * 1024 * 1024));
+	VerifyData(/*buffer_handle=*/buffer_handle2, /*size=*/1024 * 1024,
+	           /*file_offset=*/static_cast<idx_t>(1.5 * 1024 * 1024));
 
 	// Third read: 2MiB starting at 0.5MiB (overlaps with both previous reads)
 	// Should use cached portions from both previous reads
@@ -267,7 +268,8 @@ TEST_CASE("AlignedReadPolicy - Overlapping reads", "[caching_file_system][aligne
 	// With aligned policy, this should cache the 0-2MiB block
 	data_ptr_t buffer1;
 	auto buffer_handle1 = handle->Read(buffer1, 1024 * 1024, static_cast<idx_t>(1.5 * 1024 * 1024));
-	VerifyData(/*buffer_handle=*/buffer_handle1, /*size=*/1024 * 1024, /*file_offset=*/static_cast<idx_t>(1.5 * 1024 * 1024));
+	VerifyData(/*buffer_handle=*/buffer_handle1, /*size=*/1024 * 1024,
+	           /*file_offset=*/static_cast<idx_t>(1.5 * 1024 * 1024));
 
 	// Second read: 1MiB starting at 0.5MiB (overlaps with first read's cached block: 0-2MiB)
 	// Should hit the cache from the first read
@@ -279,13 +281,15 @@ TEST_CASE("AlignedReadPolicy - Overlapping reads", "[caching_file_system][aligne
 	// With aligned policy, this should cache the 2-4MiB block
 	data_ptr_t buffer3;
 	auto buffer_handle3 = handle->Read(buffer3, 1024 * 1024, static_cast<idx_t>(3.5 * 1024 * 1024));
-	VerifyData(/*buffer_handle=*/buffer_handle3, /*size=*/1024 * 1024, /*file_offset=*/static_cast<idx_t>(3.5 * 1024 * 1024));
+	VerifyData(/*buffer_handle=*/buffer_handle3, /*size=*/1024 * 1024,
+	           /*file_offset=*/static_cast<idx_t>(3.5 * 1024 * 1024));
 
 	// Fourth read: 2MiB starting at 2.5MiB (overlaps with third read's cached block: 2-4MiB)
 	// Should use the cached portion from the third read
 	data_ptr_t buffer4;
 	auto buffer_handle4 = handle->Read(buffer4, 2 * 1024 * 1024, static_cast<idx_t>(2.5 * 1024 * 1024));
-	VerifyData(/*buffer_handle=*/buffer_handle4, /*size=*/2 * 1024 * 1024, /*file_offset=*/static_cast<idx_t>(2.5 * 1024 * 1024));
+	VerifyData(/*buffer_handle=*/buffer_handle4, /*size=*/2 * 1024 * 1024,
+	           /*file_offset=*/static_cast<idx_t>(2.5 * 1024 * 1024));
 }
 
 // ============================================================================
@@ -319,7 +323,8 @@ TEST_CASE("CachingFileSystem - Concurrent reads duplicate prevention", "[caching
 
 			data_ptr_t buffer;
 			auto buffer_handle = handle->Read(buffer, 1024 * 1024, static_cast<idx_t>(2.5 * 1024 * 1024));
-			VerifyData(/*buffer_handle=*/buffer_handle, /*size=*/1024 * 1024, /*file_offset=*/static_cast<idx_t>(2.5 * 1024 * 1024));
+			VerifyData(/*buffer_handle=*/buffer_handle, /*size=*/1024 * 1024,
+			           /*file_offset=*/static_cast<idx_t>(2.5 * 1024 * 1024));
 		});
 	}
 
@@ -349,7 +354,7 @@ TEST_CASE("CachingFileSystem - Mixed cached and uncached blocks", "[caching_file
 	// Cache blocks 0-2MiB and 4-6MiB
 	data_ptr_t buffer1;
 	auto buffer_handle1 = handle->Read(buffer1, 1024 * 1024, 512 * 1024); // Caches 0-2MiB
-	(void)buffer_handle1; // Keep buffer1 valid
+	(void)buffer_handle1;                                                 // Keep buffer1 valid
 
 	data_ptr_t buffer2;
 	auto buffer_handle2 = handle->Read(buffer2, 1024 * 1024, static_cast<idx_t>(4.5 * 1024 * 1024)); // Caches 4-6MiB
@@ -563,7 +568,8 @@ TEST_CASE("CachingFileSystem - Concurrent same block requests", "[caching_file_s
 				data_ptr_t buffer;
 				auto buffer_handle = handle->Read(buffer, thread_read_bytes, thread_read_location);
 				if (buffer_handle.IsValid()) {
-					VerifyData(/*buffer_handle=*/buffer_handle, /*size=*/thread_read_bytes, /*file_offset=*/thread_read_location);
+					VerifyData(/*buffer_handle=*/buffer_handle, /*size=*/thread_read_bytes,
+					           /*file_offset=*/thread_read_location);
 					cache_hit_success_flags[i] = true;
 				}
 			});
@@ -609,7 +615,8 @@ TEST_CASE("CachingFileSystem - Concurrent same block requests", "[caching_file_s
 				data_ptr_t buffer;
 				auto buffer_handle = handle->Read(buffer, thread_read_bytes, thread_read_location);
 				if (buffer_handle.IsValid()) {
-					VerifyData(/*buffer_handle=*/buffer_handle, /*size=*/thread_read_bytes, /*file_offset=*/thread_read_location);
+					VerifyData(/*buffer_handle=*/buffer_handle, /*size=*/thread_read_bytes,
+					           /*file_offset=*/thread_read_location);
 					overlap_success_flags[i] = true;
 				}
 			});
@@ -668,7 +675,8 @@ TEST_CASE("CachingFileSystem - Position-based Read overload", "[caching_file_sys
 		auto buffer_handle3 = handle->Read(buffer3, bytes3);
 		REQUIRE(buffer3 != nullptr);
 		REQUIRE(bytes3 == 256 * 1024);
-		VerifyData(/*buffer_handle=*/buffer_handle3, /*size=*/bytes3, /*file_offset=*/static_cast<idx_t>(1.5 * 1024 * 1024));
+		VerifyData(/*buffer_handle=*/buffer_handle3, /*size=*/bytes3,
+		           /*file_offset=*/static_cast<idx_t>(1.5 * 1024 * 1024));
 	}
 
 	SECTION("Sequential reads with AlignedReadPolicy") {
@@ -715,7 +723,8 @@ TEST_CASE("CachingFileSystem - Position-based Read overload", "[caching_file_sys
 		data_ptr_t buffer3 = nullptr;
 		idx_t bytes3 = 512 * 1024;
 		auto buffer_handle3 = handle->Read(buffer3, bytes3);
-		VerifyData(/*buffer_handle=*/buffer_handle3, /*size=*/bytes3, /*file_offset=*/static_cast<idx_t>(2.5 * 1024 * 1024));
+		VerifyData(/*buffer_handle=*/buffer_handle3, /*size=*/bytes3,
+		           /*file_offset=*/static_cast<idx_t>(2.5 * 1024 * 1024));
 	}
 
 	SECTION("Position-based reads should hit cache") {

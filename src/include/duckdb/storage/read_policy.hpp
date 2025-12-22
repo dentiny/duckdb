@@ -28,14 +28,14 @@ struct ReadPolicyRanges {
 	// Start of first range
 	idx_t total_location;
 	// Total bytes from start to end
-	idx_t total_bytes;     
+	idx_t total_bytes;
 };
 
 //! Base class for read policies that determine how many bytes to read and cache
 class ReadPolicy {
 public:
 	virtual ~ReadPolicy() = default;
-	
+
 	//! Calculate multiple ranges to read
 	//! Ranges are returned sorted by location in ascending order, and they don't overlap
 	virtual ReadPolicyRanges CalculateRangesToRead(idx_t nr_bytes, idx_t location, idx_t file_size) = 0;
@@ -51,7 +51,7 @@ public:
 class AlignedReadPolicy : public ReadPolicy {
 public:
 	AlignedReadPolicy() = default;
-	
+
 	//! Returns multiple ranges, one for each block that needs to be read
 	ReadPolicyRanges CalculateRangesToRead(idx_t nr_bytes, idx_t location, idx_t file_size) override;
 };
