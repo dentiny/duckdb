@@ -24,14 +24,15 @@ namespace duckdb {
 struct JSONScanGlobalState;
 class JSONReader;
 
-//! Metadata about a buffer - used for coordination without storing the actual data
-//! The actual buffer data is stored in the filesystem cache (CachingFileSystemWrapper)
+//! Metadata about a buffer - keeps buffer data only when needed for CopyRemainder
+//! For non-compressed seekable files, data can be re-read from filesystem cache
 struct JSONBufferMetadata {
 public:
 	JSONBufferMetadata(idx_t buffer_index_p, idx_t readers_p, idx_t buffer_size_p, idx_t buffer_start_p,
-	                   idx_t file_position_p)
+	                   idx_t file_position_p, AllocatedData &&buffer_data_p)
 	    : buffer_index(buffer_index_p), readers(readers_p), buffer_size(buffer_size_p),
-	      buffer_start(buffer_start_p), file_position(file_position_p), line_or_object_count(-1) {
+	      buffer_start(buffer_start_p), file_position(file_position_p), line_or_object_count(-1),
+	      buffer_data(std::move(buffer_data_p)) {
 	}
 
 public:
@@ -48,6 +49,8 @@ public:
 	const idx_t file_position;
 	//! Line or object count in this buffer (set after parsing)
 	atomic<int64_t> line_or_object_count;
+	//! Buffer data - stored when readers > 1 (needed for CopyRemainder in parallel reads)
+	AllocatedData buffer_data;
 };
 
 

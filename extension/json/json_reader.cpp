@@ -731,28 +731,16 @@ bool JSONReader::CopyRemainderFromPreviousBuffer(JSONReaderScanState &scan_state
 		previous_buffer_metadata = GetBuffer(scan_state.buffer_index.GetIndex() - 1);
 	}
 
-	// Read the end of the previous buffer from file (will hit filesystem cache)
-	// We need to read the last part of the previous buffer to find where the last newline is
-	// file_position points to where we started reading in the file
-	// buffer_start is the offset within the buffer where actual data starts (space left for remainder copy)
-	// buffer_size is the total buffer size including the reserved space
-	idx_t prev_buffer_data_size = previous_buffer_metadata->buffer_size - previous_buffer_metadata->buffer_start;
-	idx_t prev_buffer_data_end_file_pos = previous_buffer_metadata->file_position + previous_buffer_metadata->buffer_size;
+	// Get the previous buffer's data - it must be stored in metadata for partial reads
+	if (!previous_buffer_metadata->buffer_data) {
+		throw InternalException("Previous buffer data not available for CopyRemainder");
+	}
 	
-	// Read the last portion of the previous buffer to find the newline
-	// We read a bit more than needed to ensure we catch the newline (max object size should be enough)
-	idx_t read_size = MinValue<idx_t>(options.maximum_object_size, prev_buffer_data_size);
-	idx_t read_start_pos = prev_buffer_data_end_file_pos - read_size;
-	
-	// Allocate temporary buffer to read into (small, will be freed immediately)
-	AllocatedData temp_buffer(scan_state.global_allocator.Allocate(read_size));
-	auto &file_handle = GetFileHandle();
-	file_handle.ReadAtPosition(char_ptr_cast(temp_buffer.get()), read_size, read_start_pos);
-	
-	// Find the newline in this read data
-	auto temp_buffer_ptr = char_ptr_cast(temp_buffer.get());
-	auto prev_object_start = PreviousNewline(temp_buffer_ptr + read_size, read_size);
-	auto prev_object_size = NumericCast<idx_t>((temp_buffer_ptr + read_size) - prev_object_start);
+	// Find the newline in the previous buffer
+	idx_t prev_buffer_size = previous_buffer_metadata->buffer_size - previous_buffer_metadata->buffer_start;
+	auto prev_buffer_ptr = char_ptr_cast(previous_buffer_metadata->buffer_data.get()) + previous_buffer_metadata->buffer_size;
+	auto prev_object_start = PreviousNewline(prev_buffer_ptr, prev_buffer_size);
+	auto prev_object_size = NumericCast<idx_t>(prev_buffer_ptr - prev_object_start);
 
 	D_ASSERT(scan_state.buffer_offset == options.maximum_object_size);
 	if (prev_object_size > scan_state.buffer_offset) {
@@ -945,8 +933,17 @@ void JSONReader::FinalizeBufferInternal(JSONReaderScanState &scan_state, Allocat
 		readers = scan_state.is_last ? 1 : 2;
 	}
 
-	// Create metadata entry and insert it into the map (no buffer data stored)
-	auto metadata = make_uniq<JSONBufferMetadata>(buffer_index, readers, scan_state.buffer_size, scan_state.buffer_offset, file_position);
+	// Create metadata entry - store buffer data only if readers > 1 (needed for CopyRemainder)
+	// When readers == 1, we can just move the buffer reference and avoid storing it
+	AllocatedData buffer_copy;
+	if (readers > 1) {
+		// Need to keep buffer data for the next buffer to copy from
+		// For now, we must keep the data since we can't re-read compressed streams
+		// Move the buffer into the metadata
+		buffer_copy = std::move(buffer);
+	}
+	
+	auto metadata = make_uniq<JSONBufferMetadata>(buffer_index, readers, scan_state.buffer_size, scan_state.buffer_offset, file_position, std::move(buffer_copy));
 	scan_state.current_buffer_metadata = metadata.get();
 	InsertBuffer(buffer_index, std::move(metadata));
 
