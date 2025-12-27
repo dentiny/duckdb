@@ -10,11 +10,6 @@
 
 namespace duckdb {
 
-JSONBufferHandle::JSONBufferHandle(JSONReader &reader, idx_t buffer_index_p, idx_t readers_p, AllocatedData &&buffer_p,
-                                   idx_t buffer_size_p, idx_t buffer_start_p)
-    : reader(reader), buffer_index(buffer_index_p), readers(readers_p), buffer(std::move(buffer_p)),
-      buffer_size(buffer_size_p), buffer_start(buffer_start_p) {
-}
 
 JSONFileHandle::JSONFileHandle(QueryContext context_p, unique_ptr<FileHandle> file_handle_p, Allocator &allocator_p)
     : context(context_p), file_handle(std::move(file_handle_p)), allocator(allocator_p),
@@ -254,26 +249,24 @@ JSONFileHandle &JSONReader::GetFileHandle() const {
 	return *file_handle;
 }
 
-void JSONReader::InsertBuffer(idx_t buffer_idx, unique_ptr<JSONBufferHandle> &&buffer) {
+void JSONReader::InsertBuffer(idx_t buffer_idx, unique_ptr<JSONBufferMetadata> &&metadata) {
 	lock_guard<mutex> guard(lock);
 	D_ASSERT(buffer_map.find(buffer_idx) == buffer_map.end());
-	buffer_map.insert(make_pair(buffer_idx, std::move(buffer)));
+	buffer_map.insert(make_pair(buffer_idx, std::move(metadata)));
 }
 
-optional_ptr<JSONBufferHandle> JSONReader::GetBuffer(idx_t buffer_idx) {
+optional_ptr<JSONBufferMetadata> JSONReader::GetBuffer(idx_t buffer_idx) {
 	lock_guard<mutex> guard(lock);
 	auto it = buffer_map.find(buffer_idx);
 	return it == buffer_map.end() ? nullptr : it->second.get();
 }
 
-AllocatedData JSONReader::RemoveBuffer(JSONBufferHandle &handle) {
+void JSONReader::RemoveBuffer(idx_t buffer_idx) {
 	lock_guard<mutex> guard(lock);
-	auto it = buffer_map.find(handle.buffer_index);
-	D_ASSERT(it != buffer_map.end());
-	D_ASSERT(RefersToSameObject(handle, *it->second));
-	auto result = std::move(it->second->buffer);
-	buffer_map.erase(it);
-	return result;
+	auto it = buffer_map.find(buffer_idx);
+	if (it != buffer_map.end()) {
+		buffer_map.erase(it);
+	}
 }
 
 idx_t JSONReader::GetBufferIndex() {
@@ -281,12 +274,13 @@ idx_t JSONReader::GetBufferIndex() {
 	return next_buffer_index++;
 }
 
-void JSONReader::SetBufferLineOrObjectCount(JSONBufferHandle &handle, idx_t count) {
+void JSONReader::SetBufferLineOrObjectCount(JSONBufferMetadata &metadata, idx_t count) {
 	lock_guard<mutex> guard(lock);
-	D_ASSERT(buffer_map.find(handle.buffer_index) != buffer_map.end());
-	D_ASSERT(RefersToSameObject(handle, *buffer_map.find(handle.buffer_index)->second));
-	D_ASSERT(buffer_line_or_object_counts[handle.buffer_index] == -1);
-	buffer_line_or_object_counts[handle.buffer_index] = count;
+	D_ASSERT(buffer_map.find(metadata.buffer_index) != buffer_map.end());
+	metadata.line_or_object_count = count;
+	if (buffer_line_or_object_counts[metadata.buffer_index] == -1) {
+		buffer_line_or_object_counts[metadata.buffer_index] = count;
+	}
 	// if we have any errors - try to report them after finishing a buffer
 	ThrowErrorsIfPossible();
 }
@@ -297,7 +291,8 @@ void JSONReader::AddParseError(JSONReaderScanState &scan_state, idx_t line_or_ob
 	auto error_msg = StringUtil::Format("Malformed JSON in file \"%s\", at byte %llu in %s {line}: %s. %s",
 	                                    GetFileName(), err.pos + 1, unit, err.msg, extra);
 	lock_guard<mutex> guard(lock);
-	AddError(scan_state.current_buffer_handle->buffer_index, line_or_object_in_buf + 1, error_msg);
+	D_ASSERT(scan_state.current_buffer_metadata);
+	AddError(scan_state.current_buffer_metadata->buffer_index, line_or_object_in_buf + 1, error_msg);
 	ThrowErrorsIfPossible();
 	// if we could not throw immediately - finish processing this buffer
 	scan_state.buffer_offset = 0;
@@ -305,14 +300,14 @@ void JSONReader::AddParseError(JSONReaderScanState &scan_state, idx_t line_or_ob
 }
 
 void JSONReader::AddTransformError(JSONReaderScanState &scan_state, idx_t object_index, const string &error_message) {
-	D_ASSERT(scan_state.current_buffer_handle);
+	D_ASSERT(scan_state.current_buffer_metadata);
 	D_ASSERT(object_index != DConstants::INVALID_INDEX);
 	auto line_or_object_in_buffer = scan_state.lines_or_objects_in_buffer - scan_state.scan_count + object_index;
 	string unit = options.format == JSONFormat::NEWLINE_DELIMITED ? "line" : "record/value";
 	auto error_msg =
 	    StringUtil::Format("JSON transform error in file \"%s\", in %s {line}: %s", GetFileName(), unit, error_message);
 	lock_guard<mutex> guard(lock);
-	AddError(scan_state.current_buffer_handle->buffer_index, line_or_object_in_buffer, error_msg);
+	AddError(scan_state.current_buffer_metadata->buffer_index, line_or_object_in_buffer, error_msg);
 	ThrowErrorsIfPossible();
 	// if we could not throw immediately - finish processing this buffer
 	scan_state.buffer_offset = scan_state.buffer_size;
@@ -403,16 +398,12 @@ void JSONReaderScanState::ResetForNextParse() {
 }
 
 void JSONReaderScanState::ClearBufferHandle() {
-	if (!current_buffer_handle) {
+	if (!current_buffer_metadata) {
 		return;
 	}
-	// Free up the current buffer - if any
-	auto &handle = *current_buffer_handle;
-	if (!RefersToSameObject(handle.reader, *current_reader)) {
-		throw InternalException("Handle reader and current reader are unaligned");
-	}
-	handle.reader.DecrementBufferUsage(*current_buffer_handle, lines_or_objects_in_buffer, read_buffer);
-	current_buffer_handle = nullptr;
+	// Decrement usage count for the current buffer metadata
+	current_reader->DecrementBufferUsage(*current_buffer_metadata, lines_or_objects_in_buffer);
+	current_buffer_metadata = nullptr;
 }
 
 void JSONReaderScanState::ResetForNextBuffer() {
@@ -732,19 +723,36 @@ bool JSONReader::CopyRemainderFromPreviousBuffer(JSONReaderScanState &scan_state
 	D_ASSERT(GetFormat() == JSONFormat::NEWLINE_DELIMITED);
 
 	// Spinlock until the previous batch index has also read its buffer
-	optional_ptr<JSONBufferHandle> previous_buffer_handle;
-	while (!previous_buffer_handle) {
+	optional_ptr<JSONBufferMetadata> previous_buffer_metadata;
+	while (!previous_buffer_metadata) {
 		if (HasThrown()) {
 			return false;
 		}
-		previous_buffer_handle = GetBuffer(scan_state.buffer_index.GetIndex() - 1);
+		previous_buffer_metadata = GetBuffer(scan_state.buffer_index.GetIndex() - 1);
 	}
 
-	// First we find the newline in the previous block
-	idx_t prev_buffer_size = previous_buffer_handle->buffer_size - previous_buffer_handle->buffer_start;
-	auto prev_buffer_ptr = char_ptr_cast(previous_buffer_handle->buffer.get()) + previous_buffer_handle->buffer_size;
-	auto prev_object_start = PreviousNewline(prev_buffer_ptr, prev_buffer_size);
-	auto prev_object_size = NumericCast<idx_t>(prev_buffer_ptr - prev_object_start);
+	// Read the end of the previous buffer from file (will hit filesystem cache)
+	// We need to read the last part of the previous buffer to find where the last newline is
+	// file_position points to where we started reading in the file
+	// buffer_start is the offset within the buffer where actual data starts (space left for remainder copy)
+	// buffer_size is the total buffer size including the reserved space
+	idx_t prev_buffer_data_size = previous_buffer_metadata->buffer_size - previous_buffer_metadata->buffer_start;
+	idx_t prev_buffer_data_end_file_pos = previous_buffer_metadata->file_position + previous_buffer_metadata->buffer_size;
+	
+	// Read the last portion of the previous buffer to find the newline
+	// We read a bit more than needed to ensure we catch the newline (max object size should be enough)
+	idx_t read_size = MinValue<idx_t>(options.maximum_object_size, prev_buffer_data_size);
+	idx_t read_start_pos = prev_buffer_data_end_file_pos - read_size;
+	
+	// Allocate temporary buffer to read into (small, will be freed immediately)
+	AllocatedData temp_buffer(scan_state.global_allocator.Allocate(read_size));
+	auto &file_handle = GetFileHandle();
+	file_handle.ReadAtPosition(char_ptr_cast(temp_buffer.get()), read_size, read_start_pos);
+	
+	// Find the newline in this read data
+	auto temp_buffer_ptr = char_ptr_cast(temp_buffer.get());
+	auto prev_object_start = PreviousNewline(temp_buffer_ptr + read_size, read_size);
+	auto prev_object_size = NumericCast<idx_t>((temp_buffer_ptr + read_size) - prev_object_start);
 
 	D_ASSERT(scan_state.buffer_offset == options.maximum_object_size);
 	if (prev_object_size > scan_state.buffer_offset) {
@@ -754,8 +762,8 @@ bool JSONReader::CopyRemainderFromPreviousBuffer(JSONReaderScanState &scan_state
 	memcpy(scan_state.buffer_ptr + scan_state.buffer_offset - prev_object_size, prev_object_start, prev_object_size);
 
 	// We copied the object, so we are no longer reading the previous buffer
-	if (--previous_buffer_handle->readers == 0) {
-		RemoveBuffer(*previous_buffer_handle);
+	if (--previous_buffer_metadata->readers == 0) {
+		RemoveBuffer(previous_buffer_metadata->buffer_index);
 	}
 
 	if (prev_object_size == 1) {
@@ -918,8 +926,8 @@ void JSONReader::FinalizeBuffer(JSONReaderScanState &scan_state) {
 			}
 		}
 	}
-	// then finalize the buffer
-	FinalizeBufferInternal(scan_state, scan_state.read_buffer, scan_state.buffer_index.GetIndex());
+	// then finalize the buffer (file_position should have been set during read)
+	FinalizeBufferInternal(scan_state, scan_state.read_buffer, scan_state.buffer_index.GetIndex(), scan_state.file_position);
 }
 
 bool JSONReader::ReadNextBuffer(JSONReaderScanState &scan_state) {
@@ -931,17 +939,16 @@ bool JSONReader::ReadNextBuffer(JSONReaderScanState &scan_state) {
 	return true;
 }
 
-void JSONReader::FinalizeBufferInternal(JSONReaderScanState &scan_state, AllocatedData &buffer, idx_t buffer_index) {
+void JSONReader::FinalizeBufferInternal(JSONReaderScanState &scan_state, AllocatedData &buffer, idx_t buffer_index, idx_t file_position) {
 	idx_t readers = 1;
 	if (scan_state.file_read_type == JSONFileReadType::SCAN_PARTIAL) {
 		readers = scan_state.is_last ? 1 : 2;
 	}
 
-	// Create an entry and insert it into the map
-	auto json_buffer_handle = make_uniq<JSONBufferHandle>(*this, buffer_index, readers, std::move(buffer),
-	                                                      scan_state.buffer_size, scan_state.buffer_offset);
-	scan_state.current_buffer_handle = json_buffer_handle.get();
-	InsertBuffer(buffer_index, std::move(json_buffer_handle));
+	// Create metadata entry and insert it into the map (no buffer data stored)
+	auto metadata = make_uniq<JSONBufferMetadata>(buffer_index, readers, scan_state.buffer_size, scan_state.buffer_offset, file_position);
+	scan_state.current_buffer_metadata = metadata.get();
+	InsertBuffer(buffer_index, std::move(metadata));
 
 	if (scan_state.file_read_type == JSONFileReadType::SCAN_PARTIAL) {
 		// if we are not scanning the entire file - copy the remainder of the previous buffer into this buffer
@@ -959,11 +966,10 @@ void JSONReader::FinalizeBufferInternal(JSONReaderScanState &scan_state, Allocat
 	memset(scan_state.buffer_ptr + scan_state.buffer_size, 0, YYJSON_PADDING_SIZE);
 }
 
-void JSONReader::DecrementBufferUsage(JSONBufferHandle &handle, idx_t lines_or_object_in_buffer,
-                                      AllocatedData &buffer) {
-	SetBufferLineOrObjectCount(handle, lines_or_object_in_buffer);
-	if (--handle.readers == 0) {
-		buffer = RemoveBuffer(handle);
+void JSONReader::DecrementBufferUsage(JSONBufferMetadata &metadata, idx_t lines_or_object_in_buffer) {
+	SetBufferLineOrObjectCount(metadata, lines_or_object_in_buffer);
+	if (--metadata.readers == 0) {
+		RemoveBuffer(metadata.buffer_index);
 	}
 }
 
@@ -991,6 +997,7 @@ bool JSONReader::PrepareBufferForRead(JSONReaderScanState &scan_state) {
 		scan_state.buffer_size = auto_detect_data_size;
 		scan_state.read_buffer = std::move(auto_detect_data);
 		scan_state.buffer_ptr = char_ptr_cast(scan_state.read_buffer.get());
+		scan_state.file_position = 0; // Auto-detect always reads from the start
 		scan_state.prev_buffer_remainder = 0;
 		scan_state.needs_to_read = false;
 		scan_state.is_last = false;
@@ -1058,6 +1065,7 @@ void JSONReader::ReadNextBufferSeek(JSONReaderScanState &scan_state) {
 		}
 
 		// Now read the file lock-free!
+		scan_state.file_position = scan_state.read_position; // Track file position for cache reads
 		file_handle.ReadAtPosition(scan_state.buffer_ptr + read_offset, scan_state.read_size, scan_state.read_position,
 		                           scan_state.thread_local_filehandle);
 	}
@@ -1086,6 +1094,16 @@ bool JSONReader::ReadNextBufferNoSeek(JSONReaderScanState &scan_state) {
 	}
 	scan_state.buffer_index = GetBufferIndex();
 	PrepareForReadInternal(scan_state);
+	// For non-seekable files, file_position is the current read position (tracked by file_handle)
+	// We can't know the exact position before reading, so we use the remaining size calculation
+	// For seekable files, we should use read_position from PrepareBufferSeek
+	if (file_handle.CanSeek()) {
+		// Position should have been set by PrepareBufferSeek
+		scan_state.file_position = scan_state.read_position;
+	} else {
+		// For non-seekable files, approximate position from file size and remaining
+		scan_state.file_position = file_handle.FileSize() - file_handle.Remaining();
+	}
 	if (!file_handle.Read(scan_state.buffer_ptr + read_offset, read_size, request_size)) {
 		return false; // Couldn't read anything
 	}
