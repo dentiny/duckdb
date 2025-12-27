@@ -14,10 +14,11 @@
 #include "duckdb/common/file_system.hpp"
 #include "duckdb/common/multi_file/base_file_reader.hpp"
 #include "duckdb/common/multi_file/multi_file_reader.hpp"
-#include "json_reader_options.hpp"
 #include "duckdb/common/mutex.hpp"
+#include "duckdb/storage/caching_file_system_wrapper.hpp"
 #include "json_common.hpp"
 #include "json_enums.hpp"
+#include "json_reader_options.hpp"
 
 namespace duckdb {
 struct JSONScanGlobalState;
@@ -275,6 +276,7 @@ private:
 
 	//! File handle
 	unique_ptr<JSONFileHandle> file_handle;
+	unique_ptr<CachingFileSystemWrapper> caching_filesystem;
 
 	//! Whether or not the reader has been initialized
 	bool initialized;

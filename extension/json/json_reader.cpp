@@ -1,10 +1,12 @@
 #include "json_reader.hpp"
 
+#include <utility>
+
 #include "duckdb/common/file_opener.hpp"
 #include "duckdb/common/serializer/deserializer.hpp"
 #include "duckdb/common/serializer/serializer.hpp"
+#include "duckdb/main/database.hpp"
 #include "json_scan.hpp"
-#include <utility>
 
 namespace duckdb {
 
@@ -183,8 +185,10 @@ void JSONReader::OpenJSONFile() {
 	lock_guard<mutex> guard(lock);
 	if (!IsOpen()) {
 		auto &fs = FileSystem::GetFileSystem(context);
-		auto regular_file_handle = fs.OpenFile(file, FileFlags::FILE_FLAGS_READ | options.compression);
-		file_handle = make_uniq<JSONFileHandle>(context, std::move(regular_file_handle), BufferAllocator::Get(context));
+		auto& db = DatabaseInstance::GetDatabase(context);
+		caching_filesystem = make_uniq<CachingFileSystemWrapper>(fs, db);
+		auto caching_file_handle = caching_filesystem->OpenFile(file, FileFlags::FILE_FLAGS_READ | options.compression);
+		file_handle = make_uniq<JSONFileHandle>(context, std::move(caching_file_handle), BufferAllocator::Get(context));
 	}
 	Reset();
 }
