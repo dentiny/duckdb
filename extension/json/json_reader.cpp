@@ -929,7 +929,7 @@ void JSONReader::FinalizeBuffer(JSONReaderScanState &scan_state) {
 			}
 		}
 	}
-	// then finalize the buffer (file_position should have been set during read)
+	// then finalize the buffer
 	FinalizeBufferInternal(scan_state, scan_state.read_buffer, scan_state.buffer_index.GetIndex(), scan_state.file_position);
 }
 
@@ -948,14 +948,12 @@ void JSONReader::FinalizeBufferInternal(JSONReaderScanState &scan_state, Allocat
 		readers = scan_state.is_last ? 1 : 2;
 	}
 
-	// Check if we can seek - determines whether we need to store buffer data
-	bool can_seek = GetFileHandle().CanSeek();
+	// Check if we can seek, used to determine whether we need to store buffer data
+	const bool can_seek = GetFileHandle().CanSeek();
 	
-	// For non-seekable files (compressed, pipes), store buffer data when readers > 1
-	// For seekable files, we can re-read from CachingFileSystemWrapper cache
+	// Only store buffer data for non-seekable files
 	AllocatedData buffer_copy;
 	if (!can_seek && readers > 1) {
-		// Non-seekable file: must store buffer data for CopyRemainder
 		buffer_copy = std::move(buffer);
 	}
 	
@@ -1013,7 +1011,7 @@ bool JSONReader::PrepareBufferForRead(JSONReaderScanState &scan_state) {
 		scan_state.buffer_size = auto_detect_data_size;
 		scan_state.read_buffer = std::move(auto_detect_data);
 		scan_state.buffer_ptr = char_ptr_cast(scan_state.read_buffer.get());
-		scan_state.file_position = 0; // Auto-detect always reads from the start
+		scan_state.file_position = 0;
 		scan_state.prev_buffer_remainder = 0;
 		scan_state.needs_to_read = false;
 		scan_state.is_last = false;
@@ -1110,16 +1108,13 @@ bool JSONReader::ReadNextBufferNoSeek(JSONReaderScanState &scan_state) {
 	}
 	scan_state.buffer_index = GetBufferIndex();
 	PrepareForReadInternal(scan_state);
-	// For non-seekable files, file_position is the current read position (tracked by file_handle)
-	// We can't know the exact position before reading, so we use the remaining size calculation
-	// For seekable files, we should use read_position from PrepareBufferSeek
+
 	if (file_handle.CanSeek()) {
-		// Position should have been set by PrepareBufferSeek
 		scan_state.file_position = scan_state.read_position;
 	} else {
-		// For non-seekable files, approximate position from file size and remaining
 		scan_state.file_position = file_handle.FileSize() - file_handle.Remaining();
 	}
+
 	if (!file_handle.Read(scan_state.buffer_ptr + read_offset, read_size, request_size)) {
 		return false; // Couldn't read anything
 	}

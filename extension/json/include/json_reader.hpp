@@ -24,8 +24,7 @@ namespace duckdb {
 struct JSONScanGlobalState;
 class JSONReader;
 
-//! Metadata about a buffer - stores buffer data only when needed (non-seekable files)
-//! For seekable uncompressed files, data can be re-read from filesystem cache
+//! Metadata about a buffer
 struct JSONBufferMetadata {
 public:
 	JSONBufferMetadata(idx_t buffer_index_p, idx_t readers_p, idx_t buffer_size_p, idx_t buffer_start_p,
@@ -45,16 +44,15 @@ public:
 	const idx_t buffer_size;
 	//! The start position in the buffer
 	const idx_t buffer_start;
-	//! File position where this buffer starts (for reading from cache)
+	//! File position where this buffer starts
 	const idx_t file_position;
-	//! Line or object count in this buffer (set after parsing)
+	//! Line or object count in this buffer, which is set after parsing
 	atomic<int64_t> line_or_object_count;
-	//! Whether the file can seek (for deciding whether to store buffer_data)
+	//! Whether the file can seek, which is used to decide whether store buffer_data
 	const bool can_seek;
-	//! Buffer data - only stored for non-seekable files (compressed, pipes)
+	//! Buffer data, only used for non-seekable files
 	AllocatedData buffer_data;
 };
-
 
 struct JSONFileHandle {
 public:
@@ -164,7 +162,7 @@ struct JSONReaderScanState {
 	idx_t prev_buffer_remainder = 0;
 	idx_t prev_buffer_offset = 0;
 	idx_t lines_or_objects_in_buffer = 0;
-	//! File position where current buffer starts (for reading from filesystem cache)
+	//! File position where current buffer starts
 	idx_t file_position = 0;
 	//! Whether this is the first time scanning this buffer
 	bool is_first_scan = false;
@@ -295,7 +293,7 @@ private:
 	bool initialized;
 	//! Next buffer index within the file
 	idx_t next_buffer_index;
-	//! Mapping from batch index to buffer metadata (no actual buffer data stored - uses filesystem cache)
+	//! Mapping from batch index to buffer metadata
 	unordered_map<idx_t, unique_ptr<JSONBufferMetadata>> buffer_map;
 
 	//! Line count per buffer
