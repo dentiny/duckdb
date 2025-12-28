@@ -731,14 +731,28 @@ bool JSONReader::CopyRemainderFromPreviousBuffer(JSONReaderScanState &scan_state
 		previous_buffer_metadata = GetBuffer(scan_state.buffer_index.GetIndex() - 1);
 	}
 
-	// Get the previous buffer's data - it must be stored in metadata for partial reads
-	if (!previous_buffer_metadata->buffer_data) {
-		throw InternalException("Previous buffer data not available for CopyRemainder");
+	idx_t prev_buffer_size = previous_buffer_metadata->buffer_size - previous_buffer_metadata->buffer_start;
+	char *prev_buffer_ptr;
+	AllocatedData temp_buffer;
+	
+	if (previous_buffer_metadata->can_seek) {
+		// Seekable file: re-read from CachingFileSystemWrapper cache (no double caching)
+		idx_t read_size = MinValue<idx_t>(options.maximum_object_size, prev_buffer_size);
+		idx_t read_start_pos = previous_buffer_metadata->file_position + (prev_buffer_size - read_size);
+		
+		temp_buffer = AllocatedData(scan_state.global_allocator.Allocate(read_size));
+		auto &file_handle = GetFileHandle();
+		file_handle.ReadAtPosition(char_ptr_cast(temp_buffer.get()), read_size, read_start_pos);
+		prev_buffer_ptr = char_ptr_cast(temp_buffer.get()) + read_size;
+	} else {
+		// Non-seekable file (compressed, pipe): use stored buffer data
+		if (!previous_buffer_metadata->buffer_data) {
+			throw InternalException("Previous buffer data not available for non-seekable file");
+		}
+		prev_buffer_ptr = char_ptr_cast(previous_buffer_metadata->buffer_data.get()) + previous_buffer_metadata->buffer_size;
 	}
 	
-	// Find the newline in the previous buffer
-	idx_t prev_buffer_size = previous_buffer_metadata->buffer_size - previous_buffer_metadata->buffer_start;
-	auto prev_buffer_ptr = char_ptr_cast(previous_buffer_metadata->buffer_data.get()) + previous_buffer_metadata->buffer_size;
+	// Find newline and copy remainder
 	auto prev_object_start = PreviousNewline(prev_buffer_ptr, prev_buffer_size);
 	auto prev_object_size = NumericCast<idx_t>(prev_buffer_ptr - prev_object_start);
 
@@ -746,7 +760,8 @@ bool JSONReader::CopyRemainderFromPreviousBuffer(JSONReaderScanState &scan_state
 	if (prev_object_size > scan_state.buffer_offset) {
 		ThrowObjectSizeError(prev_object_size);
 	}
-	// Now copy the data to our reconstruct buffer
+	
+	// Copy the data to our reconstruct buffer
 	memcpy(scan_state.buffer_ptr + scan_state.buffer_offset - prev_object_size, prev_object_start, prev_object_size);
 
 	// We copied the object, so we are no longer reading the previous buffer
@@ -933,17 +948,21 @@ void JSONReader::FinalizeBufferInternal(JSONReaderScanState &scan_state, Allocat
 		readers = scan_state.is_last ? 1 : 2;
 	}
 
-	// Create metadata entry - store buffer data only if readers > 1 (needed for CopyRemainder)
-	// When readers == 1, we can just move the buffer reference and avoid storing it
+	// Check if we can seek - determines whether we need to store buffer data
+	bool can_seek = GetFileHandle().CanSeek();
+	
+	// For non-seekable files (compressed, pipes), store buffer data when readers > 1
+	// For seekable files, we can re-read from CachingFileSystemWrapper cache
 	AllocatedData buffer_copy;
-	if (readers > 1) {
-		// Need to keep buffer data for the next buffer to copy from
-		// For now, we must keep the data since we can't re-read compressed streams
-		// Move the buffer into the metadata
+	if (!can_seek && readers > 1) {
+		// Non-seekable file: must store buffer data for CopyRemainder
 		buffer_copy = std::move(buffer);
 	}
 	
-	auto metadata = make_uniq<JSONBufferMetadata>(buffer_index, readers, scan_state.buffer_size, scan_state.buffer_offset, file_position, std::move(buffer_copy));
+	// Create metadata entry
+	auto metadata = make_uniq<JSONBufferMetadata>(buffer_index, readers, scan_state.buffer_size, 
+	                                              scan_state.buffer_offset, file_position, can_seek);
+	metadata->buffer_data = std::move(buffer_copy);
 	scan_state.current_buffer_metadata = metadata.get();
 	InsertBuffer(buffer_index, std::move(metadata));
 
