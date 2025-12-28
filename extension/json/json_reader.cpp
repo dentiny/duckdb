@@ -732,37 +732,53 @@ bool JSONReader::CopyRemainderFromPreviousBuffer(JSONReaderScanState &scan_state
 	}
 
 	idx_t prev_buffer_size = previous_buffer_metadata->buffer_size - previous_buffer_metadata->buffer_start;
-	char *prev_buffer_ptr;
-	AllocatedData temp_buffer;
+	const char *prev_buffer_ptr = nullptr;
+	const char *prev_object_start = nullptr;
+	idx_t prev_object_size = 0;
 	
+	D_ASSERT(scan_state.buffer_offset == options.maximum_object_size);
+	
+	// For seekable files, read directly into destination buffer
 	if (previous_buffer_metadata->can_seek) {
-		// Seekable file: re-read from CachingFileSystemWrapper cache (no double caching)
 		idx_t read_size = MinValue<idx_t>(options.maximum_object_size, prev_buffer_size);
 		idx_t read_start_pos = previous_buffer_metadata->file_position + (prev_buffer_size - read_size);
 		
-		temp_buffer = AllocatedData(scan_state.global_allocator.Allocate(read_size));
+		// Read directly to the end of the available space in scan_state buffer
 		auto &file_handle = GetFileHandle();
-		file_handle.ReadAtPosition(char_ptr_cast(temp_buffer.get()), read_size, read_start_pos);
-		prev_buffer_ptr = char_ptr_cast(temp_buffer.get()) + read_size;
-	} else {
-		// Non-seekable file (compressed, pipe): use stored buffer data
+		char *read_dest = scan_state.buffer_ptr + scan_state.buffer_offset - read_size;
+		file_handle.ReadAtPosition(read_dest, read_size, read_start_pos);
+		
+		// Find the start of the incomplete object
+		prev_buffer_ptr = read_dest + read_size;
+		prev_object_start = PreviousNewline(prev_buffer_ptr, prev_buffer_size);
+		prev_object_size = NumericCast<idx_t>(prev_buffer_ptr - prev_object_start);
+		
+		if (prev_object_size > scan_state.buffer_offset) {
+			ThrowObjectSizeError(prev_object_size);
+		}
+
+		// Move data to the correct position if needed (overlapping regions, so use memmove)
+		char *final_dest = scan_state.buffer_ptr + scan_state.buffer_offset - prev_object_size;
+		if (prev_object_start != final_dest) {
+			memmove(final_dest, prev_object_start, prev_object_size);
+		}
+	} 
+	// For non-seekable file, use stored buffer data
+	else {
 		if (!previous_buffer_metadata->buffer_data) {
 			throw InternalException("Previous buffer data not available for non-seekable file");
 		}
 		prev_buffer_ptr = char_ptr_cast(previous_buffer_metadata->buffer_data.get()) + previous_buffer_metadata->buffer_size;
+		
+		// Find newline and copy remainder
+		prev_object_start = PreviousNewline(prev_buffer_ptr, prev_buffer_size);
+		prev_object_size = NumericCast<idx_t>(prev_buffer_ptr - prev_object_start);
+		
+		if (prev_object_size > scan_state.buffer_offset) {
+			ThrowObjectSizeError(prev_object_size);
+		}
+		memcpy(scan_state.buffer_ptr + scan_state.buffer_offset - prev_object_size, prev_object_start, prev_object_size);
 	}
-	
-	// Find newline and copy remainder
-	auto prev_object_start = PreviousNewline(prev_buffer_ptr, prev_buffer_size);
-	auto prev_object_size = NumericCast<idx_t>(prev_buffer_ptr - prev_object_start);
-
-	D_ASSERT(scan_state.buffer_offset == options.maximum_object_size);
-	if (prev_object_size > scan_state.buffer_offset) {
-		ThrowObjectSizeError(prev_object_size);
-	}
-	
-	// Copy the data to our reconstruct buffer
-	memcpy(scan_state.buffer_ptr + scan_state.buffer_offset - prev_object_size, prev_object_start, prev_object_size);
 
 	// We copied the object, so we are no longer reading the previous buffer
 	if (--previous_buffer_metadata->readers == 0) {
