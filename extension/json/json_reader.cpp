@@ -739,8 +739,9 @@ bool JSONReader::CopyRemainderFromPreviousBuffer(JSONReaderScanState &scan_state
 
 	// For seekable files, read directly into destination buffer
 	if (previous_buffer_metadata->can_seek) {
-		idx_t read_size = MinValue<idx_t>(options.maximum_object_size, prev_buffer_size);
-		idx_t read_start_pos = previous_buffer_metadata->file_position + (prev_buffer_size - read_size);
+		D_ASSERT(previous_buffer_metadata->file_position.IsValid());
+		const idx_t read_size = MinValue<idx_t>(options.maximum_object_size, prev_buffer_size);
+		const idx_t read_start_pos = previous_buffer_metadata->file_position.GetIndex() + (prev_buffer_size - read_size);
 
 		// Read directly to the end of the available space in scan_state buffer
 		auto &file_handle = GetFileHandle();
@@ -961,7 +962,7 @@ bool JSONReader::ReadNextBuffer(JSONReaderScanState &scan_state) {
 }
 
 void JSONReader::FinalizeBufferInternal(JSONReaderScanState &scan_state, AllocatedData &buffer, idx_t buffer_index,
-                                        idx_t file_position) {
+                                        optional_idx file_position) {
 	idx_t readers = 1;
 	if (scan_state.file_read_type == JSONFileReadType::SCAN_PARTIAL) {
 		readers = scan_state.is_last ? 1 : 2;
@@ -1030,7 +1031,8 @@ bool JSONReader::PrepareBufferForRead(JSONReaderScanState &scan_state) {
 		scan_state.buffer_size = auto_detect_data_size;
 		scan_state.read_buffer = std::move(auto_detect_data);
 		scan_state.buffer_ptr = char_ptr_cast(scan_state.read_buffer.get());
-		scan_state.file_position = 0;
+		// Auto-detect always reads from position 0, only used for seekable files
+		scan_state.file_position = GetFileHandle().CanSeek() ? optional_idx(0) : optional_idx();
 		scan_state.prev_buffer_remainder = 0;
 		scan_state.needs_to_read = false;
 		scan_state.is_last = false;
@@ -1098,7 +1100,7 @@ void JSONReader::ReadNextBufferSeek(JSONReaderScanState &scan_state) {
 		}
 
 		// Now read the file lock-free!
-		scan_state.file_position = scan_state.read_position; // Track file position for cache reads
+		scan_state.file_position = optional_idx(scan_state.read_position); // Track file position for seekable files
 		file_handle.ReadAtPosition(scan_state.buffer_ptr + read_offset, scan_state.read_size, scan_state.read_position,
 		                           scan_state.thread_local_filehandle);
 	}
@@ -1128,15 +1130,21 @@ bool JSONReader::ReadNextBufferNoSeek(JSONReaderScanState &scan_state) {
 	scan_state.buffer_index = GetBufferIndex();
 	PrepareForReadInternal(scan_state);
 
+	// Track position before read for seekable files
+	idx_t position_before_read = 0;
 	if (file_handle.CanSeek()) {
-		scan_state.file_position = scan_state.read_position;
-	} else {
-		scan_state.file_position = file_handle.FileSize() - file_handle.Remaining();
+		position_before_read = file_handle.FileSize() - file_handle.Remaining();
 	}
-
 	if (!file_handle.Read(scan_state.buffer_ptr + read_offset, read_size, request_size)) {
 		return false; // Couldn't read anything
 	}
+	
+	if (file_handle.CanSeek()) {
+		scan_state.file_position = optional_idx(position_before_read);
+	} else {
+		scan_state.file_position = optional_idx();
+	}
+
 	scan_state.is_last = read_size == 0;
 	if (scan_state.is_last) {
 		file_handle.Close();

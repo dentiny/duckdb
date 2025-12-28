@@ -28,7 +28,7 @@ class JSONReader;
 struct JSONBufferMetadata {
 public:
 	JSONBufferMetadata(idx_t buffer_index_p, idx_t readers_p, idx_t buffer_size_p, idx_t buffer_start_p,
-	                   idx_t file_position_p, bool can_seek_p)
+	                   optional_idx file_position_p, bool can_seek_p)
 	    : buffer_index(buffer_index_p), readers(readers_p), buffer_size(buffer_size_p), buffer_start(buffer_start_p),
 	      file_position(file_position_p), line_or_object_count(-1), can_seek(can_seek_p) {
 	}
@@ -43,8 +43,8 @@ public:
 	const idx_t buffer_size;
 	//! The start position in the buffer
 	const idx_t buffer_start;
-	//! File position where this buffer starts
-	const idx_t file_position;
+	//! File position where this buffer starts (only valid for seekable files)
+	const optional_idx file_position;
 	//! Line or object count in this buffer, which is set after parsing
 	atomic<int64_t> line_or_object_count;
 	//! Whether the file can seek, which is used to decide whether store buffer_data
@@ -161,8 +161,8 @@ struct JSONReaderScanState {
 	idx_t prev_buffer_remainder = 0;
 	idx_t prev_buffer_offset = 0;
 	idx_t lines_or_objects_in_buffer = 0;
-	//! File position where current buffer starts
-	idx_t file_position = 0;
+	//! File position where current buffer starts, only set for seekable files
+	optional_idx file_position;
 	//! Whether this is the first time scanning this buffer
 	bool is_first_scan = false;
 	//! Whether this is the last batch of the file
@@ -258,7 +258,7 @@ private:
 	void AutoDetect(Allocator &allocator, idx_t buffer_size);
 	bool CopyRemainderFromPreviousBuffer(JSONReaderScanState &scan_state);
 	void FinalizeBufferInternal(JSONReaderScanState &scan_state, AllocatedData &buffer, idx_t buffer_index,
-	                            idx_t file_position);
+	                            optional_idx file_position);
 	void PrepareForReadInternal(JSONReaderScanState &scan_state);
 	void PrepareForScan(JSONReaderScanState &scan_state);
 	bool PrepareBufferSeek(JSONReaderScanState &scan_state);
