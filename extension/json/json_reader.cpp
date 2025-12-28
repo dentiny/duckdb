@@ -741,7 +741,8 @@ bool JSONReader::CopyRemainderFromPreviousBuffer(JSONReaderScanState &scan_state
 	if (previous_buffer_metadata->can_seek) {
 		D_ASSERT(previous_buffer_metadata->file_position.IsValid());
 		const idx_t read_size = MinValue<idx_t>(options.maximum_object_size, prev_buffer_size);
-		const idx_t read_start_pos = previous_buffer_metadata->file_position.GetIndex() + (prev_buffer_size - read_size);
+		const idx_t read_start_pos =
+		    previous_buffer_metadata->file_position.GetIndex() + (prev_buffer_size - read_size);
 
 		// Read directly to the end of the available space in scan_state buffer
 		auto &file_handle = GetFileHandle();
@@ -1138,7 +1139,7 @@ bool JSONReader::ReadNextBufferNoSeek(JSONReaderScanState &scan_state) {
 	if (!file_handle.Read(scan_state.buffer_ptr + read_offset, read_size, request_size)) {
 		return false; // Couldn't read anything
 	}
-	
+
 	if (file_handle.CanSeek()) {
 		scan_state.file_position = optional_idx(position_before_read);
 	} else {
