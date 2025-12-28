@@ -29,9 +29,8 @@ struct JSONBufferMetadata {
 public:
 	JSONBufferMetadata(idx_t buffer_index_p, idx_t readers_p, idx_t buffer_size_p, idx_t buffer_start_p,
 	                   idx_t file_position_p, bool can_seek_p)
-	    : buffer_index(buffer_index_p), readers(readers_p), buffer_size(buffer_size_p),
-	      buffer_start(buffer_start_p), file_position(file_position_p), line_or_object_count(-1),
-	      can_seek(can_seek_p) {
+	    : buffer_index(buffer_index_p), readers(readers_p), buffer_size(buffer_size_p), buffer_start(buffer_start_p),
+	      file_position(file_position_p), line_or_object_count(-1), can_seek(can_seek_p) {
 	}
 
 public:
@@ -258,7 +257,8 @@ private:
 	void SkipOverArrayStart(JSONReaderScanState &scan_state);
 	void AutoDetect(Allocator &allocator, idx_t buffer_size);
 	bool CopyRemainderFromPreviousBuffer(JSONReaderScanState &scan_state);
-	void FinalizeBufferInternal(JSONReaderScanState &scan_state, AllocatedData &buffer, idx_t buffer_index, idx_t file_position);
+	void FinalizeBufferInternal(JSONReaderScanState &scan_state, AllocatedData &buffer, idx_t buffer_index,
+	                            idx_t file_position);
 	void PrepareForReadInternal(JSONReaderScanState &scan_state);
 	void PrepareForScan(JSONReaderScanState &scan_state);
 	bool PrepareBufferSeek(JSONReaderScanState &scan_state);
