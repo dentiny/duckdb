@@ -14,34 +14,43 @@
 #include "duckdb/common/file_system.hpp"
 #include "duckdb/common/multi_file/base_file_reader.hpp"
 #include "duckdb/common/multi_file/multi_file_reader.hpp"
-#include "json_reader_options.hpp"
 #include "duckdb/common/mutex.hpp"
+#include "duckdb/storage/caching_file_system_wrapper.hpp"
 #include "json_common.hpp"
 #include "json_enums.hpp"
+#include "json_reader_options.hpp"
 
 namespace duckdb {
 struct JSONScanGlobalState;
 class JSONReader;
 
-struct JSONBufferHandle {
+//! Metadata about a buffer
+struct JSONBufferMetadata {
 public:
-	JSONBufferHandle(JSONReader &reader, idx_t buffer_index, idx_t readers, AllocatedData &&buffer, idx_t buffer_size,
-	                 idx_t buffer_start);
+	JSONBufferMetadata(idx_t buffer_index_p, idx_t readers_p, idx_t buffer_size_p, idx_t buffer_start_p,
+	                   optional_idx file_position_p, bool can_seek_p)
+	    : buffer_index(buffer_index_p), readers(readers_p), buffer_size(buffer_size_p), buffer_start(buffer_start_p),
+	      file_position(file_position_p), line_or_object_count(-1), can_seek(can_seek_p) {
+	}
 
 public:
-	//! The reader this buffer comes from
-	JSONReader &reader;
 	//! Buffer index (within same file)
 	const idx_t buffer_index;
 
 	//! Number of readers for this buffer
 	atomic<idx_t> readers;
-	//! The buffer
-	AllocatedData buffer;
 	//! The size of the data in the buffer (can be less than buffer.GetSize())
 	const idx_t buffer_size;
 	//! The start position in the buffer
-	idx_t buffer_start;
+	const idx_t buffer_start;
+	//! File position where this buffer starts (only valid for seekable files)
+	const optional_idx file_position;
+	//! Line or object count in this buffer, which is set after parsing
+	atomic<int64_t> line_or_object_count;
+	//! Whether the file can seek, which is used to decide whether store buffer_data
+	const bool can_seek;
+	//! Buffer data, only used for non-seekable files
+	AllocatedData buffer_data;
 };
 
 struct JSONFileHandle {
@@ -143,7 +152,7 @@ struct JSONReaderScanState {
 	idx_t scan_count = 0;
 	JSONString units[STANDARD_VECTOR_SIZE];
 	yyjson_val *values[STANDARD_VECTOR_SIZE];
-	optional_ptr<JSONBufferHandle> current_buffer_handle;
+	optional_ptr<JSONBufferMetadata> current_buffer_metadata;
 	//! Current buffer read info
 	optional_ptr<JSONReader> current_reader;
 	char *buffer_ptr = nullptr;
@@ -152,6 +161,8 @@ struct JSONReaderScanState {
 	idx_t prev_buffer_remainder = 0;
 	idx_t prev_buffer_offset = 0;
 	idx_t lines_or_objects_in_buffer = 0;
+	//! File position where current buffer starts, only set for seekable files
+	optional_idx file_position;
 	//! Whether this is the first time scanning this buffer
 	bool is_first_scan = false;
 	//! Whether this is the last batch of the file
@@ -219,7 +230,7 @@ public:
 	//! Get a new buffer index (must hold the lock)
 	idx_t GetBufferIndex();
 	//! Set line count for a buffer that is done (grabs the lock)
-	void SetBufferLineOrObjectCount(JSONBufferHandle &handle, idx_t count);
+	void SetBufferLineOrObjectCount(JSONBufferMetadata &metadata, idx_t count);
 	//! Records a parse error in the specified buffer
 	void AddParseError(JSONReaderScanState &scan_state, idx_t line_or_object_in_buf, yyjson_read_err &err,
 	                   const string &extra = "");
@@ -240,13 +251,14 @@ public:
 	//! Scan progress
 	double GetProgress() const;
 
-	void DecrementBufferUsage(JSONBufferHandle &handle, idx_t lines_or_object_in_buffer, AllocatedData &buffer);
+	void DecrementBufferUsage(JSONBufferMetadata &metadata, idx_t lines_or_object_in_buffer);
 
 private:
 	void SkipOverArrayStart(JSONReaderScanState &scan_state);
 	void AutoDetect(Allocator &allocator, idx_t buffer_size);
 	bool CopyRemainderFromPreviousBuffer(JSONReaderScanState &scan_state);
-	void FinalizeBufferInternal(JSONReaderScanState &scan_state, AllocatedData &buffer, idx_t buffer_index);
+	void FinalizeBufferInternal(JSONReaderScanState &scan_state, AllocatedData &buffer, idx_t buffer_index,
+	                            optional_idx file_position);
 	void PrepareForReadInternal(JSONReaderScanState &scan_state);
 	void PrepareForScan(JSONReaderScanState &scan_state);
 	bool PrepareBufferSeek(JSONReaderScanState &scan_state);
@@ -254,10 +266,10 @@ private:
 	bool ReadNextBufferNoSeek(JSONReaderScanState &scan_state);
 	void FinalizeBuffer(JSONReaderScanState &scan_state);
 
-	//! Insert/get/remove buffer (grabs the lock)
-	void InsertBuffer(idx_t buffer_idx, unique_ptr<JSONBufferHandle> &&buffer);
-	optional_ptr<JSONBufferHandle> GetBuffer(idx_t buffer_idx);
-	AllocatedData RemoveBuffer(JSONBufferHandle &handle);
+	//! Insert/get/remove buffer metadata (grabs the lock)
+	void InsertBuffer(idx_t buffer_idx, unique_ptr<JSONBufferMetadata> &&metadata);
+	optional_ptr<JSONBufferMetadata> GetBuffer(idx_t buffer_idx);
+	void RemoveBuffer(idx_t buffer_idx);
 
 	void ThrowObjectSizeError(const idx_t object_size);
 
@@ -275,13 +287,14 @@ private:
 
 	//! File handle
 	unique_ptr<JSONFileHandle> file_handle;
+	unique_ptr<CachingFileSystemWrapper> caching_filesystem;
 
 	//! Whether or not the reader has been initialized
 	bool initialized;
 	//! Next buffer index within the file
 	idx_t next_buffer_index;
-	//! Mapping from batch index to currently held buffers
-	unordered_map<idx_t, unique_ptr<JSONBufferHandle>> buffer_map;
+	//! Mapping from batch index to buffer metadata
+	unordered_map<idx_t, unique_ptr<JSONBufferMetadata>> buffer_map;
 
 	//! Line count per buffer
 	vector<int64_t> buffer_line_or_object_counts;
