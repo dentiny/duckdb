@@ -58,6 +58,8 @@ public:
 
 	void RegisterSubSystem(FileCompressionType compression_type, unique_ptr<FileSystem> fs) override;
 
+	void RegisterCompressionSubsystem(const string &compression_type, unique_ptr<FileSystem> fs) override;
+
 	unique_ptr<FileSystem> ExtractSubSystem(const string &name) override;
 
 	vector<string> ListSubSystems() override;
@@ -90,9 +92,13 @@ private:
 	FileSystem &FindFileSystem(const string &path);
 	optional_ptr<FileSystem> FindFileSystemInternal(const string &path);
 
+	// Get compressed filesystem via compression type and filepath.
+	optional_ptr<FileSystem> FindCompressionFileSystem(FileCompressionType compression, const string &file_path);
+
 private:
 	vector<unique_ptr<FileSystem>> sub_systems;
-	map<FileCompressionType, unique_ptr<FileSystem>> compressed_fs;
+	// Maps from compression type string to compression filesystem instances.
+	unordered_map<string, unique_ptr<FileSystem>> compressed_fs;
 	const unique_ptr<FileSystem> default_fs;
 	unordered_set<string> disabled_file_systems;
 };
