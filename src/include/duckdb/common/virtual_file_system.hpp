@@ -58,6 +58,8 @@ public:
 
 	void RegisterSubSystem(FileCompressionType compression_type, unique_ptr<FileSystem> fs) override;
 
+	void RegisterCompressionSubsystem(string compression_type, unique_ptr<FileSystem> fs) override;
+
 	unique_ptr<FileSystem> ExtractSubSystem(const string &name) override;
 
 	vector<string> ListSubSystems() override;
@@ -92,7 +94,7 @@ private:
 
 private:
 	vector<unique_ptr<FileSystem>> sub_systems;
-	map<FileCompressionType, unique_ptr<FileSystem>> compressed_fs;
+	map<string, unique_ptr<FileSystem>> compressed_fs;
 	const unique_ptr<FileSystem> default_fs;
 	unordered_set<string> disabled_file_systems;
 };

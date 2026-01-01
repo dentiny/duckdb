@@ -52,8 +52,19 @@ unique_ptr<FileHandle> VirtualFileSystem::OpenFileExtended(const OpenFileInfo &f
 				    "Attempting to open a compressed file, but the compression type is not supported.\nConsider "
 				    "explicitly \"INSTALL parquet; LOAD parquet;\" to support this compression scheme");
 			}
-			throw NotImplementedException(
-			    "Attempting to open a compressed file, but the compression type is not supported");
+			// Attempt all registered compression filesystems and see if it could handle the given compressed file.
+			bool found = false;
+			for (const auto iter : compressed_fs) {
+				if (iter->second->CanHandle(file.path)) {
+					entry = iter;
+					found = true;
+					break;
+				}
+			}
+			if (!found) {
+				throw NotImplementedException("Attempting to open a compressed file, but the compression type is not supported");
+			}
+			
 		}
 		file_handle = entry->second->OpenCompressedFile(context, std::move(file_handle), flags.OpenForWriting());
 	}
@@ -169,6 +180,10 @@ void VirtualFileSystem::UnregisterSubSystem(const string &name) {
 }
 
 void VirtualFileSystem::RegisterSubSystem(FileCompressionType compression_type, unique_ptr<FileSystem> fs) {
+	compressed_fs[compression_type] = std::move(fs);
+}
+
+void VirtualFileSystem::RegisterCompressionSubsystem(string compression_type, unique_ptr<FileSystem> fs) {
 	compressed_fs[compression_type] = std::move(fs);
 }
 
