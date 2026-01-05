@@ -292,6 +292,8 @@ void DatabaseInstance::Initialize(const char *database_path, DBConfig *user_conf
 
 	scheduler = make_uniq<TaskScheduler>(*this);
 	object_cache = make_uniq<ObjectCache>();
+	object_cache->SetBufferPool(config.buffer_pool.get());
+	config.buffer_pool->SetObjectCache(object_cache.get());
 	connection_manager = make_uniq<ConnectionManager>();
 	extension_manager = make_uniq<ExtensionManager>(*this);
 

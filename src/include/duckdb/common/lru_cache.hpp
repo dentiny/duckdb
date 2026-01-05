@@ -19,6 +19,8 @@
 
 namespace duckdb {
 
+struct BufferPoolReservation;
+
 // A LRU cache implementation, whose value could be accessed in a shared manner with shared pointer.
 // Notice, it's not thread-safe.
 template <typename Key, typename Val, typename KeyHash = std::hash<Key>, typename KeyEqual = std::equal_to<Key>>
@@ -41,23 +43,25 @@ public:
 
 	// Insert `value` with key `key` and explicit memory size. This will replace any previous entry with the same key.
 	void Put(Key key, shared_ptr<Val> value, idx_t memory_size) {
-		// Remove existing entry if present
+		Put(std::move(key), std::move(value), memory_size, nullptr);
+	}
+
+	void Put(Key key, shared_ptr<Val> value, idx_t memory_size, unique_ptr<BufferPoolReservation> reservation) {
 		auto existing_it = entry_map.find(key);
 		if (existing_it != entry_map.end()) {
 			DeleteImpl(existing_it);
 		}
 
-		// Evict entries if needed to make room
 		if (max_memory > 0 && memory_size > 0) {
 			EvictIfNeeded(memory_size);
 		}
 
-		// Add new entry
 		lru_list.emplace_front(key);
 		Entry new_entry;
 		new_entry.value = std::move(value);
 		new_entry.memory = memory_size;
 		new_entry.lru_iterator = lru_list.begin();
+		new_entry.reservation = std::move(reservation);
 
 		entry_map[std::move(key)] = std::move(new_entry);
 		current_memory += memory_size;
@@ -88,6 +92,11 @@ public:
 
 	// Clear the whole cache.
 	void Clear() {
+		for (auto &entry : entry_map) {
+			if (entry.second.reservation) {
+				entry.second.reservation->Resize(0);
+			}
+		}
 		entry_map.clear();
 		lru_list.clear();
 		current_memory = 0;
@@ -103,11 +112,27 @@ public:
 		return entry_map.size();
 	}
 
+	idx_t EvictToReduceMemory(idx_t target_bytes) {
+		idx_t freed = 0;
+		while (!lru_list.empty() && freed < target_bytes) {
+			const auto &stale_key = lru_list.back();
+			auto stale_it = entry_map.find(stale_key);
+			if (stale_it != entry_map.end()) {
+				freed += stale_it->second.memory;
+				DeleteImpl(stale_it);
+			} else {
+				lru_list.pop_back();
+			}
+		}
+		return freed;
+	}
+
 private:
 	struct Entry {
 		shared_ptr<Val> value;
 		idx_t memory;
 		typename list<Key>::iterator lru_iterator;
+		unique_ptr<BufferPoolReservation> reservation;
 	};
 
 	using EntryMap = unordered_map<Key, Entry, KeyHash, KeyEqual>;
@@ -115,6 +140,9 @@ private:
 	void DeleteImpl(typename EntryMap::iterator iter) {
 		current_memory -= iter->second.memory;
 		D_ASSERT(current_memory >= 0);
+		if (iter->second.reservation) {
+			iter->second.reservation->Resize(0);
+		}
 		lru_list.erase(iter->second.lru_iterator);
 		entry_map.erase(iter);
 	}

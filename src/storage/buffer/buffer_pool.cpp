@@ -7,6 +7,7 @@
 #include "duckdb/parallel/concurrentqueue.hpp"
 #include "duckdb/parallel/task_scheduler.hpp"
 #include "duckdb/storage/block_allocator.hpp"
+#include "duckdb/storage/object_cache.hpp"
 #include "duckdb/storage/temporary_memory_manager.hpp"
 
 namespace duckdb {
@@ -321,11 +322,27 @@ BufferPool::EvictionResult BufferPool::EvictBlocks(MemoryTag tag, idx_t extra_me
 	for (auto &queue : queues) {
 		auto block_result = EvictBlocksInternal(*queue, tag, extra_memory, memory_limit, buffer);
 		if (block_result.success || RefersToSameObject(*queue, *queues.back())) {
-			return block_result; // Return upon success or upon last queue
+			if (block_result.success) {
+				return block_result;
+			}
+			break;
 		}
 	}
-	// This can never happen since we always return when i == 1. Exception to silence compiler warning
-	throw InternalException("Exited BufferPool::EvictBlocksInternal without obtaining BufferPool::EvictionResult");
+
+	if (object_cache && memory_usage.GetUsedMemory(MemoryUsageCaches::NO_FLUSH) > memory_limit) {
+		idx_t current_memory = memory_usage.GetUsedMemory(MemoryUsageCaches::NO_FLUSH);
+		idx_t target_to_free = current_memory - memory_limit;
+		object_cache->EvictToReduceMemory(target_to_free);
+	}
+
+	TempBufferPoolReservation r(tag, *this, extra_memory);
+	bool success = memory_usage.GetUsedMemory(MemoryUsageCaches::NO_FLUSH) <= memory_limit;
+	if (!success) {
+		r.Resize(0);
+	} else if (extra_memory > allocator_bulk_deallocation_flush_threshold) {
+		block_allocator.FlushAll(extra_memory);
+	}
+	return {success, std::move(r)};
 }
 
 BufferPool::EvictionResult BufferPool::EvictBlocksInternal(EvictionQueue &queue, MemoryTag tag, idx_t extra_memory,

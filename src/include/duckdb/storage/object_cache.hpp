@@ -9,6 +9,7 @@
 #pragma once
 
 #include "duckdb/common/common.hpp"
+#include "duckdb/common/enums/memory_tag.hpp"
 #include "duckdb/common/lru_cache.hpp"
 #include "duckdb/common/mutex.hpp"
 #include "duckdb/common/string.hpp"
@@ -17,6 +18,9 @@
 #include "duckdb/main/database.hpp"
 
 namespace duckdb {
+
+class BufferPool;
+struct BufferPoolReservation;
 
 //! ObjectCache is the base class for objects caches in DuckDB
 class ObjectCacheEntry {
@@ -33,18 +37,20 @@ public:
 
 class ObjectCache {
 public:
-	//! Default max memory 8GiB for non-evictable cache entries.
-	//
-	// TODO(hjiang): Hard-code a large enough memory consumption upper bound, which is likely a non-regression change.
-	// I will followup with another PR before v1.5.0 release to provide a user option to tune.
-	//
-	// A few consideration here: should we cap object cache memory consumption with duckdb max memory or separate.
 	static constexpr idx_t DEFAULT_MAX_MEMORY = 8ULL * 1024 * 1024 * 1024;
 
-	ObjectCache() : ObjectCache(DEFAULT_MAX_MEMORY) {
+	ObjectCache() : ObjectCache(DEFAULT_MAX_MEMORY, nullptr) {
 	}
 
-	explicit ObjectCache(idx_t max_memory) : lru_cache(max_memory) {
+	explicit ObjectCache(idx_t max_memory) : ObjectCache(max_memory, nullptr) {
+	}
+
+	explicit ObjectCache(idx_t max_memory, BufferPool *buffer_pool_p) 
+	    : lru_cache(max_memory), buffer_pool(buffer_pool_p) {
+	}
+
+	void SetBufferPool(BufferPool *buffer_pool_p) {
+		buffer_pool = buffer_pool_p;
 	}
 
 	shared_ptr<ObjectCacheEntry> GetObject(const string &key) {
@@ -69,7 +75,6 @@ public:
 	shared_ptr<T> GetOrCreate(const string &key, ARGS &&... args) {
 		const lock_guard<mutex> lock(lock_mutex);
 
-		// Check non-evictable entries first
 		auto non_evictable_it = non_evictable_entries.find(key);
 		if (non_evictable_it != non_evictable_entries.end()) {
 			auto &existing = non_evictable_it->second;
@@ -79,7 +84,6 @@ public:
 			return shared_ptr_cast<ObjectCacheEntry, T>(existing);
 		}
 
-		// Check evictable cache
 		auto existing = lru_cache.Get(key);
 		if (existing) {
 			if (existing->GetObjectType() != T::ObjectType()) {
@@ -88,14 +92,18 @@ public:
 			return shared_ptr_cast<ObjectCacheEntry, T>(existing);
 		}
 
-		// Create new entry while holding lock
 		auto value = make_shared_ptr<T>(args...);
 		const auto estimated_memory = value->GetEstimatedCacheMemory();
 		const bool is_evictable = estimated_memory.IsValid();
 		if (!is_evictable) {
 			non_evictable_entries[key] = value;
 		} else {
-			lru_cache.Put(key, value, estimated_memory.GetIndex());
+			unique_ptr<BufferPoolReservation> reservation;
+			if (buffer_pool) {
+				reservation = make_uniq<BufferPoolReservation>(MemoryTag::METADATA, *buffer_pool);
+				reservation->Resize(estimated_memory.GetIndex());
+			}
+			lru_cache.Put(key, value, estimated_memory.GetIndex(), std::move(reservation));
 		}
 
 		return value;
@@ -113,7 +121,12 @@ public:
 			non_evictable_entries[std::move(key)] = std::move(value);
 			return;
 		}
-		lru_cache.Put(std::move(key), std::move(value), estimated_memory.GetIndex());
+		unique_ptr<BufferPoolReservation> reservation;
+		if (buffer_pool) {
+			reservation = make_uniq<BufferPoolReservation>(MemoryTag::METADATA, *buffer_pool);
+			reservation->Resize(estimated_memory.GetIndex());
+		}
+		lru_cache.Put(std::move(key), std::move(value), estimated_memory.GetIndex(), std::move(reservation));
 	}
 
 	void Delete(const string &key) {
@@ -141,12 +154,16 @@ public:
 		return lru_cache.Size() + non_evictable_entries.size();
 	}
 
+	idx_t EvictToReduceMemory(idx_t target_bytes) {
+		const lock_guard<mutex> lock(lock_mutex);
+		return lru_cache.EvictToReduceMemory(target_bytes);
+	}
+
 private:
 	mutable mutex lock_mutex;
-	//! LRU cache for evictable entries
 	SharedLruCache<string, ObjectCacheEntry> lru_cache;
-	//! Separate storage for non-evictable entries (i.e., encryption keys)
 	unordered_map<string, shared_ptr<ObjectCacheEntry>> non_evictable_entries;
+	BufferPool *buffer_pool;
 };
 
 } // namespace duckdb

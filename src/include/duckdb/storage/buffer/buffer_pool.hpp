@@ -18,6 +18,7 @@
 namespace duckdb {
 
 class TemporaryMemoryManager;
+class ObjectCache;
 struct EvictionQueue;
 
 struct BufferEvictionNode {
@@ -62,6 +63,10 @@ public:
 	virtual idx_t GetQueryMaxMemory() const;
 
 	TemporaryMemoryManager &GetTemporaryMemoryManager();
+
+	void SetObjectCache(ObjectCache *object_cache_p) {
+		object_cache = object_cache_p;
+	}
 
 protected:
 	//! Evict blocks until the currently used memory + extra_memory fit, returns false if this was not possible
@@ -161,8 +166,8 @@ protected:
 	//! and only updates the global counter when the cache value exceeds a threshold.
 	//! Therefore, the statistics may have slight differences from the actual memory usage.
 	mutable MemoryUsage memory_usage;
-	//! The block allocator
 	BlockAllocator &block_allocator;
+	ObjectCache *object_cache = nullptr;
 };
 
 } // namespace duckdb
