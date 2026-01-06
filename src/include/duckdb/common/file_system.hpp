@@ -253,7 +253,6 @@ public:
 
 	//! registers a sub-file system to handle certain file name prefixes, e.g. http:// etc.
 	DUCKDB_API virtual void RegisterSubSystem(unique_ptr<FileSystem> sub_fs);
-	DUCKDB_API virtual void RegisterSubSystem(FileCompressionType compression_type, unique_ptr<FileSystem> fs);
 	//! Register a compression filesystem with compression type in string format, which allows extension to make their
 	//! own compression filesystem, with compression type not included in the compression type enum.
 	DUCKDB_API virtual void RegisterCompressionSubsystem(const string &compression_type, unique_ptr<FileSystem> fs);

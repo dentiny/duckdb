@@ -2,6 +2,8 @@
 
 #include "zstd.h"
 
+#include "duckdb/common/string_util.hpp"
+
 namespace duckdb {
 
 struct ZstdStreamWrapper : public StreamWrapper {
@@ -184,6 +186,10 @@ unique_ptr<FileHandle> ZStdFileSystem::OpenCompressedFile(QueryContext context, 
                                                           bool write) {
 	auto path = handle->path;
 	return make_uniq<ZStdFile>(context, std::move(handle), path, write);
+}
+
+bool ZStdFileSystem::CanHandleFile(const string& file) {
+	return StringUtil::EndsWith(file, CompressionExtensionFromType(FileCompressionType::ZSTD));
 }
 
 unique_ptr<StreamWrapper> ZStdFileSystem::CreateStream() {

@@ -31,6 +31,8 @@ public:
 	static string UncompressGZIPString(const string &in);
 	static string UncompressGZIPString(const char *length, idx_t size);
 
+	bool CanHandleFile(const string& file) override;
+
 	unique_ptr<StreamWrapper> CreateStream() override;
 	idx_t InBufferSize() override;
 	idx_t OutBufferSize() override;

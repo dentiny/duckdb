@@ -12,10 +12,10 @@ VirtualFileSystem::VirtualFileSystem() : VirtualFileSystem(FileSystem::CreateLoc
 }
 
 VirtualFileSystem::VirtualFileSystem(unique_ptr<FileSystem> &&inner) : default_fs(std::move(inner)) {
-	VirtualFileSystem::RegisterSubSystem(FileCompressionType::GZIP, make_uniq<GZipFileSystem>());
+	VirtualFileSystem::RegisterCompressionSubsystem(make_uniq<GZipFileSystem>());
 }
 
-optional_ptr<FileSystem> VirtualFileSystem::FindCompressionFileSystem(FileCompressionType compression,
+FileSystem* VirtualFileSystem::FindCompressionFileSystem(FileCompressionType compression,
                                                                       const string &file_path) {
 	D_ASSERT(compression != FileCompressionType::UNCOMPRESSED);
 
@@ -30,12 +30,12 @@ optional_ptr<FileSystem> VirtualFileSystem::FindCompressionFileSystem(FileCompre
 		// Special handle ZSTD compression, which is a known compression type for duckdb.
 		if (compression == FileCompressionType::ZSTD) {
 			throw NotImplementedException(
-			    "Attempting to open a compressed file, but the compression type is not supported.\nConsider "
-			    "explicitly \"INSTALL parquet; LOAD parquet;\" to support this compression scheme");
+				"Attempting to open a compressed file, but the compression type is not supported.\nConsider "
+				"explicitly \"INSTALL parquet; LOAD parquet;\" to support this compression scheme");
 		}
 
 		throw NotImplementedException(
-			    "Attempting to open a compressed file, but the compression type is not supported");
+					"Attempting to open a compressed file, but the compression type is not supported");
 	}
 
 	// Otherwise we try out all registered compression filesystems and see if they could be leveraged.
@@ -44,7 +44,28 @@ optional_ptr<FileSystem> VirtualFileSystem::FindCompressionFileSystem(FileCompre
 			return iter.second.get();
 		}
 	}
-	return nullptr;
+}
+
+FileCompressionType VirtualFileSystem::GetCompressionType(FileCompressionType compression, const string& path) {
+	if (compression != FileCompressionType::AUTO_DETECT) {
+		return compression;
+	}
+
+	// auto-detect compression settings based on file name
+	auto lower_path = StringUtil::Lower(path);
+	if (StringUtil::EndsWith(lower_path, ".tmp")) {
+		// strip .tmp
+		lower_path = lower_path.substr(0, lower_path.length() - 4);
+	}
+	if (IsFileCompressed(path, FileCompressionType::GZIP)) {
+		return FileCompressionType::GZIP;
+	}
+	if (IsFileCompressed(path, FileCompressionType::ZSTD)) {
+		return FileCompressionType::ZSTD;
+	}
+	
+	// Auto-detect supported compression
+	compression = FileCompressionType::AUTO_DETECT;
 }
 
 unique_ptr<FileHandle> VirtualFileSystem::OpenFileExtended(const OpenFileInfo &file, FileOpenFlags flags,
@@ -80,6 +101,7 @@ unique_ptr<FileHandle> VirtualFileSystem::OpenFileExtended(const OpenFileInfo &f
 	} else if (compression != FileCompressionType::UNCOMPRESSED) {
 		// If we cannot find a usable compression filesystem to use, decide it as uncompressed.
 		auto compression_filesystem = FindCompressionFileSystem(compression, file.path);
+		D_ASSERT(compression_filesystem != nullptr);
 		if (compression_filesystem == nullptr) {
 			return file_handle;
 		}
@@ -197,15 +219,25 @@ void VirtualFileSystem::UnregisterSubSystem(const string &name) {
 	throw InvalidInputException("Could not find filesystem with name %s", name);
 }
 
-void VirtualFileSystem::RegisterSubSystem(FileCompressionType compression_type, unique_ptr<FileSystem> fs) {
-	RegisterCompressionSubsystem(CompressionExtensionFromType(compression_type), std::move(fs));
+void VirtualFileSystem::RegisterSubSystem(unique_ptr<FileSystem> fs) {
+	RegisterCompressionSubsystem(std::move(fs));
 }
 
 void VirtualFileSystem::RegisterCompressionSubsystem(const string &compression_type, unique_ptr<FileSystem> fs) {
-	const bool insert_succ = compressed_fs.emplace(compression_type, std::move(fs)).second;
+	auto suffix = fs->Cast<CompressedFileSystem>().GetSuffix();
+
+	// Insert compression filesystems.
+	bool insert_succ = compressed_fs.emplace(compression_type, std::move(fs)).second;
 	if (!insert_succ) {
 		throw InvalidInputException("Cannot re-register compression filesystem of the same compression type %s!",
 		                            compression_type);
+	}
+
+	// Insert compression filesystem suffixes.
+	insert_succ = compression_suffixes.emplace(suffix, std::move(fs)).second;
+	if (!insert_succ) {
+		throw InvalidInputException("Cannot re-register compression filesystem of the same compression suffix %s!",
+		                            suffix);
 	}
 }
 
