@@ -1,13 +1,14 @@
 #include "duckdb/common/gzip_file_system.hpp"
+
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/file_system.hpp"
+#include "duckdb/common/limits.hpp"
 #include "duckdb/common/numeric_utils.hpp"
+#include "duckdb/common/string_util.hpp"
+#include "duckdb/main/client_context.hpp"
 
 #include "miniz.hpp"
 #include "miniz_wrapper.hpp"
-
-#include "duckdb/common/limits.hpp"
-#include "duckdb/main/client_context.hpp"
 
 namespace duckdb {
 
@@ -424,6 +425,10 @@ unique_ptr<FileHandle> GZipFileSystem::OpenCompressedFile(QueryContext context, 
                                                           bool write) {
 	auto path = handle->path;
 	return make_uniq<GZipFile>(context, std::move(handle), path, write);
+}
+
+bool GZipFileSystem::CanHandleFile(const string& file) {
+	return StringUtil::EndsWith(file, CompressionExtensionFromType(FileCompressionType::GZIP));
 }
 
 unique_ptr<StreamWrapper> GZipFileSystem::CreateStream() {

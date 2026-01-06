@@ -21,6 +21,8 @@ public:
 		return "ZStdFileSystem";
 	}
 
+	bool CanHandleFile(const string& file) override;
+
 	unique_ptr<StreamWrapper> CreateStream() override;
 	idx_t InBufferSize() override;
 	idx_t OutBufferSize() override;
