@@ -14,7 +14,6 @@
 #include "duckdb/common/mutex.hpp"
 #include "duckdb/common/string.hpp"
 #include "duckdb/common/unordered_map.hpp"
-#include "duckdb/main/client_context.hpp"
 #include "duckdb/main/database.hpp"
 #include "duckdb/storage/buffer/buffer_pool_reservation.hpp"
 

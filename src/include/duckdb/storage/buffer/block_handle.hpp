@@ -9,7 +9,6 @@
 #pragma once
 
 #include "duckdb/common/atomic.hpp"
-#include "duckdb/common/common.hpp"
 #include "duckdb/common/enums/destroy_buffer_upon.hpp"
 #include "duckdb/common/enums/memory_tag.hpp"
 #include "duckdb/common/file_buffer.hpp"

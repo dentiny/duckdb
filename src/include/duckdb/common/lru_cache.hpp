@@ -144,7 +144,6 @@ private:
 
 	void DeleteImpl(typename EntryMap::iterator iter) {
 		current_memory -= iter->second.reservation->size;
-		D_ASSERT(current_memory >= 0);
 		iter->second.reservation->Resize(0);
 		lru_list.erase(iter->second.lru_iterator);
 		entry_map.erase(iter);
