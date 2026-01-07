@@ -197,10 +197,11 @@ TEST_CASE("LRU Cache Evict To Reduce Memory", "[lru_cache]") {
 	REQUIRE(cache.CurrentMemory() == 10 * obj_size);
 
 	// Perform cache entries eviction, and check memory consumption.
-	idx_t target_memory = 6 * obj_size;
-	const idx_t freed = cache.EvictToReduceMemory(target_memory);
-	REQUIRE(cache.CurrentMemory() == target_memory);
-	REQUIRE(freed == 4 * obj_size);
+	// Evict 4 * obj_size bytes (4 objects), leaving 6 objects in cache
+	const idx_t bytes_to_free = 4 * obj_size;
+	const idx_t freed = cache.EvictToReduceMemory(bytes_to_free);
+	REQUIRE(freed >= bytes_to_free); // Should free at least the requested amount
+	REQUIRE(cache.CurrentMemory() == 6 * obj_size);
 	REQUIRE(cache.Size() == 6);
 
 	// The first 4 items should be evicted.

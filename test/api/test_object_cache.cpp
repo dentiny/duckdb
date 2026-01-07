@@ -122,12 +122,12 @@ TEST_CASE("Test ObjectCache Manual Eviction", "[api][object_cache]") {
 	const idx_t after_put_memory = buffer_pool.GetUsedMemory();
 	REQUIRE(after_put_memory == initial_memory + obj_size * obj_count);
 
-	// Evict until requested memory.
-	idx_t target_memory = 5 * 1024 * 1024;
-	idx_t freed = cache.EvictToReduceMemory(target_memory);
-	REQUIRE(cache.GetCurrentMemory() == target_memory);
+	// Evict 5 objects (5 * obj_size bytes), leaving 5 objects in cache
+	const idx_t bytes_to_free = 5 * obj_size;
+	idx_t freed = cache.EvictToReduceMemory(bytes_to_free);
+	REQUIRE(freed >= bytes_to_free); // Should free at least the requested amount
+	REQUIRE(cache.GetCurrentMemory() == 5 * obj_size);
 	REQUIRE(cache.GetEntryCount() == 5);
-	REQUIRE(freed == obj_size * obj_count - target_memory);
 
 	// First five items should be evicted.
 	for (idx_t i = 0; i < 5; i++) {
