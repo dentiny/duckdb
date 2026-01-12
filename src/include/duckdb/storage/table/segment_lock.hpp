@@ -30,7 +30,7 @@ public:
 		return *this;
 	}
 
-	void Release() {
+	void Release() DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 		lock.unlock();
 	}
 
