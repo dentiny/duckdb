@@ -64,7 +64,7 @@ protected:
 
 class StateWithBlockableTasks {
 public:
-	unique_lock<mutex> Lock() {
+	unique_lock<mutex> Lock() DUCKDB_EXCLUDES(lock)  {
 		return unique_lock<mutex>(lock);
 	}
 
@@ -97,11 +97,11 @@ public:
 		return true;
 	}
 
-	SinkResultType BlockSink(const unique_lock<mutex> &guard, const InterruptState &interrupt_state) {
+	SinkResultType BlockSink(const unique_lock<mutex> &guard, const InterruptState &interrupt_state) DUCKDB_REQUIRES(lock)  {
 		return BlockTask(guard, interrupt_state) ? SinkResultType::BLOCKED : SinkResultType::FINISHED;
 	}
 
-	SourceResultType BlockSource(const unique_lock<mutex> &guard, const InterruptState &interrupt_state) {
+	SourceResultType BlockSource(const unique_lock<mutex> &guard, const InterruptState &interrupt_state) DUCKDB_REQUIRES(lock)  {
 		return BlockTask(guard, interrupt_state) ? SourceResultType::BLOCKED : SourceResultType::FINISHED;
 	}
 
