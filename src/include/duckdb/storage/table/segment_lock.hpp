@@ -30,7 +30,7 @@ public:
 		return *this;
 	}
 
-	void Release() DUCKDB_REQUIRES(lock)  {
+	void Release() DUCKDB_REQUIRES(lock) {
 		lock.unlock();
 	}
 
