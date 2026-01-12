@@ -176,7 +176,7 @@ public:
 	}
 
 public:
-	bool AssignTask(SortedRunMergerLocalState &lstate) {
+	bool AssignTask(SortedRunMergerLocalState &lstate) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 		D_ASSERT(!lstate.partition_idx.IsValid());
 		D_ASSERT(lstate.task == SortedRunMergerTask::FINISHED);
 		auto guard = Lock();
@@ -192,7 +192,7 @@ public:
 		return MaxValue<idx_t>(num_partitions, 1);
 	}
 
-	void DestroyScannedData() {
+	void DestroyScannedData() DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 		if (!merger.external) {
 			return; // Only need to destroy when doing an external sort
 		}
@@ -374,7 +374,7 @@ SourceResultType SortedRunMergerLocalState::ExecuteTask(SortedRunMergerGlobalSta
 }
 
 void SortedRunMergerLocalState::ComputePartitionBoundaries(SortedRunMergerGlobalState &gstate,
-                                                           const optional_idx &p_idx) {
+                                                           const optional_idx &p_idx) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 	D_ASSERT(p_idx.IsValid());
 	D_ASSERT(task == SortedRunMergerTask::COMPUTE_BOUNDARIES);
 

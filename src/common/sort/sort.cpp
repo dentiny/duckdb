@@ -205,7 +205,7 @@ public:
 		}
 	}
 
-	void AddSortedRun(SortLocalSinkState &lstate) {
+	void AddSortedRun(SortLocalSinkState &lstate) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 		auto guard = Lock();
 		sorted_runs.push_back(std::move(lstate.sorted_run));
 		sorted_tuples += sorted_runs.back()->Count();
@@ -241,7 +241,7 @@ unique_ptr<GlobalSinkState> Sort::GetGlobalSinkState(ClientContext &context) con
 }
 
 //! Returns true if the Sink call is done (either because run size is small or because run was finalized)
-static bool TryFinishSink(SortGlobalSinkState &gstate, SortLocalSinkState &lstate, unique_lock<mutex> &guard) {
+static bool TryFinishSink(SortGlobalSinkState &gstate, SortLocalSinkState &lstate, unique_lock<mutex> &guard) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 	// Check if we exceed the limit
 	const auto sorted_run_size = lstate.sorted_run->SizeInBytes();
 	if (sorted_run_size < lstate.maximum_run_size) {
@@ -376,7 +376,7 @@ public:
 		return merger_global_state ? merger_global_state->MaxThreads() : 1;
 	}
 
-	void Destroy() {
+	void Destroy() DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 		if (!merger_global_state) {
 			return;
 		}
