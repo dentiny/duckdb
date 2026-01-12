@@ -65,8 +65,7 @@ protected:
 class StateWithBlockableTasks {
 public:
 	unique_lock<mutex> Lock() {
-		unique_lock<mutex> l(lock);
-		return std::move(l);
+		return unique_lock<mutex>(lock);
 	}
 
 	void PreventBlocking(const unique_lock<mutex> &guard) DUCKDB_REQUIRES(lock) {
