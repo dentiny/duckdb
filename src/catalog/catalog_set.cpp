@@ -561,8 +561,9 @@ SimilarCatalogEntry CatalogSet::SimilarEntry(CatalogTransaction transaction, con
 	return result;
 }
 
-optional_ptr<CatalogEntry> CatalogSet::CreateDefaultEntry(CatalogTransaction transaction, const string &name,
-                                                          unique_lock<mutex> &read_lock) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
+optional_ptr<CatalogEntry>
+CatalogSet::CreateDefaultEntry(CatalogTransaction transaction, const string &name,
+                               unique_lock<mutex> &read_lock) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 	// no entry found with this name, check for defaults
 	if (!defaults || defaults->created_all_entries) {
 		// no defaults either: return null
