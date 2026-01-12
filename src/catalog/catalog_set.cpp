@@ -653,7 +653,8 @@ void CatalogSet::Undo(CatalogEntry &entry) {
 	}
 }
 
-void CatalogSet::CreateDefaultEntries(CatalogTransaction transaction, unique_lock<mutex> &read_lock) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
+void CatalogSet::CreateDefaultEntries(CatalogTransaction transaction,
+                                      unique_lock<mutex> &read_lock) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 	if (!defaults || defaults->created_all_entries) {
 		return;
 	}
