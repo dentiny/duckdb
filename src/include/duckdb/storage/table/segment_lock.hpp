@@ -16,7 +16,7 @@ struct SegmentLock {
 public:
 	SegmentLock() {
 	}
-	explicit SegmentLock(mutex &lock) : lock(lock) {
+	explicit SegmentLock(mutex &mu) : lock(mu) {
 	}
 	// disable copy constructors
 	SegmentLock(const SegmentLock &other) = delete;
@@ -30,7 +30,7 @@ public:
 		return *this;
 	}
 
-	void Release() DUCKDB_RELEASES(lock) {
+	void Release() {
 		lock.unlock();
 	}
 
