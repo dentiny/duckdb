@@ -100,7 +100,8 @@ public:
 
 private:
 	//! Computes upper partition boundaries using K-way Merge Path
-	void ComputePartitionBoundaries(SortedRunMergerGlobalState &gstate, const optional_idx &p_idx) DUCKDB_NO_THREAD_SAFETY_ANALYSIS;
+	void ComputePartitionBoundaries(SortedRunMergerGlobalState &gstate,
+	                                const optional_idx &p_idx) DUCKDB_NO_THREAD_SAFETY_ANALYSIS;
 	template <class STATE>
 	void ComputePartitionBoundariesSwitch(SortedRunMergerGlobalState &gstate, const optional_idx &p_idx,
 	                                      unsafe_vector<STATE> &states);
