@@ -725,7 +725,7 @@ public:
 
 private:
 	//! Execute the finalize or scan task
-	void Finalize(RadixHTGlobalSinkState &sink, RadixHTGlobalSourceState &gstate);
+	void Finalize(RadixHTGlobalSinkState &sink, RadixHTGlobalSourceState &gstate) DUCKDB_NO_THREAD_SAFETY_ANALYSIS;
 	void Scan(RadixHTGlobalSinkState &sink, RadixHTGlobalSourceState &gstate, DataChunk &chunk);
 
 public:
