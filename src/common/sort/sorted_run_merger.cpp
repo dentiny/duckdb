@@ -177,7 +177,7 @@ public:
 	}
 
 public:
-	bool AssignTask(SortedRunMergerLocalState &lstate) DUCKDB_RELEASE(lock) {
+	bool AssignTask(SortedRunMergerLocalState &lstate) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 		D_ASSERT(!lstate.partition_idx.IsValid());
 		D_ASSERT(lstate.task == SortedRunMergerTask::FINISHED);
 		auto guard = Lock();
