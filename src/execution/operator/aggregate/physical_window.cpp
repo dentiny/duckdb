@@ -377,7 +377,7 @@ public:
 		return !stopped && finished < total_tasks;
 	}
 	//! Get the next task given the current state
-	bool TryNextTask(TaskPtr &task, Task &task_local);
+	bool TryNextTask(TaskPtr &task, Task &task_local) DUCKDB_NO_THREAD_SAFETY_ANALYSIS;
 
 	//! Context for executing computations
 	ClientContext &client;

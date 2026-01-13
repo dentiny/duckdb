@@ -96,7 +96,7 @@ public:
 	unique_ptr<LocalSourceState> GetLocalSourceState(ExecutionContext &context,
 	                                                 GlobalSourceState &gstate) const override;
 	SourceResultType GetDataInternal(ExecutionContext &context, DataChunk &chunk,
-	                                 OperatorSourceInput &input) const override;
+	                                 OperatorSourceInput &input) const override DUCKDB_NO_THREAD_SAFETY_ANALYSIS;
 
 	ProgressData GetProgress(ClientContext &context, GlobalSourceState &gstate) const override;
 
