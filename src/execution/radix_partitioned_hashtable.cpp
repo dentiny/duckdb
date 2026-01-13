@@ -457,7 +457,8 @@ void DecideAdaptation(RadixHTGlobalSinkState &gstate, RadixHTLocalSinkState &lst
 	}
 }
 
-void MaybeRepartition(ClientContext &context, RadixHTGlobalSinkState &gstate, RadixHTLocalSinkState &lstate) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
+void MaybeRepartition(ClientContext &context, RadixHTGlobalSinkState &gstate,
+                      RadixHTLocalSinkState &lstate) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 	auto &config = gstate.config;
 	auto &ht = *lstate.ht;
 
@@ -877,7 +878,8 @@ void RadixHTLocalSourceState::Finalize(RadixHTGlobalSinkState &sink, RadixHTGlob
 	scan_status = RadixHTScanStatus::INIT;
 }
 
-void RadixHTLocalSourceState::Scan(RadixHTGlobalSinkState &sink, RadixHTGlobalSourceState &gstate, DataChunk &chunk) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
+void RadixHTLocalSourceState::Scan(RadixHTGlobalSinkState &sink, RadixHTGlobalSourceState &gstate,
+                                   DataChunk &chunk) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 	D_ASSERT(task == RadixHTSourceTaskType::SCAN);
 	D_ASSERT(scan_status != RadixHTScanStatus::DONE);
 
