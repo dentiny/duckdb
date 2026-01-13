@@ -43,8 +43,8 @@ public:
 
 	void Sink(ExecutionContext &context, DataChunk &chunk, OperatorSinkInput &input, DataChunk &aggregate_input_chunk,
 	          const unsafe_vector<idx_t> &filter) const;
-	void Combine(ExecutionContext &context, GlobalSinkState &gstate, LocalSinkState &lstate) const;
-	void Finalize(ClientContext &context, GlobalSinkState &gstate) const;
+	void Combine(ExecutionContext &context, GlobalSinkState &gstate, LocalSinkState &lstate) const DUCKDB_NO_THREAD_SAFETY_ANALYSIS;
+	void Finalize(ClientContext &context, GlobalSinkState &gstate) const DUCKDB_NO_THREAD_SAFETY_ANALYSIS;
 
 public:
 	//! Source interface

@@ -109,7 +109,7 @@ public:
 	idx_t GetMaximumSinkRadixBits() const;
 
 private:
-	void SetRadixBitsInternal(idx_t radix_bits_p, bool external);
+	void SetRadixBitsInternal(idx_t radix_bits_p, bool external) DUCKDB_NO_THREAD_SAFETY_ANALYSIS;
 	idx_t InitialSinkRadixBits() const;
 	idx_t ExternalRadixBits() const;
 	idx_t MaximumSinkRadixBits() const;
@@ -158,7 +158,7 @@ public:
 
 	//! Destroys aggregate states (if multi-scan)
 	~RadixHTGlobalSinkState() override;
-	void Destroy();
+	void Destroy() DUCKDB_NO_THREAD_SAFETY_ANALYSIS;
 
 public:
 	ClientContext &context;
@@ -457,7 +457,7 @@ void DecideAdaptation(RadixHTGlobalSinkState &gstate, RadixHTLocalSinkState &lst
 	}
 }
 
-void MaybeRepartition(ClientContext &context, RadixHTGlobalSinkState &gstate, RadixHTLocalSinkState &lstate) {
+void MaybeRepartition(ClientContext &context, RadixHTGlobalSinkState &gstate, RadixHTLocalSinkState &lstate) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 	auto &config = gstate.config;
 	auto &ht = *lstate.ht;
 
@@ -694,7 +694,7 @@ public:
 
 	//! Assigns a task to a local source state
 	SourceResultType AssignTask(RadixHTGlobalSinkState &sink, RadixHTLocalSourceState &lstate,
-	                            InterruptState &interrupt_state);
+	                            InterruptState &interrupt_state) DUCKDB_NO_THREAD_SAFETY_ANALYSIS;
 
 public:
 	//! The client context
@@ -877,7 +877,7 @@ void RadixHTLocalSourceState::Finalize(RadixHTGlobalSinkState &sink, RadixHTGlob
 	scan_status = RadixHTScanStatus::INIT;
 }
 
-void RadixHTLocalSourceState::Scan(RadixHTGlobalSinkState &sink, RadixHTGlobalSourceState &gstate, DataChunk &chunk) {
+void RadixHTLocalSourceState::Scan(RadixHTGlobalSinkState &sink, RadixHTGlobalSourceState &gstate, DataChunk &chunk) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 	D_ASSERT(task == RadixHTSourceTaskType::SCAN);
 	D_ASSERT(scan_status != RadixHTScanStatus::DONE);
 
