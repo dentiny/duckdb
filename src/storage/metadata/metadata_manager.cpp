@@ -126,9 +126,8 @@ MetadataHandle MetadataManager::Pin(const QueryContext &context, const MetadataP
 	return handle;
 }
 
-void MetadataManager::ConvertToTransient(unique_lock<mutex> &block_lock, MetadataBlock &metadata_block) {
-	auto old_block = metadata_block.block;
-	block_lock.unlock();
+shared_ptr<BlockHandle> MetadataManager::ConvertToTransientUnlocked(shared_ptr<BlockHandle> old_block,
+                                                                    block_id_t block_id) {
 	// pin the old block
 	auto old_buffer = buffer_manager.Pin(old_block);
 
@@ -140,7 +139,17 @@ void MetadataManager::ConvertToTransient(unique_lock<mutex> &block_lock, Metadat
 	memcpy(new_buffer.Ptr(), old_buffer.Ptr(), block_manager.GetBlockSize());
 
 	// unregister the old block
-	block_manager.UnregisterBlock(metadata_block.block_id);
+	block_manager.UnregisterBlock(block_id);
+
+	return new_block;
+}
+
+void MetadataManager::ConvertToTransient(unique_lock<mutex> &block_lock, MetadataBlock &metadata_block) {
+	auto old_block = metadata_block.block;
+	auto block_id = metadata_block.block_id;
+	block_lock.unlock();
+
+	auto new_block = ConvertToTransientUnlocked(old_block, block_id);
 
 	block_lock.lock();
 	metadata_block.block = std::move(new_block);
@@ -176,6 +185,10 @@ void MetadataManager::AddBlock(unique_lock<mutex> &block_lock, MetadataBlock new
 	blocks[new_block.block_id] = std::move(new_block);
 }
 
+shared_ptr<BlockHandle> MetadataManager::RegisterBlockUnlocked(block_id_t block_id) {
+	return block_manager.RegisterBlock(block_id);
+}
+
 void MetadataManager::AddAndRegisterBlock(unique_lock<mutex> &block_lock, MetadataBlock block) {
 	if (block.block) {
 		throw InternalException("Calling AddAndRegisterBlock on block that already exists");
@@ -183,9 +196,13 @@ void MetadataManager::AddAndRegisterBlock(unique_lock<mutex> &block_lock, Metada
 	if (block.block_id >= MAXIMUM_BLOCK) {
 		throw InternalException("AddAndRegisterBlock called with a transient block id");
 	}
+	auto block_id = block.block_id;
 	block_lock.unlock();
-	block.block = block_manager.RegisterBlock(block.block_id);
+
+	auto registered_block = RegisterBlockUnlocked(block_id);
+
 	block_lock.lock();
+	block.block = std::move(registered_block);
 	AddBlock(block_lock, std::move(block), true);
 }
 
