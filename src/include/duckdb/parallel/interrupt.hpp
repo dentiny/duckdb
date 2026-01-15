@@ -98,12 +98,12 @@ public:
 	}
 
 	SinkResultType BlockSink(const unique_lock<mutex> &guard, const InterruptState &interrupt_state)
-	    DUCKDB_REQUIRES(guard) {
+	    DUCKDB_REQUIRES(lock) {
 		return BlockTask(guard, interrupt_state) ? SinkResultType::BLOCKED : SinkResultType::FINISHED;
 	}
 
 	SourceResultType BlockSource(const unique_lock<mutex> &guard, const InterruptState &interrupt_state)
-	    DUCKDB_REQUIRES(guard) {
+	    DUCKDB_REQUIRES(lock) {
 		return BlockTask(guard, interrupt_state) ? SourceResultType::BLOCKED : SourceResultType::FINISHED;
 	}
 
