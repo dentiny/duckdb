@@ -1363,7 +1363,7 @@ void IEJoinGlobalSourceState::FinishTask(TaskPtr task) {
 }
 
 bool IEJoinGlobalSourceState::TryNextTask(TaskPtr &task, Task &task_local) {
-	auto guard = Lock();
+	unique_lock<mutex> guard(lock);
 	FinishTask(task);
 
 	if (!HasMoreTasks()) {

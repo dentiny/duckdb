@@ -206,7 +206,7 @@ public:
 	}
 
 	void AddSortedRun(SortLocalSinkState &lstate) {
-		auto guard = Lock();
+		const lock_guard<mutex> guard(lock);
 		sorted_runs.push_back(std::move(lstate.sorted_run));
 		sorted_tuples += sorted_runs.back()->Count();
 	}

@@ -71,7 +71,7 @@ public:
 		return true;
 #else
 		if (unflushed_memory_usage >= available_memory) {
-			auto guard = Lock();
+			const lock_guard<mutex> guard(lock);
 			if (batch_index > min_batch_index) {
 				// exceeded available memory and we are not the minimum batch index- try to increase it
 				IncreaseMemory();

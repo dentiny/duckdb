@@ -179,7 +179,7 @@ public:
 	bool AssignTask(SortedRunMergerLocalState &lstate) {
 		D_ASSERT(!lstate.partition_idx.IsValid());
 		D_ASSERT(lstate.task == SortedRunMergerTask::FINISHED);
-		auto guard = Lock();
+		const lock_guard<mutex> guard(lock);
 		if (next_partition_idx == num_partitions) {
 			return false; // Nothing left to do
 		}

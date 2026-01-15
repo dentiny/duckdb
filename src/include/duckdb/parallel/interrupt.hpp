@@ -97,19 +97,21 @@ public:
 		return true;
 	}
 
-	SinkResultType BlockSink(const unique_lock<mutex> &guard, const InterruptState &interrupt_state) {
+	SinkResultType BlockSink(const unique_lock<mutex> &guard, const InterruptState &interrupt_state) DUCKDB_REQUIRES(guard) {
 		return BlockTask(guard, interrupt_state) ? SinkResultType::BLOCKED : SinkResultType::FINISHED;
 	}
 
-	SourceResultType BlockSource(const unique_lock<mutex> &guard, const InterruptState &interrupt_state) {
+	SourceResultType BlockSource(const unique_lock<mutex> &guard, const InterruptState &interrupt_state) DUCKDB_REQUIRES(guard) {
 		return BlockTask(guard, interrupt_state) ? SourceResultType::BLOCKED : SourceResultType::FINISHED;
 	}
+
+protected:
+	//! Global lock, acquired by calling Lock()
+	mutable mutex lock;
 
 private:
 	//! Whether we can block tasks
 	bool can_block DUCKDB_GUARDED_BY(lock) = true;
-	//! Global lock, acquired by calling Lock()
-	mutable mutex lock;
 	//! Tasks that are currently blocked
 	mutable vector<InterruptState> blocked_tasks DUCKDB_GUARDED_BY(lock);
 };
