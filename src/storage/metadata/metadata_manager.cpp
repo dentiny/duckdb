@@ -67,7 +67,7 @@ MetadataHandle MetadataManager::AllocateHandle() {
 	}
 	guard.unlock();
 	if (free_block == INVALID_BLOCK || free_block > PeekNextBlockId()) {
-		free_block = AllocateNewBlock(guard);
+		free_block = AllocateNewBlock();
 	} else {
 		guard.lock();
 	}
@@ -81,7 +81,7 @@ MetadataHandle MetadataManager::AllocateHandle() {
 	if (block.block->BlockId() < MAXIMUM_BLOCK) {
 		// this block is a disk-backed block, yet we are planning to write to it
 		// we need to convert it into a transient block before we can write to it
-		ConvertToTransient(guard, block);
+		ConvertToTransient(block);
 		D_ASSERT(block.block->BlockId() >= MAXIMUM_BLOCK);
 	}
 	D_ASSERT(!block.free_blocks.empty());
@@ -144,19 +144,19 @@ shared_ptr<BlockHandle> MetadataManager::ConvertToTransientUnlocked(shared_ptr<B
 	return new_block;
 }
 
-void MetadataManager::ConvertToTransient(unique_lock<mutex> &block_lock, MetadataBlock &metadata_block) {
+void MetadataManager::ConvertToTransient(MetadataBlock &metadata_block) {
 	auto old_block = metadata_block.block;
 	auto block_id = metadata_block.block_id;
-	block_lock.unlock();
+	block_mutex.unlock();
 
 	auto new_block = ConvertToTransientUnlocked(old_block, block_id);
 
-	block_lock.lock();
+	block_mutex.lock();
 	metadata_block.block = std::move(new_block);
 	metadata_block.dirty = true;
 }
 
-block_id_t MetadataManager::AllocateNewBlock(unique_lock<mutex> &block_lock) {
+block_id_t MetadataManager::AllocateNewBlock() {
 	auto new_block_id = GetNextBlockId();
 
 	MetadataBlock new_block;
@@ -170,12 +170,12 @@ block_id_t MetadataManager::AllocateNewBlock(unique_lock<mutex> &block_lock) {
 	// zero-initialize the handle
 	memset(handle.Ptr(), 0, block_manager.GetBlockSize());
 
-	block_lock.lock();
-	AddBlock(block_lock, std::move(new_block));
+	block_mutex.lock();
+	AddBlock(std::move(new_block));
 	return new_block_id;
 }
 
-void MetadataManager::AddBlock(unique_lock<mutex> &block_lock, MetadataBlock new_block, bool if_exists) {
+void MetadataManager::AddBlock(MetadataBlock new_block, bool if_exists) {
 	if (blocks.find(new_block.block_id) != blocks.end()) {
 		if (if_exists) {
 			return;
@@ -189,7 +189,7 @@ shared_ptr<BlockHandle> MetadataManager::RegisterBlockUnlocked(block_id_t block_
 	return block_manager.RegisterBlock(block_id);
 }
 
-void MetadataManager::AddAndRegisterBlock(unique_lock<mutex> &block_lock, MetadataBlock block) {
+void MetadataManager::AddAndRegisterBlock(MetadataBlock block) {
 	if (block.block) {
 		throw InternalException("Calling AddAndRegisterBlock on block that already exists");
 	}
@@ -197,13 +197,13 @@ void MetadataManager::AddAndRegisterBlock(unique_lock<mutex> &block_lock, Metada
 		throw InternalException("AddAndRegisterBlock called with a transient block id");
 	}
 	auto block_id = block.block_id;
-	block_lock.unlock();
+	block_mutex.unlock();
 
 	auto registered_block = RegisterBlockUnlocked(block_id);
 
-	block_lock.lock();
+	block_mutex.lock();
 	block.block = std::move(registered_block);
-	AddBlock(block_lock, std::move(block), true);
+	AddBlock(std::move(block), true);
 }
 
 MetaBlockPointer MetadataManager::GetDiskPointer(const MetadataPointer &pointer, uint32_t offset) {
@@ -222,10 +222,10 @@ uint32_t MetaBlockPointer::GetBlockIndex() const {
 
 MetadataPointer MetadataManager::FromDiskPointer(MetaBlockPointer pointer) {
 	unique_lock<mutex> guard(block_mutex);
-	return FromDiskPointerInternal(guard, pointer);
+	return FromDiskPointerInternal(pointer);
 }
 
-MetadataPointer MetadataManager::FromDiskPointerInternal(unique_lock<mutex> &block_lock, MetaBlockPointer pointer) {
+MetadataPointer MetadataManager::FromDiskPointerInternal(MetaBlockPointer pointer) {
 	auto block_id = pointer.GetBlockId();
 	auto index = pointer.GetBlockIndex();
 
@@ -246,8 +246,8 @@ MetadataPointer MetadataManager::RegisterDiskPointer(MetaBlockPointer pointer) {
 	auto block_id = pointer.GetBlockId();
 	MetadataBlock block;
 	block.block_id = block_id;
-	AddAndRegisterBlock(guard, std::move(block));
-	return FromDiskPointerInternal(guard, pointer);
+	AddAndRegisterBlock(std::move(block));
+	return FromDiskPointerInternal(pointer);
 }
 
 BlockPointer MetadataManager::ToBlockPointer(MetaBlockPointer meta_pointer, const idx_t metadata_block_size) {
@@ -330,7 +330,7 @@ void MetadataManager::Read(ReadStream &source) {
 		auto entry = blocks.find(block.block_id);
 		if (entry == blocks.end()) {
 			// block does not exist yet
-			AddAndRegisterBlock(guard, std::move(block));
+			AddAndRegisterBlock(std::move(block));
 		} else {
 			// block was already created - only copy over the free list
 			entry->second.free_blocks = std::move(block.free_blocks);
