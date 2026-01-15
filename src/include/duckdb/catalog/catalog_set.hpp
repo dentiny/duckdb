@@ -147,10 +147,10 @@ private:
 	optional_ptr<CatalogEntry> CreateCommittedEntry(unique_ptr<CatalogEntry> entry);
 
 	//! Create all default entries
-	void CreateDefaultEntries(CatalogTransaction transaction, unique_lock<mutex> &lock) DUCKDB_REQUIRES(lock);
+	void CreateDefaultEntries(CatalogTransaction transaction, unique_lock<mutex> &lock) DUCKDB_REQUIRES(catalog_lock);
 	//! Attempt to create a default entry with the specified name. Returns the entry if successful, nullptr otherwise.
 	optional_ptr<CatalogEntry> CreateDefaultEntry(CatalogTransaction transaction, const string &name,
-	                                              unique_lock<mutex> &lock) DUCKDB_REQUIRES(lock);
+	                                              unique_lock<mutex> &lock) DUCKDB_REQUIRES(catalog_lock);
 
 	bool DropEntryInternal(CatalogTransaction transaction, const string &name, bool allow_drop_internal = false);
 
