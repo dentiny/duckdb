@@ -326,7 +326,8 @@ public:
 	}
 
 	//! Wait for a file to become available. Parallel lock should be locked when calling.
-	static void WaitForFile(idx_t file_index, MultiFileGlobalState &global_state, unique_lock<mutex> &parallel_lock) DUCKDB_REQUIRES(parallel_lock) {
+	static void WaitForFile(idx_t file_index, MultiFileGlobalState &global_state, unique_lock<mutex> &parallel_lock)
+	    DUCKDB_REQUIRES(parallel_lock) {
 		while (true) {
 			// Get pointer to file mutex before unlocking
 			auto &file_mutex = *global_state.readers[file_index]->file_mutex;
