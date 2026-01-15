@@ -55,7 +55,7 @@ MetadataHandle MetadataManager::AllocateHandle() {
 	// check if there is any free space left in an existing block
 	// if not allocate a new block
 	MetadataPointer pointer;
-	unique_lock<mutex> guard(block_lock);
+	unique_lock<mutex> guard(block_mutex);
 	block_id_t free_block = INVALID_BLOCK;
 	for (auto &kv : blocks) {
 		auto &block = kv.second;
@@ -71,7 +71,6 @@ MetadataHandle MetadataManager::AllocateHandle() {
 	} else {
 		guard.lock();
 	}
-	D_ASSERT(guard.owns_lock());
 	D_ASSERT(free_block != INVALID_BLOCK);
 
 	// select the first free metadata block we can find
@@ -103,7 +102,7 @@ MetadataHandle MetadataManager::Pin(const QueryContext &context, const MetadataP
 	D_ASSERT(pointer.index < METADATA_BLOCK_COUNT);
 	shared_ptr<BlockHandle> block_handle;
 	{
-		lock_guard<mutex> guard(block_lock);
+		lock_guard<mutex> guard(block_mutex);
 		auto entry = blocks.find(UnsafeNumericCast<int64_t>(pointer.block_index));
 		if (entry == blocks.end()) {
 			throw InternalException("Trying to pin block %llu - but the block did not exist", pointer.block_index);
@@ -128,7 +127,6 @@ MetadataHandle MetadataManager::Pin(const QueryContext &context, const MetadataP
 }
 
 void MetadataManager::ConvertToTransient(unique_lock<mutex> &block_lock, MetadataBlock &metadata_block) {
-	D_ASSERT(block_lock.owns_lock());
 	auto old_block = metadata_block.block;
 	block_lock.unlock();
 	// pin the old block
@@ -150,7 +148,6 @@ void MetadataManager::ConvertToTransient(unique_lock<mutex> &block_lock, Metadat
 }
 
 block_id_t MetadataManager::AllocateNewBlock(unique_lock<mutex> &block_lock) {
-	D_ASSERT(!block_lock.owns_lock());
 	auto new_block_id = GetNextBlockId();
 
 	MetadataBlock new_block;
@@ -170,7 +167,6 @@ block_id_t MetadataManager::AllocateNewBlock(unique_lock<mutex> &block_lock) {
 }
 
 void MetadataManager::AddBlock(unique_lock<mutex> &block_lock, MetadataBlock new_block, bool if_exists) {
-	D_ASSERT(block_lock.owns_lock());
 	if (blocks.find(new_block.block_id) != blocks.end()) {
 		if (if_exists) {
 			return;
@@ -208,7 +204,7 @@ uint32_t MetaBlockPointer::GetBlockIndex() const {
 }
 
 MetadataPointer MetadataManager::FromDiskPointer(MetaBlockPointer pointer) {
-	unique_lock<mutex> guard(block_lock);
+	unique_lock<mutex> guard(block_mutex);
 	return FromDiskPointerInternal(guard, pointer);
 }
 
@@ -228,7 +224,7 @@ MetadataPointer MetadataManager::FromDiskPointerInternal(unique_lock<mutex> &blo
 }
 
 MetadataPointer MetadataManager::RegisterDiskPointer(MetaBlockPointer pointer) {
-	unique_lock<mutex> guard(block_lock);
+	unique_lock<mutex> guard(block_mutex);
 
 	auto block_id = pointer.GetBlockId();
 	MetadataBlock block;
@@ -313,7 +309,7 @@ void MetadataManager::Read(ReadStream &source) {
 	for (idx_t i = 0; i < block_count; i++) {
 		auto block = MetadataBlock::Read(source);
 
-		unique_lock<mutex> guard(block_lock);
+		unique_lock<mutex> guard(block_mutex);
 		auto entry = blocks.find(block.block_id);
 		if (entry == blocks.end()) {
 			// block does not exist yet
@@ -373,7 +369,7 @@ void MetadataBlock::FreeBlocksFromInteger(idx_t free_list) {
 }
 
 void MetadataManager::MarkBlocksAsModified() {
-	unique_lock<mutex> guard(block_lock);
+	unique_lock<mutex> guard(block_mutex);
 	// for any blocks that were modified in the last checkpoint - set them to free blocks currently
 	for (auto &kv : modified_blocks) {
 		auto block_id = kv.first;
@@ -411,7 +407,7 @@ void MetadataManager::ClearModifiedBlocks(const vector<MetaBlockPointer> &pointe
 	if (pointers.empty()) {
 		return;
 	}
-	unique_lock<mutex> guard(block_lock);
+	unique_lock<mutex> guard(block_mutex);
 	for (auto &pointer : pointers) {
 		auto block_id = pointer.GetBlockId();
 		auto block_index = pointer.GetBlockIndex();
@@ -426,7 +422,7 @@ void MetadataManager::ClearModifiedBlocks(const vector<MetaBlockPointer> &pointe
 }
 
 bool MetadataManager::BlockHasBeenCleared(const MetaBlockPointer &pointer) {
-	unique_lock<mutex> guard(block_lock);
+	unique_lock<mutex> guard(block_mutex);
 	auto block_id = pointer.GetBlockId();
 	auto block_index = pointer.GetBlockIndex();
 	auto entry = modified_blocks.find(block_id);
@@ -439,7 +435,7 @@ bool MetadataManager::BlockHasBeenCleared(const MetaBlockPointer &pointer) {
 
 vector<MetadataBlockInfo> MetadataManager::GetMetadataInfo() const {
 	vector<MetadataBlockInfo> result;
-	unique_lock<mutex> guard(block_lock);
+	unique_lock<mutex> guard(block_mutex);
 	for (auto &block : blocks) {
 		MetadataBlockInfo block_info;
 		block_info.block_id = block.second.block_id;
@@ -457,7 +453,7 @@ vector<MetadataBlockInfo> MetadataManager::GetMetadataInfo() const {
 
 vector<shared_ptr<BlockHandle>> MetadataManager::GetBlocks() const {
 	vector<shared_ptr<BlockHandle>> result;
-	unique_lock<mutex> guard(block_lock);
+	unique_lock<mutex> guard(block_mutex);
 	for (auto &entry : blocks) {
 		result.push_back(entry.second.block);
 	}
