@@ -1534,9 +1534,9 @@ SourceResultType PhysicalHashJoin::GetDataInternal(ExecutionContext &context, Da
 		} else {
 			auto guard = gstate.Lock();
 			if (gstate.TryPrepareNextStage(sink) || gstate.global_stage == HashJoinSourceStage::DONE) {
-				gstate.UnblockTasks(guard);
+				gstate.UnblockTasks();
 			} else {
-				return gstate.BlockSource(guard, input.interrupt_state);
+				return gstate.BlockSource(input.interrupt_state);
 			}
 		}
 	}

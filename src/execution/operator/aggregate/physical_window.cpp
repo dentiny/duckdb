@@ -1125,12 +1125,12 @@ SourceResultType PhysicalWindow::GetDataInternal(ExecutionContext &context, Data
 			auto guard = gsource.Lock();
 			if (!gsource.HasMoreTasks()) {
 				// no more tasks - exit
-				gsource.UnblockTasks(guard);
+				gsource.UnblockTasks();
 				break;
 			} else {
 				// there are more tasks available, but we can't execute them yet
 				// block the source
-				return gsource.BlockSource(guard, source.interrupt_state);
+				return gsource.BlockSource(source.interrupt_state);
 			}
 		}
 	}
