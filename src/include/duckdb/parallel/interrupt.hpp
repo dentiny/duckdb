@@ -68,7 +68,7 @@ public:
 		return unique_lock<mutex>(lock);
 	}
 
-	void PreventBlocking(const unique_lock<mutex> &guard) DUCKDB_REQUIRES(lock) {
+	void PreventBlocking() DUCKDB_REQUIRES(lock) {
 		can_block = false;
 	}
 
