@@ -883,7 +883,7 @@ WindowLocalSourceState::WindowLocalSourceState(WindowGlobalSourceState &gsource)
 }
 
 bool WindowGlobalSourceState::TryNextTask(TaskPtr &task, Task &task_local) {
-	unique_lock<mutex> guard(lock);
+	const lock_guard<mutex> guard(lock);
 	FinishTask(task);
 
 	if (!HasMoreTasks()) {
@@ -895,7 +895,7 @@ bool WindowGlobalSourceState::TryNextTask(TaskPtr &task, Task &task_local) {
 	for (const auto &group_idx : active_groups) {
 		auto &window_hash_group = window_hash_groups[group_idx];
 		if (window_hash_group->TryPrepareNextStage()) {
-			UnblockTasks(guard);
+			UnblockTasks();
 		}
 		if (window_hash_group->TryNextTask(task_local)) {
 			task = task_local;
@@ -911,7 +911,7 @@ bool WindowGlobalSourceState::TryNextTask(TaskPtr &task, Task &task_local) {
 
 		auto &window_hash_group = window_hash_groups[group_idx];
 		if (window_hash_group->TryPrepareNextStage()) {
-			UnblockTasks(guard);
+			UnblockTasks();
 		}
 		if (!window_hash_group->TryNextTask(task_local)) {
 			//	Group has no tasks (empty?)
