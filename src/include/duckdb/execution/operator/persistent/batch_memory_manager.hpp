@@ -89,12 +89,12 @@ public:
 		if (min_batch_index >= current_min_batch_index) {
 			return;
 		}
-		auto guard = Lock();
+		const lock_guard<mutex> guard(lock);
 		auto new_batch_index = MaxValue<idx_t>(min_batch_index, current_min_batch_index);
 		if (new_batch_index != min_batch_index) {
 			// new batch index! unblock all tasks
 			min_batch_index = new_batch_index;
-			UnblockTasks(guard);
+			UnblockTasks();
 		}
 	}
 
