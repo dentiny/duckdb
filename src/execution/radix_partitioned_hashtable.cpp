@@ -292,7 +292,7 @@ idx_t RadixHTConfig::GetMaximumSinkRadixBits() const {
 	return maximum_sink_radix_bits;
 }
 
-void RadixHTConfig::SetRadixBitsInternal(const idx_t radix_bits_p, bool external) {
+void RadixHTConfig::SetRadixBitsInternal(const idx_t radix_bits_p, bool external) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 	if (sink_radix_bits > radix_bits_p || sink.any_combined) {
 		return;
 	}
@@ -457,7 +457,7 @@ void DecideAdaptation(RadixHTGlobalSinkState &gstate, RadixHTLocalSinkState &lst
 	}
 }
 
-void MaybeRepartition(ClientContext &context, RadixHTGlobalSinkState &gstate, RadixHTLocalSinkState &lstate) {
+void MaybeRepartition(ClientContext &context, RadixHTGlobalSinkState &gstate, RadixHTLocalSinkState &lstate) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 	auto &config = gstate.config;
 	auto &ht = *lstate.ht;
 
@@ -764,7 +764,7 @@ RadixHTGlobalSourceState::RadixHTGlobalSourceState(ClientContext &context_p, con
 }
 
 SourceResultType RadixHTGlobalSourceState::AssignTask(RadixHTGlobalSinkState &sink, RadixHTLocalSourceState &lstate,
-                                                      InterruptState &interrupt_state) {
+                                                      InterruptState &interrupt_state) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 	// First, try to get a partition index
 	lstate.task_idx = task_idx++;
 	if (finished || lstate.task_idx >= sink.partitions.size()) {
@@ -820,7 +820,7 @@ void RadixHTLocalSourceState::ExecuteTask(RadixHTGlobalSinkState &sink, RadixHTG
 	}
 }
 
-void RadixHTLocalSourceState::Finalize(RadixHTGlobalSinkState &sink, RadixHTGlobalSourceState &gstate) {
+void RadixHTLocalSourceState::Finalize(RadixHTGlobalSinkState &sink, RadixHTGlobalSourceState &gstate) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 	D_ASSERT(task == RadixHTSourceTaskType::FINALIZE);
 	D_ASSERT(scan_status != RadixHTScanStatus::IN_PROGRESS);
 	auto &partition = *sink.partitions[task_idx];
@@ -877,7 +877,7 @@ void RadixHTLocalSourceState::Finalize(RadixHTGlobalSinkState &sink, RadixHTGlob
 	scan_status = RadixHTScanStatus::INIT;
 }
 
-void RadixHTLocalSourceState::Scan(RadixHTGlobalSinkState &sink, RadixHTGlobalSourceState &gstate, DataChunk &chunk) {
+void RadixHTLocalSourceState::Scan(RadixHTGlobalSinkState &sink, RadixHTGlobalSourceState &gstate, DataChunk &chunk) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 	D_ASSERT(task == RadixHTSourceTaskType::SCAN);
 	D_ASSERT(scan_status != RadixHTScanStatus::DONE);
 
