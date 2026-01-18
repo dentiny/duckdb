@@ -272,6 +272,28 @@ static bool TryFinishSinkNoLock(SortLocalSinkState &lstate) DUCKDB_NO_THREAD_SAF
 	return sorted_run_size < lstate.maximum_run_size;
 }
 
+//! Helper function that handles the locked portion of Sink
+static SinkResultType SinkWithLock(const Sort &sort, SortGlobalSinkState &gstate, SortLocalSinkState &lstate,
+                                   ExecutionContext &context) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
+	unique_lock<mutex> guard = gstate.Lock();
+	gstate.UpdateLocalState(lstate);
+	if (TryFinishSinkWithLock(gstate, lstate, guard)) {
+		// Note: guard may have been unlocked by TryFinishSinkWithLock
+		return SinkResultType::NEED_MORE_INPUT;
+	}
+
+	// Still no, this thread must try to increase the limit
+	gstate.TryIncreaseReservation(context.client, lstate, sort.is_index_sort, guard);
+	gstate.UpdateLocalState(lstate);
+	guard.unlock(); // Explicit unlock - we're done with the lock
+
+	// This can return false if we somehow still don't have enough memory
+	// We'll likely run into an OOM exception
+	TryFinishSinkNoLock(lstate);
+
+	return SinkResultType::NEED_MORE_INPUT;
+}
+
 SinkResultType Sort::Sink(ExecutionContext &context, DataChunk &chunk, OperatorSinkInput &input) const {
 	auto &gstate = input.global_state.Cast<SortGlobalSinkState>();
 	auto &lstate = input.local_state.Cast<SortLocalSinkState>();
@@ -293,25 +315,14 @@ SinkResultType Sort::Sink(ExecutionContext &context, DataChunk &chunk, OperatorS
 		return SinkResultType::NEED_MORE_INPUT;
 	}
 
-	// Grab the lock, update the local state, and see if we can finish now
-	{
-		unique_lock<mutex> guard = gstate.Lock();
-		gstate.UpdateLocalState(lstate);
-		if (TryFinishSinkWithLock(gstate, lstate, guard)) {
-			// Note: guard may have been unlocked by TryFinishSinkWithLock
-			return SinkResultType::NEED_MORE_INPUT;
-		}
+	// Need to grab the lock and try again
+	return SinkWithLock(*this, gstate, lstate, context);
+}
 
-		// Still no, this thread must try to increase the limit
-		gstate.TryIncreaseReservation(context.client, lstate, is_index_sort, guard);
-		gstate.UpdateLocalState(lstate);
-	} // guard is destroyed here if not already unlocked
-
-	// This can return false if we somehow still don't have enough memory
-	// We'll likely run into an OOM exception
-	TryFinishSinkNoLock(lstate);
-
-	return SinkResultType::NEED_MORE_INPUT;
+//! Helper function that sets any_combined flag under lock
+static void SetAnyCombined(SortGlobalSinkState &gstate) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
+	auto guard = gstate.Lock();
+	gstate.any_combined = true;
 }
 
 SinkCombineResultType Sort::Combine(ExecutionContext &context, OperatorSinkCombineInput &input) const {
@@ -323,10 +334,7 @@ SinkCombineResultType Sort::Combine(ExecutionContext &context, OperatorSinkCombi
 	}
 
 	// Set any_combined under lock
-	{
-		auto guard = gstate.Lock();
-		gstate.any_combined = true;
-	} // guard is destroyed here, unlocking the mutex
+	SetAnyCombined(gstate);
 
 	// Do the final local sort (lock-free)
 	lstate.sorted_run->Finalize(gstate.external);
@@ -386,15 +394,14 @@ public:
 		return merger_global_state ? merger_global_state->MaxThreads() : 1;
 	}
 
-	void Destroy() {
+	void Destroy() DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 		if (!merger_global_state) {
 			return;
 		}
-		{
-			auto guard = merger_global_state->Lock();
-			merger.sorted_runs.clear();
-			sink.temporary_memory_state.reset();
-		} // guard is destroyed here, unlocking the mutex
+		auto guard = merger_global_state->Lock();
+		merger.sorted_runs.clear();
+		sink.temporary_memory_state.reset();
+		guard.unlock();
 	}
 
 public:
@@ -458,6 +465,17 @@ OperatorPartitionData Sort::GetPartitionData(ExecutionContext &context, DataChun
 //===--------------------------------------------------------------------===//
 // Non-Standard Interface
 //===--------------------------------------------------------------------===//
+//! Helper function to merge local column data into global state under lock
+static void MergeColumnData(SortGlobalSourceState &gstate,
+                            unique_ptr<BatchedDataCollection> &local_column_data) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
+	auto guard = gstate.Lock();
+	if (!gstate.column_data) {
+		gstate.column_data = std::move(local_column_data);
+	} else {
+		gstate.column_data->Merge(*local_column_data);
+	}
+}
+
 SourceResultType Sort::MaterializeColumnData(ExecutionContext &context, OperatorSourceInput &input) const {
 	auto &gstate = input.global_state.Cast<SortGlobalSourceState>();
 
@@ -497,14 +515,7 @@ SourceResultType Sort::MaterializeColumnData(ExecutionContext &context, Operator
 	}
 
 	// Merge into global output collection
-	{
-		auto guard = gstate.Lock();
-		if (!gstate.column_data) {
-			gstate.column_data = std::move(local_column_data);
-		} else {
-			gstate.column_data->Merge(*local_column_data);
-		}
-	}
+	MergeColumnData(gstate, local_column_data);
 
 	// Destroy local state before returning
 	input.local_state.Cast<SortLocalSourceState>().merger_local_state.reset();
@@ -519,14 +530,15 @@ SourceResultType Sort::MaterializeColumnData(ExecutionContext &context, Operator
 	return SourceResultType::HAVE_MORE_OUTPUT;
 }
 
+//! Helper function to fetch column data under lock
+static unique_ptr<ColumnDataCollection> FetchColumnData(SortGlobalSourceState &gstate) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
+	auto guard = gstate.Lock();
+	return gstate.column_data->FetchCollection();
+}
+
 unique_ptr<ColumnDataCollection> Sort::GetColumnData(OperatorSourceInput &input) const {
 	auto &gstate = input.global_state.Cast<SortGlobalSourceState>();
-	unique_ptr<ColumnDataCollection> result;
-	{
-		auto guard = gstate.Lock();
-		result = gstate.column_data->FetchCollection();
-	} // guard is destroyed here, unlocking the mutex
-	return result;
+	return FetchColumnData(gstate);
 }
 
 SourceResultType Sort::MaterializeSortedRun(ExecutionContext &context, OperatorSourceInput &input) const {
