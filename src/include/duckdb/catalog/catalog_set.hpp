@@ -151,6 +151,8 @@ private:
 	//! Attempt to create a default entry with the specified name. Returns the entry if successful, nullptr otherwise.
 	optional_ptr<CatalogEntry> CreateDefaultEntry(CatalogTransaction transaction, const string &name)
 	    DUCKDB_REQUIRES(catalog_lock);
+	//! Internal helper for CreateDefaultEntry that doesn't require the lock
+	optional_ptr<CatalogEntry> CreateDefaultEntryNoLock(CatalogTransaction transaction, const string &name);
 
 	bool DropEntryInternal(CatalogTransaction transaction, const string &name, bool allow_drop_internal = false);
 
@@ -162,7 +164,7 @@ private:
 	//! Start the catalog entry chain with a dummy node
 	bool StartChain(CatalogTransaction transaction, const string &name) DUCKDB_REQUIRES(catalog_lock);
 	bool RenameEntryInternal(CatalogTransaction transaction, CatalogEntry &old, const string &new_name,
-	                         AlterInfo &alter_info, unique_lock<mutex> &read_lock);
+	                         AlterInfo &alter_info, unique_lock<mutex> &read_lock) DUCKDB_REQUIRES(catalog_lock);
 
 private:
 	DuckCatalog &catalog;

@@ -561,23 +561,23 @@ SimilarCatalogEntry CatalogSet::SimilarEntry(CatalogTransaction transaction, con
 	return result;
 }
 
-optional_ptr<CatalogEntry> CatalogSet::CreateDefaultEntry(CatalogTransaction transaction, const string &name) {
+optional_ptr<CatalogEntry> CatalogSet::CreateDefaultEntryNoLock(CatalogTransaction transaction, const string &name) {
 	// no entry found with this name, check for defaults
 	if (!defaults || defaults->created_all_entries) {
 		// no defaults either: return null
 		return nullptr;
 	}
-	catalog_lock.unlock();
 	// this catalog set has a default map defined
 	// check if there is a default entry that we can create with this name
 	auto entry = defaults->CreateDefaultEntry(transaction, name);
 
-	catalog_lock.lock();
 	if (!entry) {
 		// no default entry
 		return nullptr;
 	}
 	// there is a default entry! create it
+	// We need to acquire the lock to call CreateCommittedEntry
+	unique_lock<mutex> lock(catalog_lock);
 	auto result = CreateCommittedEntry(std::move(entry));
 	if (result) {
 		return result;
@@ -585,8 +585,16 @@ optional_ptr<CatalogEntry> CatalogSet::CreateDefaultEntry(CatalogTransaction tra
 	// we found a default entry, but failed
 	// this means somebody else created the entry first
 	// just retry?
-	catalog_lock.unlock();
+	lock.unlock();
 	return GetEntry(transaction, name);
+}
+
+optional_ptr<CatalogEntry> CatalogSet::CreateDefaultEntry(CatalogTransaction transaction, const string &name) {
+	// Unlock the catalog_lock temporarily to avoid holding it during default entry creation
+	catalog_lock.unlock();
+	auto result = CreateDefaultEntryNoLock(transaction, name);
+	catalog_lock.lock();
+	return result;
 }
 
 CatalogSet::EntryLookup CatalogSet::GetEntryDetailed(CatalogTransaction transaction, const string &name) {
