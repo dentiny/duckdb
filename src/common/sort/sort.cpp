@@ -241,7 +241,8 @@ unique_ptr<GlobalSinkState> Sort::GetGlobalSinkState(ClientContext &context) con
 }
 
 //! Returns true if the Sink call is done (either because run size is small or because run was finalized)
-static bool TryFinishSink(SortGlobalSinkState &gstate, SortLocalSinkState &lstate, unique_lock<mutex> &guard) {
+//! If the run needs to be finalized, this function will unlock the guard before finalizing
+static bool TryFinishSinkWithLock(SortGlobalSinkState &gstate, SortLocalSinkState &lstate, unique_lock<mutex> &guard) {
 	// Check if we exceed the limit
 	const auto sorted_run_size = lstate.sorted_run->SizeInBytes();
 	if (sorted_run_size < lstate.maximum_run_size) {
@@ -251,9 +252,9 @@ static bool TryFinishSink(SortGlobalSinkState &gstate, SortLocalSinkState &lstat
 	// Run size exceeds the limit. If external, the limit will never be updated, so we need to sort
 	if (lstate.external) {
 		// Finalize, i.e., sort, the run lock-free
-		if (guard.owns_lock()) {
-			guard.unlock();
-		}
+		// Unlock before finalizing (guard must be locked when entering this function)
+		D_ASSERT(guard.owns_lock());
+		guard.unlock();
 		lstate.sorted_run->Finalize(true);
 
 		// Append to global state (grabs lock)
@@ -262,6 +263,13 @@ static bool TryFinishSink(SortGlobalSinkState &gstate, SortLocalSinkState &lstat
 	}
 
 	return false; // Sink is not done yet
+}
+
+//! Returns true if the Sink call is done (run size is small)
+static bool TryFinishSinkNoLock(SortLocalSinkState &lstate) {
+	// Check if we exceed the limit
+	const auto sorted_run_size = lstate.sorted_run->SizeInBytes();
+	return sorted_run_size < lstate.maximum_run_size;
 }
 
 SinkResultType Sort::Sink(ExecutionContext &context, DataChunk &chunk, OperatorSinkInput &input) const {
@@ -280,16 +288,16 @@ SinkResultType Sort::Sink(ExecutionContext &context, DataChunk &chunk, OperatorS
 	lstate.payload.ReferenceColumns(chunk, input_projection_map);
 	lstate.sorted_run->Sink(lstate.key, lstate.payload);
 
-	// Try to finish this call to Sink
-	unique_lock<mutex> guard;
-	if (TryFinishSink(gstate, lstate, guard)) {
+	// Try to finish this call to Sink without holding the lock
+	if (TryFinishSinkNoLock(lstate)) {
 		return SinkResultType::NEED_MORE_INPUT;
 	}
 
 	// Grab the lock, update the local state, and see if we can finish now
-	guard = gstate.Lock();
+	unique_lock<mutex> guard = gstate.Lock();
 	gstate.UpdateLocalState(lstate);
-	if (TryFinishSink(gstate, lstate, guard)) {
+	if (TryFinishSinkWithLock(gstate, lstate, guard)) {
+		// Note: guard may have been unlocked by TryFinishSinkWithLock
 		return SinkResultType::NEED_MORE_INPUT;
 	}
 
@@ -300,7 +308,7 @@ SinkResultType Sort::Sink(ExecutionContext &context, DataChunk &chunk, OperatorS
 
 	// This can return false if we somehow still don't have enough memory
 	// We'll likely run into an OOM exception
-	TryFinishSink(gstate, lstate, guard);
+	TryFinishSinkNoLock(lstate);
 
 	return SinkResultType::NEED_MORE_INPUT;
 }
@@ -314,9 +322,10 @@ SinkCombineResultType Sort::Combine(ExecutionContext &context, OperatorSinkCombi
 	}
 
 	// Set any_combined under lock
-	auto guard = gstate.Lock();
-	gstate.any_combined = true;
-	guard.unlock();
+	{
+		auto guard = gstate.Lock();
+		gstate.any_combined = true;
+	} // guard is destroyed here, unlocking the mutex
 
 	// Do the final local sort (lock-free)
 	lstate.sorted_run->Finalize(gstate.external);
@@ -380,9 +389,11 @@ public:
 		if (!merger_global_state) {
 			return;
 		}
-		auto guard = merger_global_state->Lock();
-		merger.sorted_runs.clear();
-		sink.temporary_memory_state.reset();
+		{
+			auto guard = merger_global_state->Lock();
+			merger.sorted_runs.clear();
+			sink.temporary_memory_state.reset();
+		} // guard is destroyed here, unlocking the mutex
 	}
 
 public:
@@ -510,7 +521,9 @@ SourceResultType Sort::MaterializeColumnData(ExecutionContext &context, Operator
 unique_ptr<ColumnDataCollection> Sort::GetColumnData(OperatorSourceInput &input) const {
 	auto &gstate = input.global_state.Cast<SortGlobalSourceState>();
 	auto guard = gstate.Lock();
-	return gstate.column_data->FetchCollection();
+	auto result = gstate.column_data->FetchCollection();
+	guard.unlock();
+	return result;
 }
 
 SourceResultType Sort::MaterializeSortedRun(ExecutionContext &context, OperatorSourceInput &input) const {
