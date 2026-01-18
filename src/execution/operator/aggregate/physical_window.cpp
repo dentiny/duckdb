@@ -378,6 +378,8 @@ public:
 	}
 	//! Get the next task given the current state
 	bool TryNextTask(TaskPtr &task, Task &task_local);
+	//! Handle source blocking/unblocking logic
+	SourceResultType HandleSourceBlocking(InterruptState &interrupt_state, bool &should_break) DUCKDB_EXCLUDES(lock);
 
 	//! Context for executing computations
 	ClientContext &client;
@@ -1108,6 +1110,22 @@ OperatorPartitionData PhysicalWindow::GetPartitionData(ExecutionContext &context
 	return OperatorPartitionData(lstate.batch_index);
 }
 
+SourceResultType WindowGlobalSourceState::HandleSourceBlocking(InterruptState &interrupt_state,
+                                                                bool &should_break) {
+	auto guard = Lock();
+	if (!HasMoreTasks()) {
+		// no more tasks - exit
+		UnblockTasks();
+		should_break = true;
+		return SourceResultType::FINISHED;
+	} else {
+		// there are more tasks available, but we can't execute them yet
+		// block the source
+		should_break = false;
+		return BlockSource(interrupt_state);
+	}
+}
+
 SourceResultType PhysicalWindow::GetDataInternal(ExecutionContext &context, DataChunk &chunk,
                                                  OperatorSourceInput &source) const {
 	auto &gsource = source.global_state.Cast<WindowGlobalSourceState>();
@@ -1122,16 +1140,12 @@ SourceResultType PhysicalWindow::GetDataInternal(ExecutionContext &context, Data
 				throw;
 			}
 		} else {
-			auto guard = gsource.Lock();
-			if (!gsource.HasMoreTasks()) {
-				// no more tasks - exit
-				gsource.UnblockTasks();
+			bool should_break;
+			auto result = gsource.HandleSourceBlocking(source.interrupt_state, should_break);
+			if (should_break) {
 				break;
-			} else {
-				// there are more tasks available, but we can't execute them yet
-				// block the source
-				return gsource.BlockSource(source.interrupt_state);
 			}
+			return result;
 		}
 	}
 
