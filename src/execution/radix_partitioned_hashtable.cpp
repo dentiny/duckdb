@@ -583,7 +583,7 @@ void RadixPartitionedHashTable::Sink(ExecutionContext &context, DataChunk &chunk
 }
 
 void RadixPartitionedHashTable::Combine(ExecutionContext &context, GlobalSinkState &gstate_p,
-                                        LocalSinkState &lstate_p) const {
+                                        LocalSinkState &lstate_p) const DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 	auto &gstate = gstate_p.Cast<RadixHTGlobalSinkState>();
 	auto &lstate = lstate_p.Cast<RadixHTLocalSinkState>();
 	if (!lstate.ht) {
