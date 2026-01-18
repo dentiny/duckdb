@@ -242,7 +242,7 @@ unique_ptr<GlobalSinkState> Sort::GetGlobalSinkState(ClientContext &context) con
 
 //! Returns true if the Sink call is done (either because run size is small or because run was finalized)
 //! If the run needs to be finalized, this function will unlock the guard before finalizing
-static bool TryFinishSinkWithLock(SortGlobalSinkState &gstate, SortLocalSinkState &lstate, unique_lock<mutex> &guard) {
+static bool TryFinishSinkWithLock(SortGlobalSinkState &gstate, SortLocalSinkState &lstate, unique_lock<mutex> &guard) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 	// Check if we exceed the limit
 	const auto sorted_run_size = lstate.sorted_run->SizeInBytes();
 	if (sorted_run_size < lstate.maximum_run_size) {
@@ -266,7 +266,7 @@ static bool TryFinishSinkWithLock(SortGlobalSinkState &gstate, SortLocalSinkStat
 }
 
 //! Returns true if the Sink call is done (run size is small)
-static bool TryFinishSinkNoLock(SortLocalSinkState &lstate) {
+static bool TryFinishSinkNoLock(SortLocalSinkState &lstate) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 	// Check if we exceed the limit
 	const auto sorted_run_size = lstate.sorted_run->SizeInBytes();
 	return sorted_run_size < lstate.maximum_run_size;
@@ -294,17 +294,18 @@ SinkResultType Sort::Sink(ExecutionContext &context, DataChunk &chunk, OperatorS
 	}
 
 	// Grab the lock, update the local state, and see if we can finish now
-	unique_lock<mutex> guard = gstate.Lock();
-	gstate.UpdateLocalState(lstate);
-	if (TryFinishSinkWithLock(gstate, lstate, guard)) {
-		// Note: guard may have been unlocked by TryFinishSinkWithLock
-		return SinkResultType::NEED_MORE_INPUT;
-	}
+	{
+		unique_lock<mutex> guard = gstate.Lock();
+		gstate.UpdateLocalState(lstate);
+		if (TryFinishSinkWithLock(gstate, lstate, guard)) {
+			// Note: guard may have been unlocked by TryFinishSinkWithLock
+			return SinkResultType::NEED_MORE_INPUT;
+		}
 
-	// Still no, this thread must try to increase the limit
-	gstate.TryIncreaseReservation(context.client, lstate, is_index_sort, guard);
-	gstate.UpdateLocalState(lstate);
-	guard.unlock(); // Can unlock now, local state is definitely up-to-date
+		// Still no, this thread must try to increase the limit
+		gstate.TryIncreaseReservation(context.client, lstate, is_index_sort, guard);
+		gstate.UpdateLocalState(lstate);
+	} // guard is destroyed here if not already unlocked
 
 	// This can return false if we somehow still don't have enough memory
 	// We'll likely run into an OOM exception
@@ -520,9 +521,11 @@ SourceResultType Sort::MaterializeColumnData(ExecutionContext &context, Operator
 
 unique_ptr<ColumnDataCollection> Sort::GetColumnData(OperatorSourceInput &input) const {
 	auto &gstate = input.global_state.Cast<SortGlobalSourceState>();
-	auto guard = gstate.Lock();
-	auto result = gstate.column_data->FetchCollection();
-	guard.unlock();
+	unique_ptr<ColumnDataCollection> result;
+	{
+		auto guard = gstate.Lock();
+		result = gstate.column_data->FetchCollection();
+	} // guard is destroyed here, unlocking the mutex
 	return result;
 }
 
