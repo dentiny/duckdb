@@ -1112,7 +1112,7 @@ OperatorPartitionData PhysicalWindow::GetPartitionData(ExecutionContext &context
 
 SourceResultType WindowGlobalSourceState::HandleSourceBlocking(InterruptState &interrupt_state,
                                                                 bool &should_break) {
-	auto guard = Lock();
+	const lock_guard<mutex> guard(lock);
 	if (!HasMoreTasks()) {
 		// no more tasks - exit
 		UnblockTasks();
