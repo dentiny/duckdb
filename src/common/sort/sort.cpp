@@ -273,8 +273,8 @@ static bool TryFinishSinkNoLock(SortLocalSinkState &lstate) DUCKDB_NO_THREAD_SAF
 }
 
 //! Helper function that handles the locked portion of Sink
-static SinkResultType SinkWithLock(const Sort &sort, SortGlobalSinkState &gstate, SortLocalSinkState &lstate,
-                                   ExecutionContext &context) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
+static SinkResultType SinkWithLock(SortGlobalSinkState &gstate, SortLocalSinkState &lstate,
+                                   ExecutionContext &context, bool is_index_sort) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 	unique_lock<mutex> guard = gstate.Lock();
 	gstate.UpdateLocalState(lstate);
 	if (TryFinishSinkWithLock(gstate, lstate, guard)) {
@@ -283,7 +283,7 @@ static SinkResultType SinkWithLock(const Sort &sort, SortGlobalSinkState &gstate
 	}
 
 	// Still no, this thread must try to increase the limit
-	gstate.TryIncreaseReservation(context.client, lstate, sort.is_index_sort, guard);
+	gstate.TryIncreaseReservation(context.client, lstate, is_index_sort, guard);
 	gstate.UpdateLocalState(lstate);
 	guard.unlock(); // Explicit unlock - we're done with the lock
 
@@ -316,7 +316,7 @@ SinkResultType Sort::Sink(ExecutionContext &context, DataChunk &chunk, OperatorS
 	}
 
 	// Need to grab the lock and try again
-	return SinkWithLock(*this, gstate, lstate, context);
+	return SinkWithLock(gstate, lstate, context, is_index_sort);
 }
 
 //! Helper function that sets any_combined flag under lock
