@@ -1577,7 +1577,7 @@ void AsOfLocalSourceState::ExecuteLeftTask(ExecutionContext &context, DataChunk 
 }
 
 SourceResultType PhysicalAsOfJoin::GetDataInternal(ExecutionContext &context, DataChunk &chunk,
-                                                   OperatorSourceInput &input) const {
+                                                   OperatorSourceInput &input) const DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 	auto &gsource = input.global_state.Cast<AsOfGlobalSourceState>();
 	auto &lsource = input.local_state.Cast<AsOfLocalSourceState>();
 
