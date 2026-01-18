@@ -147,20 +147,20 @@ private:
 	optional_ptr<CatalogEntry> CreateCommittedEntry(unique_ptr<CatalogEntry> entry);
 
 	//! Create all default entries
-	void CreateDefaultEntries(CatalogTransaction transaction, unique_lock<mutex> &lock) DUCKDB_REQUIRES(catalog_lock);
+	void CreateDefaultEntries(CatalogTransaction transaction) DUCKDB_REQUIRES(catalog_lock);
 	//! Attempt to create a default entry with the specified name. Returns the entry if successful, nullptr otherwise.
-	optional_ptr<CatalogEntry> CreateDefaultEntry(CatalogTransaction transaction, const string &name,
-	                                              unique_lock<mutex> &lock) DUCKDB_REQUIRES(catalog_lock);
+	optional_ptr<CatalogEntry> CreateDefaultEntry(CatalogTransaction transaction, const string &name)
+	    DUCKDB_REQUIRES(catalog_lock);
 
 	bool DropEntryInternal(CatalogTransaction transaction, const string &name, bool allow_drop_internal = false);
 
 	bool CreateEntryInternal(CatalogTransaction transaction, const string &name, unique_ptr<CatalogEntry> value,
-	                         unique_lock<mutex> &read_lock, bool should_be_empty = true);
+	                         bool should_be_empty = true) DUCKDB_REQUIRES(catalog_lock);
 	void CheckCatalogEntryInvariants(CatalogEntry &value, const string &name);
 	//! Verify that the previous entry in the chain is dropped.
 	bool VerifyVacancy(CatalogTransaction transaction, CatalogEntry &entry);
 	//! Start the catalog entry chain with a dummy node
-	bool StartChain(CatalogTransaction transaction, const string &name, unique_lock<mutex> &read_lock);
+	bool StartChain(CatalogTransaction transaction, const string &name) DUCKDB_REQUIRES(catalog_lock);
 	bool RenameEntryInternal(CatalogTransaction transaction, CatalogEntry &old, const string &new_name,
 	                         AlterInfo &alter_info, unique_lock<mutex> &read_lock);
 
