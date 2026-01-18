@@ -64,7 +64,7 @@ protected:
 
 class StateWithBlockableTasks {
 public:
-	unique_lock<mutex> Lock() {
+	unique_lock<mutex> Lock() DUCKDB_RETURN_CAPABILITY(lock) {
 		return unique_lock<mutex>(lock);
 	}
 
