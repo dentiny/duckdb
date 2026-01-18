@@ -78,6 +78,10 @@ private:
 	idx_t ReadAndCopyInterleaved(const vector<shared_ptr<CachedFileRange>> &overlapping_ranges,
 	                             const shared_ptr<CachedFileRange> &new_file_range, data_ptr_t buffer, idx_t nr_bytes,
 	                             idx_t location, bool actually_read);
+	//! Read from the uncached file handle, number of bytes to read will be adjusted based on start offset and file size.
+	//! Return actual number of bytes read.
+	idx_t ReadImpl(data_ptr_t buffer, idx_t nr_bytes);
+	idx_t ReadImpl(data_ptr_t buffer, idx_t nr_bytes, idx_t location);
 
 private:
 	QueryContext context;

@@ -121,7 +121,7 @@ BufferHandle CachingFileHandle::Read(data_ptr_t &buffer, const idx_t nr_bytes, c
 	if (!external_file_cache.IsEnabled()) {
 		result = external_file_cache.GetBufferManager().Allocate(MemoryTag::EXTERNAL_FILE_CACHE, nr_bytes);
 		buffer = result.Ptr();
-		GetFileHandle().Read(context, buffer, nr_bytes, location);
+		ReadImpl(buffer, nr_bytes, location);
 		return result;
 	}
 
@@ -162,7 +162,7 @@ BufferHandle CachingFileHandle::Read(data_ptr_t &buffer, const idx_t nr_bytes, c
 		if (ReadAndCopyInterleaved(overlapping_ranges, new_file_range, buffer, new_nr_bytes, location, false) <= 1) {
 			ReadAndCopyInterleaved(overlapping_ranges, new_file_range, buffer, new_nr_bytes, location, true);
 		} else {
-			GetFileHandle().Read(context, buffer, new_nr_bytes, location);
+			ReadImpl(buffer, new_nr_bytes, location);
 		}
 	}
 
@@ -177,7 +177,7 @@ BufferHandle CachingFileHandle::Read(data_ptr_t &buffer, idx_t &nr_bytes) {
 	if (!external_file_cache.IsEnabled() || !CanSeek()) {
 		result = external_file_cache.GetBufferManager().Allocate(MemoryTag::EXTERNAL_FILE_CACHE, nr_bytes);
 		buffer = result.Ptr();
-		nr_bytes = NumericCast<idx_t>(GetFileHandle().Read(context, buffer, nr_bytes));
+		nr_bytes = NumericCast<idx_t>(ReadImpl(buffer, nr_bytes));
 		position += NumericCast<idx_t>(nr_bytes);
 		return result;
 	}
@@ -200,7 +200,7 @@ BufferHandle CachingFileHandle::Read(data_ptr_t &buffer, idx_t &nr_bytes) {
 	buffer = result.Ptr();
 
 	GetFileHandle().Seek(position);
-	nr_bytes = NumericCast<idx_t>(GetFileHandle().Read(context, buffer, nr_bytes));
+	nr_bytes = NumericCast<idx_t>(ReadImpl(buffer, nr_bytes));
 	auto new_file_range = make_shared_ptr<CachedFileRange>(result.GetBlockHandle(), nr_bytes, position, version_tag);
 
 	result = TryInsertFileRange(result, buffer, nr_bytes, position, new_file_range);
@@ -280,6 +280,19 @@ void CachingFileHandle::Seek(idx_t location) {
 	if (file_handle != nullptr) {
 		file_handle->Seek(location);
 	}
+}
+
+idx_t CachingFileHandle::ReadImpl(data_ptr_t buffer, idx_t nr_bytes) {
+	auto& handle = GetFileHandle();
+	return ReadImpl(buffer, nr_bytes, handle.SeekPosition());
+}
+
+idx_t CachingFileHandle::ReadImpl(data_ptr_t buffer, idx_t nr_bytes, idx_t location) {
+	auto& handle = GetFileHandle();
+	const idx_t file_size = handle.GetFileSize();
+	const idx_t actual_bytes_to_read = std::min<idx_t>(file_size - location, nr_bytes);
+	handle.Read(context, buffer, actual_bytes_to_read, location);
+	return actual_bytes_to_read;
 }
 
 BufferHandle CachingFileHandle::TryReadFromCache(data_ptr_t &buffer, idx_t nr_bytes, idx_t location,
@@ -430,7 +443,7 @@ idx_t CachingFileHandle::ReadAndCopyInterleaved(const vector<shared_ptr<CachedFi
 			const auto bytes_to_read = overlapping_range->location - current_location;
 			D_ASSERT(bytes_to_read < remaining_bytes);
 			if (actually_read) {
-				GetFileHandle().Read(context, buffer + buffer_offset, bytes_to_read, current_location);
+				ReadImpl(buffer + buffer_offset, bytes_to_read, current_location);
 			}
 			current_location += bytes_to_read;
 			remaining_bytes -= bytes_to_read;
@@ -467,7 +480,7 @@ idx_t CachingFileHandle::ReadAndCopyInterleaved(const vector<shared_ptr<CachedFi
 
 			std::cerr << "read into address " << static_cast<void*>(buffer + buffer_offset) << " for " << remaining_bytes << " with offset " << current_location << std::endl;
 
-			GetFileHandle().Read(context, buffer + buffer_offset, remaining_bytes, current_location);
+			ReadImpl(buffer + buffer_offset, remaining_bytes, current_location);
 		}
 		non_cached_read_count++;
 	}
