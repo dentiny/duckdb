@@ -11,6 +11,8 @@
 #include "duckdb/storage/external_file_cache.hpp"
 #include "duckdb/storage/external_file_cache_util.hpp"
 
+#include <iostream>
+
 namespace duckdb {
 
 namespace {
@@ -131,6 +133,8 @@ BufferHandle CachingFileHandle::Read(data_ptr_t &buffer, const idx_t nr_bytes, c
 		return result; // Success
 	}
 
+	std::cerr << "request to read " << nr_bytes << " at location " << location << std::endl;
+
 	idx_t new_nr_bytes = nr_bytes;
 	if (start_location_of_next_range.IsValid()) {
 		const idx_t nr_bytes_to_be_added = start_location_of_next_range.GetIndex() - location - nr_bytes;
@@ -145,6 +149,8 @@ BufferHandle CachingFileHandle::Read(data_ptr_t &buffer, const idx_t nr_bytes, c
 	auto new_file_range =
 	    make_shared_ptr<CachedFileRange>(result.GetBlockHandle(), new_nr_bytes, location, version_tag);
 	buffer = result.Ptr();
+
+	std::cerr << "address = " << static_cast<void*>(buffer) << " actual buffer size = " << new_nr_bytes << std::endl;
 
 	// Interleave reading and copying from cached buffers
 	if (OnDiskFile()) {
@@ -458,6 +464,9 @@ idx_t CachingFileHandle::ReadAndCopyInterleaved(const vector<shared_ptr<CachedFi
 	if (remaining_bytes != 0) {
 		const auto buffer_offset = nr_bytes - remaining_bytes;
 		if (actually_read) {
+
+			std::cerr << "read into address " << static_cast<void*>(buffer + buffer_offset) << " for " << remaining_bytes << " with offset " << current_location << std::endl;
+
 			GetFileHandle().Read(context, buffer + buffer_offset, remaining_bytes, current_location);
 		}
 		non_cached_read_count++;
