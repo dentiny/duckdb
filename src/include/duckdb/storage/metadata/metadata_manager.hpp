@@ -97,19 +97,22 @@ public:
 protected:
 	BlockManager &block_manager;
 	BufferManager &buffer_manager;
-	mutable mutex block_lock;
+	mutable mutex block_mutex;
 	unordered_map<block_id_t, MetadataBlock> blocks;
 	unordered_map<block_id_t, idx_t> modified_blocks;
 
 protected:
-	block_id_t AllocateNewBlock(unique_lock<mutex> &block_lock);
+	block_id_t AllocateNewBlock() DUCKDB_ACQUIRE(block_mutex);
 	block_id_t PeekNextBlockId() const;
 	block_id_t GetNextBlockId() const;
 
-	void AddBlock(unique_lock<mutex> &block_lock, MetadataBlock new_block, bool if_exists = false);
-	void AddAndRegisterBlock(unique_lock<mutex> &block_lock, MetadataBlock block);
-	void ConvertToTransient(unique_lock<mutex> &block_lock, MetadataBlock &block);
-	MetadataPointer FromDiskPointerInternal(unique_lock<mutex> &block_lock, MetaBlockPointer pointer);
+	void AddBlock(MetadataBlock new_block, bool if_exists = false) DUCKDB_REQUIRES(block_mutex);
+	void AddAndRegisterBlock(MetadataBlock block) DUCKDB_REQUIRES(block_mutex);
+	void ConvertToTransient(MetadataBlock &block) DUCKDB_REQUIRES(block_mutex);
+	shared_ptr<BlockHandle> ConvertToTransientUnlocked(shared_ptr<BlockHandle> old_block, block_id_t block_id)
+	    DUCKDB_EXCLUDES(block_mutex);
+	shared_ptr<BlockHandle> RegisterBlockUnlocked(block_id_t block_id) DUCKDB_EXCLUDES(block_mutex);
+	MetadataPointer FromDiskPointerInternal(MetaBlockPointer pointer) DUCKDB_REQUIRES(block_mutex);
 };
 
 } // namespace duckdb

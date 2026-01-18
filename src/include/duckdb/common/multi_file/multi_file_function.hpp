@@ -259,11 +259,7 @@ public:
 	//! Helper function that try to start opening a next file. Parallel lock should be locked when calling.
 	static bool TryOpenNextFile(ClientContext &context, const MultiFileBindData &bind_data,
 	                            MultiFileLocalState &scan_data, MultiFileGlobalState &global_state,
-	                            unique_lock<mutex> &parallel_lock) {
-		if (!parallel_lock.owns_lock()) {
-			throw InternalException("parallel_lock is not held in TryOpenNextFile, this should not happen");
-		}
-
+	                            unique_lock<mutex> &parallel_lock) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 		const auto file_lookahead_limit = NumericCast<idx_t>(TaskScheduler::GetScheduler(context).NumberOfThreads());
 
 		idx_t file_index = global_state.file_index;
@@ -330,7 +326,8 @@ public:
 	}
 
 	//! Wait for a file to become available. Parallel lock should be locked when calling.
-	static void WaitForFile(idx_t file_index, MultiFileGlobalState &global_state, unique_lock<mutex> &parallel_lock) {
+	static void WaitForFile(idx_t file_index, MultiFileGlobalState &global_state, unique_lock<mutex> &parallel_lock)
+	    DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 		while (true) {
 			// Get pointer to file mutex before unlocking
 			auto &file_mutex = *global_state.readers[file_index]->file_mutex;

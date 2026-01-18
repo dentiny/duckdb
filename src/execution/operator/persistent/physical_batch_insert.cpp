@@ -477,7 +477,7 @@ SinkNextBatchType PhysicalBatchInsert::NextBatch(ExecutionContext &context, Oper
 		bool any_unblocked;
 		{
 			auto guard = memory_manager.Lock();
-			any_unblocked = memory_manager.UnblockTasks(guard);
+			any_unblocked = memory_manager.UnblockTasks();
 		}
 		if (!any_unblocked) {
 			ExecuteTasks(context.client, gstate, lstate);
@@ -488,7 +488,7 @@ SinkNextBatchType PhysicalBatchInsert::NextBatch(ExecutionContext &context, Oper
 
 	// unblock any blocked tasks
 	auto guard = memory_manager.Lock();
-	memory_manager.UnblockTasks(guard);
+	memory_manager.UnblockTasks();
 
 	return SinkNextBatchType::READY;
 }
@@ -521,7 +521,7 @@ SinkResultType PhysicalBatchInsert::Sink(ExecutionContext &context, DataChunk &i
 			if (!memory_manager.IsMinimumBatchIndex(batch_index)) {
 				//  we are not the minimum batch index and we have no memory available to buffer - block the task for
 				//  now
-				return memory_manager.BlockSink(guard, input.interrupt_state);
+				return memory_manager.BlockSink(input.interrupt_state);
 			}
 		}
 	}
@@ -588,7 +588,7 @@ SinkCombineResultType PhysicalBatchInsert::Combine(ExecutionContext &context, Op
 
 	// unblock any blocked tasks
 	auto guard = memory_manager.Lock();
-	memory_manager.UnblockTasks(guard);
+	memory_manager.UnblockTasks();
 
 	return SinkCombineResultType::FINISHED;
 }

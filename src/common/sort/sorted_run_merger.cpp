@@ -47,8 +47,7 @@ public:
 		return unique_lock<mutex>(lock);
 	}
 
-	unsafe_vector<SortedRunPartitionBoundary> &GetRunBoundaries(const unique_lock<mutex> &guard) {
-		VerifyLock(guard);
+	unsafe_vector<SortedRunPartitionBoundary> &GetRunBoundaries(const unique_lock<mutex> &guard) DUCKDB_REQUIRES(lock) {
 		return run_boundaries;
 	}
 
@@ -61,15 +60,8 @@ public:
 	}
 
 private:
-	void VerifyLock(const unique_lock<mutex> &guard) const {
-#ifdef D_ASSERT_IS_ENABLED
-		D_ASSERT(guard.mutex() && RefersToSameObject(*guard.mutex(), lock));
-#endif
-	}
-
-private:
 	mutex lock;
-	unsafe_vector<SortedRunPartitionBoundary> run_boundaries;
+	unsafe_vector<SortedRunPartitionBoundary> run_boundaries DUCKDB_GUARDED_BY(lock);
 	atomic<bool> begin_computed;
 
 public:
@@ -187,7 +179,7 @@ public:
 	bool AssignTask(SortedRunMergerLocalState &lstate) {
 		D_ASSERT(!lstate.partition_idx.IsValid());
 		D_ASSERT(lstate.task == SortedRunMergerTask::FINISHED);
-		auto guard = Lock();
+		const lock_guard<mutex> guard(lock);
 		if (next_partition_idx == num_partitions) {
 			return false; // Nothing left to do
 		}
@@ -200,7 +192,7 @@ public:
 		return MaxValue<idx_t>(num_partitions, 1);
 	}
 
-	void DestroyScannedData() {
+	void DestroyScannedData() DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 		if (!merger.external) {
 			return; // Only need to destroy when doing an external sort
 		}
@@ -382,7 +374,7 @@ SourceResultType SortedRunMergerLocalState::ExecuteTask(SortedRunMergerGlobalSta
 }
 
 void SortedRunMergerLocalState::ComputePartitionBoundaries(SortedRunMergerGlobalState &gstate,
-                                                           const optional_idx &p_idx) {
+                                                           const optional_idx &p_idx) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 	D_ASSERT(p_idx.IsValid());
 	D_ASSERT(task == SortedRunMergerTask::COMPUTE_BOUNDARIES);
 
@@ -571,9 +563,9 @@ void SortedRunMergerLocalState::TemplatedComputePartitionBoundaries(SortedRunMer
 	}
 }
 
-void SortedRunMergerLocalState::AcquirePartitionBoundaries(SortedRunMergerGlobalState &gstate) {
+void SortedRunMergerLocalState::AcquirePartitionBoundaries(SortedRunMergerGlobalState &gstate) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 	D_ASSERT(partition_idx.IsValid());
-	D_ASSERT(task == SortedRunMergerTask::ACQUIRE_BOUNDARIES);
+	D_ASSERT(task == SortedRunMerkerTask::ACQUIRE_BOUNDARIES);
 	auto &current_partition = *gstate.partitions[partition_idx.GetIndex()];
 	if (current_partition.GetBeginComputed()) {
 		// Begin has been computed, boundaries are ready to use. Copy to local
@@ -843,7 +835,7 @@ SortedRunMerger::~SortedRunMerger() {
 }
 
 unique_ptr<LocalSourceState> SortedRunMerger::GetLocalSourceState(ExecutionContext &,
-                                                                  GlobalSourceState &gstate_p) const {
+                                                                  GlobalSourceState &gstate_p) const DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 	auto &gstate = gstate_p.Cast<SortedRunMergerGlobalState>();
 	auto guard = gstate.Lock();
 	return make_uniq<SortedRunMergerLocalState>(gstate);

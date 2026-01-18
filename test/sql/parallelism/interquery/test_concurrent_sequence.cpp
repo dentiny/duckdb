@@ -1,19 +1,19 @@
 #include "catch.hpp"
+#include "duckdb/common/mutex.hpp"
+#include "duckdb/common/thread.hpp"
+#include "duckdb/common/vector.hpp"
 #include "test_helpers.hpp"
 
 #include <algorithm>
-#include <mutex>
-#include <thread>
 
 using namespace duckdb;
-using namespace std;
 
 struct ConcurrentData {
 	DuckDB &db;
-	mutex lock;
-	duckdb::vector<int64_t> results;
+	duckdb::mutex lock;
+	duckdb::vector<int64_t> results DUCKDB_GUARDED_BY(lock);
 
-	ConcurrentData(DuckDB &db) : db(db) {
+	explicit ConcurrentData(DuckDB &db) : db(db) {
 	}
 };
 
@@ -25,7 +25,7 @@ static void append_values_from_sequence(ConcurrentData *data) {
 	for (size_t i = 0; i < CONCURRENT_SEQUENCE_INSERT_COUNT; i++) {
 		auto result = con.Query("SELECT nextval('seq')");
 		int64_t res = result->GetValue(0, 0).GetValue<int64_t>();
-		lock_guard<mutex> lock(data->lock);
+		duckdb::lock_guard<duckdb::mutex> lock(data->lock);
 		data->results.push_back(res);
 	}
 }
@@ -62,13 +62,17 @@ TEST_CASE("Test Concurrent Usage of Sequences", "[interquery][.]") {
 		threads[i].join();
 	}
 	// now we sort the output data
-	std::sort(seq_data.results.begin(), seq_data.results.end());
-	std::sort(data.results.begin(), data.results.end());
-	// the sequential and threaded data should be the same
-	REQUIRE(seq_data.results == data.results);
+	{
+		duckdb::lock_guard<duckdb::mutex> seq_lock(seq_data.lock);
+		duckdb::lock_guard<duckdb::mutex> data_lock(data.lock);
+		std::sort(seq_data.results.begin(), seq_data.results.end());
+		std::sort(data.results.begin(), data.results.end());
+		// the sequential and threaded data should be the same
+		REQUIRE(seq_data.results == data.results);
 
-	seq_data.results.clear();
-	data.results.clear();
+		seq_data.results.clear();
+		data.results.clear();
+	}
 	// now do the same but for a cyclic sequence
 	REQUIRE_NO_FAIL(con.Query("DROP SEQUENCE seq;"));
 	REQUIRE_NO_FAIL(con.Query("CREATE SEQUENCE seq MAXVALUE 10 CYCLE;"));
@@ -85,8 +89,12 @@ TEST_CASE("Test Concurrent Usage of Sequences", "[interquery][.]") {
 		threads[i].join();
 	}
 	// now we sort the output data
-	std::sort(seq_data.results.begin(), seq_data.results.end());
-	std::sort(data.results.begin(), data.results.end());
-	// the sequential and threaded data should be the same
-	REQUIRE(seq_data.results == data.results);
+	{
+		duckdb::lock_guard<duckdb::mutex> seq_lock(seq_data.lock);
+		duckdb::lock_guard<duckdb::mutex> data_lock(data.lock);
+		std::sort(seq_data.results.begin(), seq_data.results.end());
+		std::sort(data.results.begin(), data.results.end());
+		// the sequential and threaded data should be the same
+		REQUIRE(seq_data.results == data.results);
+	}
 }
