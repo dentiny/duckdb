@@ -37,7 +37,7 @@ public:
 	}
 
 private:
-	duckdb::mutex m;
+	mutable duckdb::mutex m;
 	unordered_set<string> store DUCKDB_GUARDED_BY(m);
 };
 
