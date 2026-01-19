@@ -64,17 +64,18 @@ protected:
 
 class StateWithBlockableTasks {
 public:
-	unique_lock<mutex> Lock() {
+	unique_lock<mutex> Lock() DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 		return unique_lock<mutex>(lock);
 	}
 
-	void PreventBlocking(const unique_lock<mutex> &guard) {
+	void PreventBlocking(const unique_lock<mutex> &guard) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 		VerifyLock(guard);
 		can_block = false;
 	}
 
 	//! Add a task to 'blocked_tasks' before returning SourceResultType::BLOCKED (must hold the lock)
-	bool BlockTask(const unique_lock<mutex> &guard, const InterruptState &interrupt_state) {
+	bool BlockTask(const unique_lock<mutex> &guard, const InterruptState &interrupt_state)
+		DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 		VerifyLock(guard);
 		if (can_block) {
 			blocked_tasks.push_back(interrupt_state);
@@ -83,13 +84,13 @@ public:
 		return false;
 	}
 
-	bool CanBlock(const unique_lock<mutex> &guard) const {
+	bool CanBlock(const unique_lock<mutex> &guard) const DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 		VerifyLock(guard);
 		return can_block;
 	}
 
 	//! Unblock all tasks (must hold the lock)
-	bool UnblockTasks(const unique_lock<mutex> &guard) {
+	bool UnblockTasks(const unique_lock<mutex> &guard) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 		VerifyLock(guard);
 		if (blocked_tasks.empty()) {
 			return false;
@@ -101,15 +102,17 @@ public:
 		return true;
 	}
 
-	SinkResultType BlockSink(const unique_lock<mutex> &guard, const InterruptState &interrupt_state) {
+	SinkResultType BlockSink(const unique_lock<mutex> &guard, const InterruptState &interrupt_state)
+		DUCKDB_REQUIRES(lock) {
 		return BlockTask(guard, interrupt_state) ? SinkResultType::BLOCKED : SinkResultType::FINISHED;
 	}
 
-	SourceResultType BlockSource(const unique_lock<mutex> &guard, const InterruptState &interrupt_state) {
+	SourceResultType BlockSource(const unique_lock<mutex> &guard, const InterruptState &interrupt_state)
+		DUCKDB_REQUIRES(lock) {
 		return BlockTask(guard, interrupt_state) ? SourceResultType::BLOCKED : SourceResultType::FINISHED;
 	}
 
-	void VerifyLock(const unique_lock<mutex> &guard) const {
+	void VerifyLock(const unique_lock<mutex> &guard) const DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
 #ifdef DEBUG
 		D_ASSERT(guard.mutex() && RefersToSameObject(*guard.mutex(), lock));
 #endif
