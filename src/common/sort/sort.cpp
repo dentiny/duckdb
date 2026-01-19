@@ -173,7 +173,7 @@ public:
 	}
 
 	void TryIncreaseReservation(ClientContext &context, SortLocalSinkState &lstate, bool is_index_sort,
-	                            const unique_lock<mutex> &guard) {
+	                            const std::unique_lock<std::mutex> &guard) {
 		VerifyLock(guard);
 		D_ASSERT(!external);
 
