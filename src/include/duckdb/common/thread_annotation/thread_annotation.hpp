@@ -8,20 +8,6 @@
 
 #pragma once
 
-// Enable thread safety attributes only with clang.
-// The attributes can be safely erased when compiling with other compilers.
-#if defined(__clang__) && (!defined(SWIG))
-#define DUCKDB_THREAD_ANNOTATION_ATTRIBUTE(x) __attribute__((x))
-#ifndef DUCKDB_THREAD_ANNOTATION_ENABLED
-#define DUCKDB_THREAD_ANNOTATION_ENABLED 1
-#endif
-#else
-#define DUCKDB_THREAD_ANNOTATION_ATTRIBUTE(x) // no-op
-#ifndef DUCKDB_THREAD_ANNOTATION_ENABLED
-#define DUCKDB_THREAD_ANNOTATION_ENABLED 0
-#endif
-#endif
-
 // CAPABILITY is an attribute on classes, which specifies that objects of the
 // class can be used as a capability. The string argument specifies the kind of
 // capability in error messages, e.g. "mutex".
