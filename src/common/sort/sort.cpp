@@ -242,7 +242,7 @@ unique_ptr<GlobalSinkState> Sort::GetGlobalSinkState(ClientContext &context) con
 }
 
 //! Returns true if the Sink call is done (either because run size is small or because run was finalized)
-static bool TryFinishSink(SortGlobalSinkState &gstate, SortLocalSinkState &lstate, unique_lock<mutex> &guard) {
+static bool TryFinishSink(SortGlobalSinkState &gstate, SortLocalSinkState &lstate, std::unique_lock<std::mutex> &guard) {
 	// Check if we exceed the limit
 	const auto sorted_run_size = lstate.sorted_run->SizeInBytes();
 	if (sorted_run_size < lstate.maximum_run_size) {
@@ -282,7 +282,7 @@ SinkResultType Sort::Sink(ExecutionContext &context, DataChunk &chunk, OperatorS
 	lstate.sorted_run->Sink(lstate.key, lstate.payload);
 
 	// Try to finish this call to Sink
-	unique_lock<mutex> guard;
+	std::unique_lock<std::mutex> guard;
 	if (TryFinishSink(gstate, lstate, guard)) {
 		return SinkResultType::NEED_MORE_INPUT;
 	}
