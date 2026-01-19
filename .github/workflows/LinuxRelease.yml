@@ -189,6 +189,11 @@ jobs:
         fetch-depth: 0
         ref: ${{ inputs.git_ref }}
 
+    - uses: rui314/setup-mold@v1
+      with:
+        mold-version: 2.40.3
+        make-default: true
+
     - uses: actions/setup-python@v5
       with:
         python-version: '3.12'
