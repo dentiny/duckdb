@@ -16,6 +16,7 @@ namespace duckdb {
 
 class Allocator;
 class BufferPool;
+class ClientContext;
 class TemporaryMemoryManager;
 class AttachedDatabase;
 class BlockManager;

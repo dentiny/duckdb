@@ -8,47 +8,37 @@
 
 #pragma once
 
-#include "duckdb/storage/table/chunk_info.hpp"
-#include "duckdb/storage/statistics/segment_statistics.hpp"
-#include "duckdb/common/types/data_chunk.hpp"
 #include "duckdb/common/enums/scan_options.hpp"
 #include "duckdb/common/mutex.hpp"
-#include "duckdb/parser/column_list.hpp"
 #include "duckdb/storage/table/segment_base.hpp"
 #include "duckdb/storage/block.hpp"
 #include "duckdb/storage/storage_index.hpp"
 #include "duckdb/storage/checkpoint/checkpoint_options.hpp"
 
 namespace duckdb {
-class AttachedDatabase;
 class BlockManager;
 class ColumnData;
-class DatabaseInstance;
 class DataTable;
 class PartialBlockManager;
 struct DataTableInfo;
 class ExpressionExecutor;
 class RowGroupCollection;
 class RowGroupWriter;
-class UpdateSegment;
 class TableStatistics;
 struct ColumnSegmentInfo;
 class Vector;
 struct ColumnCheckpointState;
 struct PartitionStatistics;
-struct PersistentColumnData;
 struct PersistentRowGroupData;
 struct RowGroupPointer;
 struct TransactionData;
 class CollectionScanState;
 class TableFilter;
-class TableFilterSet;
 struct ColumnFetchState;
+class RowGroup;
 struct RowGroupAppendState;
-class MetadataManager;
 class RowVersionManager;
 class ScanFilterInfo;
-class StorageCommitState;
 template <class T>
 struct SegmentNode;
 enum class ColumnDataType;

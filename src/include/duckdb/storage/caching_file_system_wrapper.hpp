@@ -9,10 +9,15 @@
 #pragma once
 
 #include "duckdb/common/enable_shared_from_this_ipp.hpp"
+#include "duckdb/common/file_open_flags.hpp"
 #include "duckdb/common/file_opener.hpp"
 #include "duckdb/common/file_system.hpp"
+#include "duckdb/common/open_file_info.hpp"
+#include "duckdb/common/optional_ptr.hpp"
+#include "duckdb/common/string.hpp"
+#include "duckdb/common/typedefs.hpp"
+#include "duckdb/common/unique_ptr.hpp"
 #include "duckdb/common/winapi.hpp"
-#include "duckdb/main/client_context.hpp"
 #include "duckdb/storage/caching_file_system.hpp"
 #include "duckdb/storage/caching_mode.hpp"
 

@@ -9,8 +9,12 @@
 #pragma once
 
 #include "duckdb/common/allocator.hpp"
+#include "duckdb/common/assert.hpp"
 #include "duckdb/common/common.hpp"
+#include "duckdb/common/typedefs.hpp"
+#include "duckdb/common/unique_ptr.hpp"
 #include "duckdb/common/types/string.hpp"
+#include "duckdb/common/winapi.hpp"
 #include "duckdb/common/arena_containers/arena_ptr.hpp"
 
 namespace duckdb {

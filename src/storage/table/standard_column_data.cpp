@@ -1,13 +1,15 @@
 #include "duckdb/storage/table/standard_column_data.hpp"
+
 #include "duckdb/storage/table/scan_state.hpp"
 #include "duckdb/storage/table/update_segment.hpp"
 #include "duckdb/storage/table/append_state.hpp"
-#include "duckdb/storage/data_table.hpp"
 #include "duckdb/storage/table/column_checkpoint_state.hpp"
-#include "duckdb/common/serializer/deserializer.hpp"
 #include "duckdb/storage/table/column_data_checkpointer.hpp"
 
 namespace duckdb {
+
+// Forward declaration.
+struct DataTableInfo;
 
 StandardColumnData::StandardColumnData(BlockManager &block_manager, DataTableInfo &info, idx_t column_index,
                                        LogicalType type, ColumnDataType data_type, optional_ptr<ColumnData> parent)

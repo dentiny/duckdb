@@ -1,9 +1,14 @@
 #include "duckdb/storage/table/table_statistics.hpp"
 
+#include "duckdb/common/assert.hpp"
 #include "duckdb/common/serializer/deserializer.hpp"
 #include "duckdb/common/serializer/serializer.hpp"
 #include "duckdb/execution/reservoir_sample.hpp"
+#include "duckdb/parser/column_list.hpp"
+#include "duckdb/storage/statistics/column_statistics.hpp"
+#include "duckdb/storage/statistics/distinct_statistics.hpp"
 #include "duckdb/storage/table/persistent_table_data.hpp"
+#include "duckdb/storage/storage_index.hpp"
 
 namespace duckdb {
 

@@ -1,6 +1,7 @@
 #include "duckdb/storage/arena_allocator.hpp"
 
 #include "duckdb/common/assert.hpp"
+#include "duckdb/common/helper.hpp"
 #include "duckdb/common/numeric_utils.hpp"
 
 namespace duckdb {

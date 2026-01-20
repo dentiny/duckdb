@@ -10,10 +10,12 @@
 
 #include "duckdb/function/partition_stats.hpp"
 #include "duckdb/storage/table/row_group.hpp"
-#include "duckdb/storage/table/row_group_segment_tree.hpp"
 #include "duckdb/storage/table/segment_tree.hpp"
 
 namespace duckdb {
+
+// Forward declaration.
+class RowGroupSegmentTree; 
 
 enum class OrderByStatistics { MIN, MAX };
 enum class RowGroupOrderType { ASC, DESC };

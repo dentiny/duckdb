@@ -8,7 +8,6 @@
 
 #pragma once
 
-#include "duckdb/common/common.hpp"
 #include "duckdb/storage/buffer/buffer_handle.hpp"
 #include "duckdb/storage/storage_lock.hpp"
 #include "duckdb/storage/table/row_group_reorderer.hpp"
@@ -21,26 +20,19 @@
 
 namespace duckdb {
 class AdaptiveFilter;
-class ColumnSegment;
-class LocalTableStorage;
 class CollectionScanState;
-class Index;
 class RowGroup;
 class RowGroupCollection;
-class UpdateSegment;
 class TableScanState;
 class ColumnSegment;
 class ColumnSegmentTree;
-class ValiditySegment;
 class TableFilterSet;
-class ColumnData;
 class DuckTransaction;
 class RowGroupSegmentTree;
 class TableFilter;
 struct AdaptiveFilterState;
 struct TableScanOptions;
 struct ScanSamplingInfo;
-struct TableFilterState;
 template <class T>
 struct SegmentNode;
 

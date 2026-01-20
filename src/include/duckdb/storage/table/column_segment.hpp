@@ -13,7 +13,6 @@
 #include "duckdb/common/types/vector.hpp"
 #include "duckdb/function/compression_function.hpp"
 #include "duckdb/storage/buffer/block_handle.hpp"
-#include "duckdb/storage/buffer_manager.hpp"
 #include "duckdb/storage/statistics/segment_statistics.hpp"
 #include "duckdb/storage/table/segment_base.hpp"
 
@@ -21,12 +20,8 @@ namespace duckdb {
 
 class BaseStatistics;
 class BlockManager;
-class ColumnData;
-class ColumnSegment;
 class DatabaseInstance;
 class TableFilter;
-class Transaction;
-class UpdateSegment;
 struct ColumnAppendState;
 struct ColumnFetchState;
 struct ColumnScanState;

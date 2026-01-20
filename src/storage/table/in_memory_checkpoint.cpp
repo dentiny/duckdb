@@ -1,6 +1,6 @@
 #include "duckdb/storage/table/in_memory_checkpoint.hpp"
 
-#include "duckdb/catalog/catalog_entry/duck_table_entry.hpp"
+#include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include "duckdb/catalog/duck_catalog.hpp"
 #include "duckdb/common/serializer/binary_serializer.hpp"
 #include "duckdb/storage/data_table.hpp"

@@ -1,6 +1,6 @@
 #include "duckdb/storage/table/list_column_data.hpp"
+
 #include "duckdb/storage/statistics/list_stats.hpp"
-#include "duckdb/common/serializer/deserializer.hpp"
 #include "duckdb/storage/table/column_checkpoint_state.hpp"
 #include "duckdb/storage/table/append_state.hpp"
 #include "duckdb/storage/table/scan_state.hpp"

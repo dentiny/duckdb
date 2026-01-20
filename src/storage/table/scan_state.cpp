@@ -1,10 +1,8 @@
 #include "duckdb/storage/table/scan_state.hpp"
 
 #include "duckdb/execution/adaptive_filter.hpp"
-#include "duckdb/storage/table/column_data.hpp"
 #include "duckdb/storage/table/column_segment.hpp"
 #include "duckdb/storage/table/row_group.hpp"
-#include "duckdb/storage/table/row_group_collection.hpp"
 #include "duckdb/storage/table/row_group_segment_tree.hpp"
 
 namespace duckdb {

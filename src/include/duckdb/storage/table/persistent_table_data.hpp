@@ -9,10 +9,8 @@
 #pragma once
 
 #include "duckdb/storage/table/table_statistics.hpp"
-#include "duckdb/storage/metadata/metadata_manager.hpp"
 
 namespace duckdb {
-class BaseStatistics;
 
 class PersistentTableData {
 public:

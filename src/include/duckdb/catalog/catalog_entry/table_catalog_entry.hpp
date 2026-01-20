@@ -38,6 +38,7 @@ struct DropNotNullInfo;
 struct SetColumnCommentInfo;
 struct CreateTableInfo;
 struct BoundCreateTableInfo;
+struct ColumnIndex;
 
 class TableFunction;
 struct FunctionData;

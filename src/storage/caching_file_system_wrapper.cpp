@@ -1,8 +1,12 @@
 #include "duckdb/storage/caching_file_system_wrapper.hpp"
 
+#include "duckdb/common/assert.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/file_system.hpp"
+#include "duckdb/common/helper.hpp"
 #include "duckdb/common/numeric_utils.hpp"
+#include "duckdb/common/types/timestamp.hpp"
+#include "duckdb/common/vector.hpp"
 #include "duckdb/main/client_context.hpp"
 
 namespace duckdb {

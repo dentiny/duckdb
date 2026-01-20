@@ -12,6 +12,11 @@
 
 namespace duckdb {
 
+// Forward declaration.
+struct DataTableInfo;
+class DataTable;
+class BlockManager;
+
 //! Validity column data represents the validity data (i.e. which values are null)
 class ValidityColumnData : public ColumnData {
 	friend class StandardColumnData;

@@ -20,7 +20,6 @@
 #include "duckdb/common/atomic_ptr.hpp"
 
 namespace duckdb {
-class ColumnData;
 class ColumnSegment;
 class DatabaseInstance;
 class RowGroup;
@@ -33,6 +32,7 @@ struct PrefetchState;
 struct RowGroupWriteInfo;
 struct TableScanOptions;
 struct TransactionData;
+class UpdateSegment;
 struct PersistentColumnData;
 class ValidityColumnData;
 
