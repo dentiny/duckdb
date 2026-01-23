@@ -246,7 +246,7 @@ string ExtensionHelper::ExtensionUrlTemplate(optional_ptr<const DatabaseInstance
 #ifdef WASM_LOADABLE_EXTENSIONS
 	versioned_path = versioned_path + ".wasm";
 #else
-	versioned_path = versioned_path + CompressionExtensionFromType(FileCompressionType::GZIP);
+	versioned_path = versioned_path + CompressionExtensionFromType(GZIP_COMPRESSION_TYPE);
 #endif
 	string url_template = repository.path + versioned_path;
 	return url_template;
@@ -323,7 +323,7 @@ static unique_ptr<ExtensionInstallInfo> DirectInstallExtension(DatabaseInstance 
 	bool exists = fs.FileExists(file);
 
 	// Recheck without .gz
-	if (!exists && StringUtil::EndsWith(file, CompressionExtensionFromType(FileCompressionType::GZIP))) {
+	if (!exists && StringUtil::EndsWith(file, CompressionExtensionFromType(GZIP_COMPRESSION_TYPE))) {
 		file = file.substr(0, file.size() - 3);
 		exists = fs.FileExists(file);
 	}

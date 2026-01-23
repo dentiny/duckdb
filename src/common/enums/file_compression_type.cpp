@@ -1,43 +1,32 @@
 #include "duckdb/common/enums/file_compression_type.hpp"
+
+#include "duckdb/common/exception.hpp"
 #include "duckdb/common/string_util.hpp"
-#include "duckdb/common/exception/parser_exception.hpp"
 
 namespace duckdb {
 
-FileCompressionType FileCompressionTypeFromString(const string &input) {
-	auto parameter = StringUtil::Lower(input);
-	if (parameter == "infer" || parameter == "auto") {
-		return FileCompressionType::AUTO_DETECT;
-	} else if (parameter == "gzip") {
-		return FileCompressionType::GZIP;
-	} else if (parameter == "zstd") {
-		return FileCompressionType::ZSTD;
-	} else if (parameter == "uncompressed" || parameter == "none" || parameter.empty()) {
-		return FileCompressionType::UNCOMPRESSED;
-	} else {
-		throw ParserException("Unrecognized file compression type \"%s\"", input);
-	}
-}
+const FileCompressionType UNCOMPRESSED_COMPRESSION_TYPE = "uncompressed";
+const FileCompressionType ZSTD_COMPRESSION_TYPE = "zstd";
+const FileCompressionType GZIP_COMPRESSION_TYPE = "gzip";
+const FileCompressionType AUTO_COMPRESSION_TYPE = "auto";
 
-string CompressionExtensionFromType(const FileCompressionType type) {
-	switch (type) {
-	case FileCompressionType::GZIP:
+string CompressionExtensionFromType(const FileCompressionType& type) {
+	if (StringUtil::CIEquals(type, GZIP_COMPRESSION_TYPE)) {
 		return ".gz";
-	case FileCompressionType::ZSTD:
-		return ".zst";
-	default:
-		throw NotImplementedException("Compression Extension of file compression type is not implemented");
 	}
+	if (StringUtil::CIEquals(type, ZSTD_COMPRESSION_TYPE)) {
+		return ".zst";
+	}
+	throw NotImplementedException("Compression Extension of file compression type %s is not implemented", type);
 }
 
-bool IsFileCompressed(string path, FileCompressionType type) {
-	auto extension = CompressionExtensionFromType(type);
+bool IsFileCompressed(string path, const FileCompressionType& compression_type) {
 	std::size_t question_mark_pos = std::string::npos;
 	if (!StringUtil::StartsWith(path, "\\\\?\\")) {
 		question_mark_pos = path.find('?');
 	}
 	path = path.substr(0, question_mark_pos);
-	if (StringUtil::EndsWith(path, extension)) {
+	if (StringUtil::EndsWith(path, CompressionExtensionFromType(compression_type))) {
 		return true;
 	}
 	return false;

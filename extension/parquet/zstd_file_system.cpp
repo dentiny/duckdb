@@ -174,7 +174,7 @@ public:
 	}
 
 	FileCompressionType GetFileCompressionType() override {
-		return FileCompressionType::ZSTD;
+		return ZSTD_COMPRESSION_TYPE;
 	}
 
 	ZStdFileSystem zstd_fs;

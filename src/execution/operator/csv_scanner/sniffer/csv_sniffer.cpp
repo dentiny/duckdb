@@ -173,7 +173,7 @@ SnifferResult CSVSniffer::SniffCSV(const bool force_match) {
 	buffer_manager->sniffing = true;
 	// 1. Dialect Detection
 	DetectDialect();
-	if (buffer_manager->file_handle->compression_type != FileCompressionType::UNCOMPRESSED &&
+	if (!StringUtil::CIEquals(buffer_manager->file_handle->compression_type, UNCOMPRESSED_COMPRESSION_TYPE) &&
 	    buffer_manager->IsBlockUnloaded(0)) {
 		buffer_manager->ResetBufferManager();
 	}
@@ -189,7 +189,7 @@ SnifferResult CSVSniffer::SniffCSV(const bool force_match) {
 	// We reset the buffer for compressed files
 	// This is done because we can't easily seek on compressed files, if a buffer goes out of scope we must read from
 	// the start
-	if (buffer_manager->file_handle->compression_type != FileCompressionType::UNCOMPRESSED) {
+	if (!StringUtil::CIEquals(buffer_manager->file_handle->compression_type, UNCOMPRESSED_COMPRESSION_TYPE)) {
 		buffer_manager->ResetBufferManager();
 	}
 	buffer_manager->sniffing = false;

@@ -370,7 +370,7 @@ TEST_CASE("compression filesystem registration and lookup", "[file_system]") {
 	vfs.RegisterCompressionFilesystem(std::move(fake_compress_filesystem));
 
 	FileOpenFlags flags = FileOpenFlags::FILE_FLAGS_READ;
-	flags.SetCompression(FileCompressionType::AUTO_DETECT);
+	flags.SetCompression(AUTO_COMPRESSION_TYPE);
 	auto file_handle = vfs.OpenFile(filepath, flags, /*opener=*/nullptr);
 
 	// Downcast to make sure compressed file handle is created.

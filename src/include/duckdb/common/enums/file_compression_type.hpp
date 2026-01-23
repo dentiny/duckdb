@@ -9,15 +9,24 @@
 #pragma once
 
 #include "duckdb/common/constants.hpp"
+#include "duckdb/common/string.hpp"
 
 namespace duckdb {
 
-enum class FileCompressionType : uint8_t { AUTO_DETECT = 0, UNCOMPRESSED = 1, GZIP = 2, ZSTD = 3 };
+// Alias
+using FileCompressionType = string;
 
-FileCompressionType FileCompressionTypeFromString(const string &input);
+// DuckDB internally supported compression types.
+extern const FileCompressionType UNCOMPRESSED_COMPRESSION_TYPE;
+extern const FileCompressionType ZSTD_COMPRESSION_TYPE;
+extern const FileCompressionType GZIP_COMPRESSION_TYPE;
+// Used at read, which automatically detects applicable decompression.
+extern const FileCompressionType AUTO_COMPRESSION_TYPE;
 
-string CompressionExtensionFromType(const FileCompressionType type);
+// Return whether the given filepath is compressed with the given type.
+bool IsFileCompressed(string path, const FileCompressionType& compression_type);
 
-bool IsFileCompressed(string path, FileCompressionType type);
+// Return file extension for a given compression type (e.g. ".gz" for gzip).
+string CompressionExtensionFromType(const FileCompressionType& type);
 
 } // namespace duckdb

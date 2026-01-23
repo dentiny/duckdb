@@ -406,8 +406,8 @@ double CSVFileScan::GetProgressInFile(ClientContext &context) {
 		return 100.0;
 	}
 	double total_bytes_read;
-	if (manager->file_handle->compression_type == FileCompressionType::GZIP ||
-	    manager->file_handle->compression_type == FileCompressionType::ZSTD) {
+	if (StringUtil::CIEquals(manager->file_handle->compression_type, GZIP_COMPRESSION_TYPE) ||
+	    StringUtil::CIEquals(manager->file_handle->compression_type, ZSTD_COMPRESSION_TYPE)) {
 		// compressed file: we care about the progress made in the *underlying* file handle
 		// the bytes read from the uncompressed file are skewed
 		total_bytes_read = manager->file_handle->GetProgress();

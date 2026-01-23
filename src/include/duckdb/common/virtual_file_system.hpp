@@ -55,9 +55,8 @@ public:
 	vector<OpenFileInfo> Glob(const string &path, FileOpener *opener = nullptr) override;
 
 	void RegisterSubSystem(unique_ptr<FileSystem> fs) override;
-	void RegisterSubSystem(FileCompressionType compression_type, unique_ptr<FileSystem> fs) override;
 
-	void RegisterCompressionFilesystem(unique_ptr<FileSystem> fs) override;
+	void RegisterCompressionFilesystem(string compression_type, unique_ptr<FileSystem> fs) override;
 
 	unique_ptr<FileSystem> ExtractSubSystem(const string &name) override;
 
@@ -92,7 +91,7 @@ private:
 	optional_ptr<FileSystem> FindFileSystemInternal(FileSystemRegistry &registry, const string &path);
 	// Return nullptr if compression is not involved, throw exception if compression is requested but no usable
 	// filesystem gets registered.
-	optional_ptr<FileSystem> FindCompressionFileSystem(FileCompressionType compression_type, const string &path);
+	optional_ptr<FileSystem> FindCompressionFileSystem(string compression_type, string path);
 
 private:
 	mutex registry_lock;

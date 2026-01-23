@@ -1199,7 +1199,7 @@ void SQLLogicTestRunner::ExecuteFile(string script) {
 
 			// file name
 			idx_t filename_start_pos = input_path.find_last_of("/") + 1;
-			if (!StringUtil::EndsWith(input_path, CompressionExtensionFromType(FileCompressionType::GZIP))) {
+			if (!StringUtil::EndsWith(input_path, CompressionExtensionFromType(GZIP_COMPRESSION_TYPE))) {
 				parser.Fail("unzip: input has not a GZIP extension");
 			}
 			string filename = input_path.substr(filename_start_pos, input_path.size() - filename_start_pos - 3);

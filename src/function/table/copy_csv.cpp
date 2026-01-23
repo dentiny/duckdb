@@ -187,19 +187,14 @@ static unique_ptr<FunctionData> WriteCSVBind(ClientContext &context, CopyFunctio
 	}
 	bind_data->Finalize();
 
-	switch (bind_data->options.compression) {
-	case FileCompressionType::GZIP:
-		if (!IsFileCompressed(input.file_extension, FileCompressionType::GZIP)) {
-			input.file_extension += CompressionExtensionFromType(FileCompressionType::GZIP);
+	if (StringUtil::CIEquals(bind_data->options.compression, GZIP_COMPRESSION_TYPE)) {
+		if (!IsFileCompressed(input.file_extension, GZIP_COMPRESSION_TYPE)) {
+			input.file_extension += CompressionExtensionFromType(GZIP_COMPRESSION_TYPE);
 		}
-		break;
-	case FileCompressionType::ZSTD:
-		if (!IsFileCompressed(input.file_extension, FileCompressionType::ZSTD)) {
-			input.file_extension += CompressionExtensionFromType(FileCompressionType::ZSTD);
+	} else if (StringUtil::CIEquals(bind_data->options.compression, ZSTD_COMPRESSION_TYPE)) {
+		if (!IsFileCompressed(input.file_extension, ZSTD_COMPRESSION_TYPE)) {
+			input.file_extension += CompressionExtensionFromType(ZSTD_COMPRESSION_TYPE);
 		}
-		break;
-	default:
-		break;
 	}
 
 	auto expressions = CreateCastExpressions(*bind_data, context, names, sql_types);

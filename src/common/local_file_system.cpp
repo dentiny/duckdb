@@ -319,7 +319,7 @@ unique_ptr<FileHandle> LocalFileSystem::OpenFile(const string &path_p, FileOpenF
                                                  optional_ptr<FileOpener> opener) {
 	auto path = FileSystem::ExpandPath(path_p, opener);
 	auto normalized_path = NormalizeLocalPath(path);
-	if (flags.Compression() != FileCompressionType::UNCOMPRESSED) {
+	if (!flags.Compression().empty() && !StringUtil::CIEquals(flags.Compression(), UNCOMPRESSED_COMPRESSION_TYPE)) {
 		throw NotImplementedException("Unsupported compression type for default file system");
 	}
 
@@ -988,7 +988,7 @@ unique_ptr<FileHandle> LocalFileSystem::OpenFile(const string &path_p, FileOpenF
                                                  optional_ptr<FileOpener> opener) {
 	auto path = FileSystem::ExpandPath(path_p, opener);
 	auto unicode_path = NormalizePathAndConvertToUnicode(path);
-	if (flags.Compression() != FileCompressionType::UNCOMPRESSED) {
+	if (!flags.Compression().empty() && !StringUtil::CIEquals(flags.Compression(), UNCOMPRESSED_COMPRESSION_TYPE)) {
 		throw NotImplementedException("Unsupported compression type for default file system");
 	}
 	flags.Verify();

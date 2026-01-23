@@ -12,7 +12,7 @@ namespace duckdb {
 namespace {
 
 struct WriteBlobBindData final : public TableFunctionData {
-	FileCompressionType compression_type = FileCompressionType::AUTO_DETECT;
+	FileCompressionType compression_type = AUTO_COMPRESSION_TYPE;
 };
 
 string ParseStringOption(const Value &value, const string &loption) {
@@ -43,7 +43,7 @@ unique_ptr<FunctionData> WriteBlobBind(ClientContext &context, CopyFunctionBindI
 	for (auto &lopt : input.info.options) {
 		if (StringUtil::CIEquals(lopt.first, "compression")) {
 			auto compression_str = ParseStringOption(lopt.second[0], lopt.first);
-			result->compression_type = FileCompressionTypeFromString(compression_str);
+			result->compression_type = compression_str;
 		} else {
 			throw BinderException("Unrecognized option for COPY (FORMAT BLOB): \"%s\"", lopt.first);
 		}
