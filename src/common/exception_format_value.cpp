@@ -107,9 +107,9 @@ ExceptionFormatValue ExceptionFormatValue::CreateFormatValue(const uhugeint_t &v
 	return ExceptionFormatValue(value);
 }
 
-string ExceptionFormatValue::Format(const string &msg, vector<ExceptionFormatValue> &values) {
+string ExceptionFormatValue::Format(const string &msg, std::vector<ExceptionFormatValue> &values) {
 	try {
-		vector<duckdb_fmt::basic_format_arg<duckdb_fmt::printf_context>> format_args;
+		std::vector<duckdb_fmt::basic_format_arg<duckdb_fmt::printf_context>> format_args;
 		format_args.reserve(values.size());
 		for (auto &val : values) {
 			switch (val.type) {

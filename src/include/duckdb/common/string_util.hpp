@@ -10,6 +10,7 @@
 
 #include "duckdb/common/constants.hpp"
 #include "duckdb/common/exception.hpp"
+#include "duckdb/common/format_checker.hpp"
 #include "duckdb/common/numeric_utils.hpp"
 #include "duckdb/common/pair.hpp"
 #include "duckdb/common/set.hpp"
@@ -240,9 +241,10 @@ public:
 	DUCKDB_API static idx_t CIFind(vector<string> &vec, const string &str);
 
 	//! Format a string using printf semantics
+	//! On Clang, this performs compile-time format string validation
 	template <typename... ARGS>
-	static string Format(const string fmt_str, ARGS... params) {
-		return Exception::ConstructMessage(fmt_str, params...);
+	static string Format(const FormatSpec<ARGS...> &fmt, ARGS... params) {
+		return Exception::ConstructMessage(fmt.format(), params...);
 	}
 
 	//! Split the input string into a vector of strings based on the split string
