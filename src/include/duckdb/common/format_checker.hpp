@@ -3,7 +3,7 @@
 //
 // duckdb/common/format_checker.hpp
 //
-// Compile-time format string checking (similar to abseil's str_format)
+// Compile-time format string checking (following abseil's str_format pattern)
 // Only enabled on Clang with the enable_if attribute
 //===----------------------------------------------------------------------===//
 
@@ -49,7 +49,7 @@ enum class FormatConversionCharSet : uint64_t {
 	// Misc
 	c = 1ULL << 15,  // char
 	p = 1ULL << 16,  // pointer
-	l = 1ULL << 17,  // long (for %lld, %llu, etc.)
+	l = 1ULL << 17,  // long modifier
 	// Compound sets
 	kIntegral = d | i | o | u | x | X,
 	kFloating = f | F | e | E | g | G | a | A,
@@ -62,7 +62,7 @@ constexpr FormatConversionCharSet operator|(FormatConversionCharSet a, FormatCon
 	return static_cast<FormatConversionCharSet>(static_cast<uint64_t>(a) | static_cast<uint64_t>(b));
 }
 
-// Map character to its FormatConversionCharSet bit (C++11 compatible - single return)
+// Map character to its FormatConversionCharSet bit
 constexpr FormatConversionCharSet CharToConv(char c) {
 	return (c == 's') ? FormatConversionCharSet::s :
 	       (c == 'd') ? FormatConversionCharSet::d :
@@ -89,74 +89,75 @@ constexpr bool Contains(FormatConversionCharSet set, char c) {
 }
 
 //===----------------------------------------------------------------------===//
-// ArgumentToConv - Maps C++ types to allowed format specifiers
+// FormatConvertResult - Return type that encodes allowed format specifiers
+// (Following abseil's ArgConvertResult pattern)
 //===----------------------------------------------------------------------===//
+template <FormatConversionCharSet C>
+struct FormatConvertResult {
+	static constexpr FormatConversionCharSet kConv = C;
+	bool value;
+};
+
+// Helper to extract CharSet from FormatConvertResult
 template <typename T>
-struct ArgumentToConvImpl {
-	// Default: no conversions allowed (will trigger error for unsupported types)
-	static constexpr FormatConversionCharSet value = FormatConversionCharSet::kNone;
-};
-
-// Integer types -> can use %d, %i, %o, %u, %x, %X, %c and float specifiers
-template <> struct ArgumentToConvImpl<int8_t> {
-	static constexpr FormatConversionCharSet value = FormatConversionCharSet::kNumeric | FormatConversionCharSet::c;
-};
-template <> struct ArgumentToConvImpl<uint8_t> {
-	static constexpr FormatConversionCharSet value = FormatConversionCharSet::kNumeric | FormatConversionCharSet::c;
-};
-template <> struct ArgumentToConvImpl<int16_t> {
-	static constexpr FormatConversionCharSet value = FormatConversionCharSet::kNumeric | FormatConversionCharSet::c;
-};
-template <> struct ArgumentToConvImpl<uint16_t> {
-	static constexpr FormatConversionCharSet value = FormatConversionCharSet::kNumeric | FormatConversionCharSet::c;
-};
-template <> struct ArgumentToConvImpl<int32_t> {
-	static constexpr FormatConversionCharSet value = FormatConversionCharSet::kNumeric | FormatConversionCharSet::c;
-};
-template <> struct ArgumentToConvImpl<uint32_t> {
-	static constexpr FormatConversionCharSet value = FormatConversionCharSet::kNumeric | FormatConversionCharSet::c;
-};
-template <> struct ArgumentToConvImpl<int64_t> {
-	static constexpr FormatConversionCharSet value = FormatConversionCharSet::kNumeric | FormatConversionCharSet::c;
-};
-template <> struct ArgumentToConvImpl<uint64_t> {
-	static constexpr FormatConversionCharSet value = FormatConversionCharSet::kNumeric | FormatConversionCharSet::c;
-};
-
-// Float types -> can use %f, %F, %e, %E, %g, %G, %a, %A
-template <> struct ArgumentToConvImpl<float> {
-	static constexpr FormatConversionCharSet value = FormatConversionCharSet::kFloating;
-};
-template <> struct ArgumentToConvImpl<double> {
-	static constexpr FormatConversionCharSet value = FormatConversionCharSet::kFloating;
-};
-
-// String types -> can use %s
-template <> struct ArgumentToConvImpl<char*> {
-	static constexpr FormatConversionCharSet value = FormatConversionCharSet::kString | FormatConversionCharSet::p;
-};
-template <> struct ArgumentToConvImpl<const char*> {
-	static constexpr FormatConversionCharSet value = FormatConversionCharSet::kString | FormatConversionCharSet::p;
-};
-template <> struct ArgumentToConvImpl<string> {
-	static constexpr FormatConversionCharSet value = FormatConversionCharSet::kString;
-};
-
-// Pointer types -> can use %p
-template <typename T> struct ArgumentToConvImpl<T*> {
-	static constexpr FormatConversionCharSet value = FormatConversionCharSet::p;
-};
-
-template <typename T>
-constexpr FormatConversionCharSet ArgumentToConv() {
-	return ArgumentToConvImpl<typename std::decay<T>::type>::value;
+constexpr FormatConversionCharSet ExtractCharSet(T) {
+	return T::kConv;
 }
 
 //===----------------------------------------------------------------------===//
-// Constexpr format string validation (C++11 compatible - single return)
+// DuckDBFormatConvert overloads - Define allowed specifiers per type
+// (Following abseil's FormatConvertImpl pattern via ADL)
 //===----------------------------------------------------------------------===//
 
-// Check if a character is a conversion specifier
+// Result types for common categories
+using IntegralConvertResult = FormatConvertResult<
+    FormatConversionCharSet::kNumeric | FormatConversionCharSet::c>;
+using FloatingConvertResult = FormatConvertResult<FormatConversionCharSet::kFloating>;
+using StringConvertResult = FormatConvertResult<FormatConversionCharSet::kString>;
+using PointerConvertResult = FormatConvertResult<FormatConversionCharSet::kPointer>;
+
+// Integral types
+inline IntegralConvertResult DuckDBFormatConvert(int8_t) { return {true}; }
+inline IntegralConvertResult DuckDBFormatConvert(uint8_t) { return {true}; }
+inline IntegralConvertResult DuckDBFormatConvert(int16_t) { return {true}; }
+inline IntegralConvertResult DuckDBFormatConvert(uint16_t) { return {true}; }
+inline IntegralConvertResult DuckDBFormatConvert(int32_t) { return {true}; }
+inline IntegralConvertResult DuckDBFormatConvert(uint32_t) { return {true}; }
+inline IntegralConvertResult DuckDBFormatConvert(int64_t) { return {true}; }
+inline IntegralConvertResult DuckDBFormatConvert(uint64_t) { return {true}; }
+
+// Floating point types
+inline FloatingConvertResult DuckDBFormatConvert(float) { return {true}; }
+inline FloatingConvertResult DuckDBFormatConvert(double) { return {true}; }
+
+// String types
+inline StringConvertResult DuckDBFormatConvert(const char*) { return {true}; }
+inline StringConvertResult DuckDBFormatConvert(char*) { return {true}; }
+inline StringConvertResult DuckDBFormatConvert(const string&) { return {true}; }
+
+// Pointer types (for %p)
+template <typename T>
+inline PointerConvertResult DuckDBFormatConvert(T*) { return {true}; }
+
+// Fallback: any type not explicitly defined gets string conversion
+// This allows custom types like SQLIdentifier, LogicalType, etc. to work with %s
+template <typename T>
+inline StringConvertResult DuckDBFormatConvert(const T&) { return {true}; }
+
+//===----------------------------------------------------------------------===//
+// ArgumentToConv - Uses decltype to detect allowed specifiers via ADL
+// (Following abseil's ArgumentToConv pattern)
+//===----------------------------------------------------------------------===//
+template <typename T>
+constexpr FormatConversionCharSet ArgumentToConv() {
+	using ConvResult = decltype(DuckDBFormatConvert(std::declval<const T&>()));
+	return ExtractCharSet(ConvResult{});
+}
+
+//===----------------------------------------------------------------------===//
+// Constexpr format string validation
+//===----------------------------------------------------------------------===//
+
 constexpr bool IsConversionChar(char c) {
 	return c == 's' || c == 'd' || c == 'i' || c == 'o' || c == 'u' ||
 	       c == 'x' || c == 'X' || c == 'f' || c == 'F' || c == 'e' ||
@@ -168,22 +169,19 @@ constexpr bool IsConversionChar(char c) {
 template <FormatConversionCharSet... C>
 constexpr bool ValidateFormat(const char* p, size_t arg_index, const FormatConversionCharSet* allowed, size_t num_args);
 
-template <FormatConversionCharSet... C>
-constexpr bool ValidateAfterPercent(const char* p, size_t arg_index, const FormatConversionCharSet* allowed, size_t num_args);
-
-// Skip to the conversion character (flags, width, precision, length modifiers)
+// Find the conversion character in a format specifier
 constexpr const char* FindConversionChar(const char* p) {
 	return (*p == '\0') ? p :
 	       IsConversionChar(*p) ? p :
 	       FindConversionChar(p + 1);
 }
 
-// Check argument at position against conversion char, then continue
+// Check argument and continue validation
 template <FormatConversionCharSet... C>
 constexpr bool CheckArgAndContinue(const char* p, char conv, size_t arg_index, 
                                     const FormatConversionCharSet* allowed, size_t num_args) {
-	return (arg_index >= num_args) ? false :  // too few arguments
-	       (!Contains(allowed[arg_index], conv)) ? false :  // type mismatch
+	return (arg_index >= num_args) ? false :
+	       (!Contains(allowed[arg_index], conv)) ? false :
 	       ValidateFormat<C...>(p, arg_index + 1, allowed, num_args);
 }
 
@@ -191,9 +189,9 @@ constexpr bool CheckArgAndContinue(const char* p, char conv, size_t arg_index,
 template <FormatConversionCharSet... C>
 constexpr bool ValidateAfterPercent(const char* p, size_t arg_index, 
                                      const FormatConversionCharSet* allowed, size_t num_args) {
-	return (*p == '\0') ? false :  // format ends with '%'
-	       (*p == '%') ? ValidateFormat<C...>(p + 1, arg_index, allowed, num_args) :  // '%%' escape
-	       (*FindConversionChar(p) == '\0') ? false :  // no conversion char found
+	return (*p == '\0') ? false :
+	       (*p == '%') ? ValidateFormat<C...>(p + 1, arg_index, allowed, num_args) :
+	       (*FindConversionChar(p) == '\0') ? false :
 	       CheckArgAndContinue<C...>(FindConversionChar(p) + 1, *FindConversionChar(p), arg_index, allowed, num_args);
 }
 
@@ -201,9 +199,9 @@ constexpr bool ValidateAfterPercent(const char* p, size_t arg_index,
 template <FormatConversionCharSet... C>
 constexpr bool ValidateFormat(const char* p, size_t arg_index, 
                                const FormatConversionCharSet* allowed, size_t num_args) {
-	return (*p == '\0') ? (arg_index == num_args) :  // end of format - check all args used
+	return (*p == '\0') ? (arg_index == num_args) :
 	       (*p == '%') ? ValidateAfterPercent<C...>(p + 1, arg_index, allowed, num_args) :
-	       ValidateFormat<C...>(p + 1, arg_index, allowed, num_args);  // regular char
+	       ValidateFormat<C...>(p + 1, arg_index, allowed, num_args);
 }
 
 // Entry point for format validation
