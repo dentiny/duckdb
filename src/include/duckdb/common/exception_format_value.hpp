@@ -8,10 +8,9 @@
 
 #pragma once
 
-#include "duckdb/common/string.hpp"
 #include "duckdb/common/hugeint.hpp"
-
-#include <vector>
+#include "duckdb/common/string.hpp"
+#include "duckdb/common/vector.hpp"
 
 namespace duckdb {
 
@@ -50,8 +49,15 @@ enum class ExceptionFormatValueType : uint8_t {
 
 struct ExceptionFormatValue {
 	DUCKDB_API ExceptionFormatValue(double dbl_val);        // NOLINT
+	DUCKDB_API ExceptionFormatValue(float flt_val);         // NOLINT
+	DUCKDB_API ExceptionFormatValue(int8_t int_val);        // NOLINT
+	DUCKDB_API ExceptionFormatValue(uint8_t uint_val);      // NOLINT
+	DUCKDB_API ExceptionFormatValue(int16_t int_val);       // NOLINT
+	DUCKDB_API ExceptionFormatValue(uint16_t uint_val);     // NOLINT
+	DUCKDB_API ExceptionFormatValue(int32_t int_val);       // NOLINT
+	DUCKDB_API ExceptionFormatValue(uint32_t uint_val);     // NOLINT
 	DUCKDB_API ExceptionFormatValue(int64_t int_val);       // NOLINT
-	DUCKDB_API ExceptionFormatValue(idx_t uint_val);        // NOLINT
+	DUCKDB_API ExceptionFormatValue(uint64_t uint_val);     // NOLINT
 	DUCKDB_API ExceptionFormatValue(string str_val);        // NOLINT
 	DUCKDB_API ExceptionFormatValue(const String &str_val); // NOLINT
 	DUCKDB_API ExceptionFormatValue(hugeint_t hg_val);      // NOLINT
@@ -68,7 +74,7 @@ public:
 	static ExceptionFormatValue CreateFormatValue(const T &value) {
 		return int64_t(value);
 	}
-	static string Format(const string &msg, std::vector<ExceptionFormatValue> &values);
+	static string Format(const string &msg, vector<ExceptionFormatValue> &values);
 };
 
 template <>

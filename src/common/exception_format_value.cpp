@@ -13,10 +13,31 @@ namespace duckdb {
 ExceptionFormatValue::ExceptionFormatValue(double dbl_val)
     : type(ExceptionFormatValueType::FORMAT_VALUE_TYPE_DOUBLE), dbl_val(dbl_val) {
 }
+ExceptionFormatValue::ExceptionFormatValue(float flt_val)
+    : type(ExceptionFormatValueType::FORMAT_VALUE_TYPE_DOUBLE), dbl_val(static_cast<double>(flt_val)) {
+}
+ExceptionFormatValue::ExceptionFormatValue(int8_t int_val)
+    : type(ExceptionFormatValueType::FORMAT_VALUE_TYPE_INTEGER), int_val(int_val) {
+}
+ExceptionFormatValue::ExceptionFormatValue(uint8_t uint_val)
+    : type(ExceptionFormatValueType::FORMAT_VALUE_TYPE_INTEGER), int_val(uint_val) {
+}
+ExceptionFormatValue::ExceptionFormatValue(int16_t int_val)
+    : type(ExceptionFormatValueType::FORMAT_VALUE_TYPE_INTEGER), int_val(int_val) {
+}
+ExceptionFormatValue::ExceptionFormatValue(uint16_t uint_val)
+    : type(ExceptionFormatValueType::FORMAT_VALUE_TYPE_INTEGER), int_val(uint_val) {
+}
+ExceptionFormatValue::ExceptionFormatValue(int32_t int_val)
+    : type(ExceptionFormatValueType::FORMAT_VALUE_TYPE_INTEGER), int_val(int_val) {
+}
+ExceptionFormatValue::ExceptionFormatValue(uint32_t uint_val)
+    : type(ExceptionFormatValueType::FORMAT_VALUE_TYPE_INTEGER), int_val(uint_val) {
+}
 ExceptionFormatValue::ExceptionFormatValue(int64_t int_val)
     : type(ExceptionFormatValueType::FORMAT_VALUE_TYPE_INTEGER), int_val(int_val) {
 }
-ExceptionFormatValue::ExceptionFormatValue(idx_t uint_val)
+ExceptionFormatValue::ExceptionFormatValue(uint64_t uint_val)
     : type(ExceptionFormatValueType::FORMAT_VALUE_TYPE_INTEGER), int_val(Hugeint::Convert(uint_val)) {
 }
 ExceptionFormatValue::ExceptionFormatValue(hugeint_t huge_val)
@@ -86,9 +107,10 @@ ExceptionFormatValue ExceptionFormatValue::CreateFormatValue(const uhugeint_t &v
 	return ExceptionFormatValue(value);
 }
 
-string ExceptionFormatValue::Format(const string &msg, std::vector<ExceptionFormatValue> &values) {
+string ExceptionFormatValue::Format(const string &msg, vector<ExceptionFormatValue> &values) {
 	try {
-		std::vector<duckdb_fmt::basic_format_arg<duckdb_fmt::printf_context>> format_args;
+		vector<duckdb_fmt::basic_format_arg<duckdb_fmt::printf_context>> format_args;
+		format_args.reserve(values.size());
 		for (auto &val : values) {
 			switch (val.type) {
 			case ExceptionFormatValueType::FORMAT_VALUE_TYPE_DOUBLE:
