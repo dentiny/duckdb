@@ -1,4 +1,4 @@
-#include "duckdb/common/enums/file_compression_type.hpp"
+#include "duckdb/common/file_compression_type.hpp"
 #include "duckdb/parser/parser.hpp"
 #include "duckdb/parser/statement/copy_database_statement.hpp"
 #include "duckdb/parser/statement/copy_statement.hpp"

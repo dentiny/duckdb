@@ -9,7 +9,7 @@
 #pragma once
 
 #include "duckdb/common/common.hpp"
-#include "duckdb/common/enums/file_compression_type.hpp"
+#include "duckdb/common/file_compression_type.hpp"
 #include "duckdb/storage/caching_mode.hpp"
 
 namespace duckdb {

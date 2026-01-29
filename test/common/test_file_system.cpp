@@ -367,7 +367,8 @@ TEST_CASE("compression filesystem registration and lookup", "[file_system]") {
 
 	VirtualFileSystem vfs;
 	auto fake_compress_filesystem = make_uniq<FakeCompressFileSystem>();
-	vfs.RegisterCompressionFilesystem(std::move(fake_compress_filesystem));
+	const string FAKE_COMPRESSION_TYPE = "fake-compression-filesystem";
+	vfs.RegisterCompressionFilesystem(FAKE_COMPRESSION_TYPE, std::move(fake_compress_filesystem));
 
 	FileOpenFlags flags = FileOpenFlags::FILE_FLAGS_READ;
 	flags.SetCompression(AUTO_COMPRESSION_TYPE);
