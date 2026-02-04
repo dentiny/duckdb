@@ -12,7 +12,7 @@ namespace duckdb {
 namespace {
 
 struct WriteBlobBindData final : public TableFunctionData {
-	FileCompressionType compression_type = AUTO_COMPRESSION_TYPE;
+	FileCompressionType compression_type = FILE_AUTO_COMPRESSION_TYPE;
 };
 
 string ParseStringOption(const Value &value, const string &loption) {

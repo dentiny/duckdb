@@ -747,7 +747,7 @@ bool FileHandle::CanSeek() {
 }
 
 FileCompressionType FileHandle::GetFileCompressionType() {
-	return UNCOMPRESSED_COMPRESSION_TYPE;
+	return FILE_UNCOMPRESSED_TYPE;
 }
 
 bool FileHandle::IsPipe() {

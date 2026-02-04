@@ -17,11 +17,11 @@ namespace duckdb {
 using FileCompressionType = string;
 
 // DuckDB internally supported compression types.
-extern const FileCompressionType UNCOMPRESSED_COMPRESSION_TYPE;
-extern const FileCompressionType ZSTD_COMPRESSION_TYPE;
-extern const FileCompressionType GZIP_COMPRESSION_TYPE;
+extern const FileCompressionType FILE_UNCOMPRESSED_TYPE;
+extern const FileCompressionType FILE_ZSTD_COMPRESSION_TYPE;
+extern const FileCompressionType FILE_GZIP_COMPRESSION_TYPE;
 // Used at read, which automatically detects applicable decompression.
-extern const FileCompressionType AUTO_COMPRESSION_TYPE;
+extern const FileCompressionType FILE_AUTO_COMPRESSION_TYPE;
 
 // Return whether the given filepath is compressed with the given type.
 bool IsFileCompressed(string path, const FileCompressionType& compression_type);

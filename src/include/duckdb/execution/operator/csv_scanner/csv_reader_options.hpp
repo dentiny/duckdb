@@ -60,7 +60,7 @@ struct CSVReaderOptions {
 	vector<string> null_str = {""};
 	//! Whether file is compressed or not, and if so which compression type
 	//! AUTO_DETECT (default; infer from file extension)
-	FileCompressionType compression = AUTO_COMPRESSION_TYPE;
+	FileCompressionType compression = FILE_AUTO_COMPRESSION_TYPE;
 	//! Option to convert quoted values to NULL values
 	bool allow_quoted_nulls = true;
 	char comment = '\0';

@@ -5,16 +5,16 @@
 
 namespace duckdb {
 
-const FileCompressionType UNCOMPRESSED_COMPRESSION_TYPE = "uncompressed";
-const FileCompressionType ZSTD_COMPRESSION_TYPE = "zstd";
-const FileCompressionType GZIP_COMPRESSION_TYPE = "gzip";
-const FileCompressionType AUTO_COMPRESSION_TYPE = "auto";
+const FileCompressionType FILE_UNCOMPRESSED_TYPE = "uncompressed";
+const FileCompressionType FILE_ZSTD_COMPRESSION_TYPE = "zstd";
+const FileCompressionType FILE_GZIP_COMPRESSION_TYPE = "gzip";
+const FileCompressionType FILE_AUTO_COMPRESSION_TYPE = "auto";
 
 string CompressionExtensionFromType(const FileCompressionType& type) {
-	if (StringUtil::CIEquals(type, GZIP_COMPRESSION_TYPE)) {
+	if (StringUtil::CIEquals(type, FILE_GZIP_COMPRESSION_TYPE)) {
 		return ".gz";
 	}
-	if (StringUtil::CIEquals(type, ZSTD_COMPRESSION_TYPE)) {
+	if (StringUtil::CIEquals(type, FILE_ZSTD_COMPRESSION_TYPE)) {
 		return ".zst";
 	}
 	throw NotImplementedException("Compression Extension of file compression type %s is not implemented", type);

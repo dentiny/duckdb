@@ -60,8 +60,8 @@ struct ReplacementScan {
 	static bool CanReplace(const string &table_name, const vector<string> &extensions) {
 		auto lower_name = StringUtil::Lower(table_name);
 
-		auto gzip_ext = CompressionExtensionFromType(GZIP_COMPRESSION_TYPE);
-		auto zstd_ext = CompressionExtensionFromType(ZSTD_COMPRESSION_TYPE);
+		auto gzip_ext = CompressionExtensionFromType(FILE_GZIP_COMPRESSION_TYPE);
+		auto zstd_ext = CompressionExtensionFromType(FILE_ZSTD_COMPRESSION_TYPE);
 		if (StringUtil::EndsWith(lower_name, gzip_ext)) {
 			lower_name = lower_name.substr(0, lower_name.size() - gzip_ext.size());
 		} else if (StringUtil::EndsWith(lower_name, zstd_ext)) {

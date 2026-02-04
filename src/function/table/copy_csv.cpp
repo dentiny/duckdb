@@ -187,13 +187,13 @@ static unique_ptr<FunctionData> WriteCSVBind(ClientContext &context, CopyFunctio
 	}
 	bind_data->Finalize();
 
-	if (StringUtil::CIEquals(bind_data->options.compression, GZIP_COMPRESSION_TYPE)) {
-		if (!IsFileCompressed(input.file_extension, GZIP_COMPRESSION_TYPE)) {
-			input.file_extension += CompressionExtensionFromType(GZIP_COMPRESSION_TYPE);
+	if (StringUtil::CIEquals(bind_data->options.compression, FILE_GZIP_COMPRESSION_TYPE)) {
+		if (!IsFileCompressed(input.file_extension, FILE_GZIP_COMPRESSION_TYPE)) {
+			input.file_extension += CompressionExtensionFromType(FILE_GZIP_COMPRESSION_TYPE);
 		}
-	} else if (StringUtil::CIEquals(bind_data->options.compression, ZSTD_COMPRESSION_TYPE)) {
-		if (!IsFileCompressed(input.file_extension, ZSTD_COMPRESSION_TYPE)) {
-			input.file_extension += CompressionExtensionFromType(ZSTD_COMPRESSION_TYPE);
+	} else if (StringUtil::CIEquals(bind_data->options.compression, FILE_ZSTD_COMPRESSION_TYPE)) {
+		if (!IsFileCompressed(input.file_extension, FILE_ZSTD_COMPRESSION_TYPE)) {
+			input.file_extension += CompressionExtensionFromType(FILE_ZSTD_COMPRESSION_TYPE);
 		}
 	}
 

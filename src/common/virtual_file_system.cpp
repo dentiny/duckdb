@@ -108,7 +108,7 @@ VirtualFileSystem::VirtualFileSystem() : VirtualFileSystem(FileSystem::CreateLoc
 
 VirtualFileSystem::VirtualFileSystem(unique_ptr<FileSystem> &&inner)
     : file_system_registry(make_shared_ptr<FileSystemRegistry>(std::move(inner))) {
-	VirtualFileSystem::RegisterCompressionFilesystem(GZIP_COMPRESSION_TYPE, make_uniq<GZipFileSystem>());
+	VirtualFileSystem::RegisterCompressionFilesystem(FILE_GZIP_COMPRESSION_TYPE, make_uniq<GZipFileSystem>());
 }
 
 VirtualFileSystem::~VirtualFileSystem() {
@@ -116,23 +116,27 @@ VirtualFileSystem::~VirtualFileSystem() {
 
 optional_ptr<FileSystem> VirtualFileSystem::FindCompressionFileSystem(FileCompressionType compression_type,
                                                                       string filepath) {
-    if (StringUtil::CIEquals(compression_type, UNCOMPRESSED_COMPRESSION_TYPE)) {
+std::cerr << "--1--" << std::endl; 
+    if (StringUtil::CIEquals(compression_type, FILE_UNCOMPRESSED_TYPE)) {
+		std::cerr << "--2--" << std::endl; 
 		return nullptr;
 	}
 
 	// For auto-detection mode, check if it's a known pattern for duckdb internal compressions.
-	bool autodetect_compression = StringUtil::CIEquals(compression_type, AUTO_COMPRESSION_TYPE);
+	bool autodetect_compression = StringUtil::CIEquals(compression_type, FILE_AUTO_COMPRESSION_TYPE);
+	std::cerr << "--3--" << std::endl; 
 	if (autodetect_compression) {
+		std::cerr << "--4--" << std::endl; 
 		auto lower_path = StringUtil::Lower(filepath);
 		if (StringUtil::EndsWith(lower_path, ".tmp")) {
 			// strip .tmp
 			lower_path = lower_path.substr(0, lower_path.length() - 4);
 		}
-		if (IsFileCompressed(lower_path, GZIP_COMPRESSION_TYPE)) {
-			compression_type = GZIP_COMPRESSION_TYPE;
+		if (IsFileCompressed(lower_path, FILE_GZIP_COMPRESSION_TYPE)) {
+			compression_type = FILE_GZIP_COMPRESSION_TYPE;
 			autodetect_compression = false;
-		} else if (IsFileCompressed(lower_path, ZSTD_COMPRESSION_TYPE)) {
-			compression_type = ZSTD_COMPRESSION_TYPE;
+		} else if (IsFileCompressed(lower_path, FILE_ZSTD_COMPRESSION_TYPE)) {
+			compression_type = FILE_ZSTD_COMPRESSION_TYPE;
 			autodetect_compression = false;
 		}
 	}
@@ -140,11 +144,15 @@ optional_ptr<FileSystem> VirtualFileSystem::FindCompressionFileSystem(FileCompre
 	// If caller explicitly specifies a duckdb internal compression type to use, or a known pattern is detected, try to
 	// fetch it explicitly.
 	if (!autodetect_compression) {
+		D_ASSERT(compression_type != FILE_AUTO_COMPRESSION_TYPE);
+		std::cerr << "--5--" << std::endl; 
 		auto iter = file_system_registry->compressed_fs.find(compression_type);
 		if (iter != file_system_registry->compressed_fs.end()) {
+			std::cerr << "--6--" << std::endl; 
 			return iter->second->file_system.get();
 		}
-		if (compression_type == ZSTD_COMPRESSION_TYPE) {
+		if (compression_type == FILE_ZSTD_COMPRESSION_TYPE) {
+			std::cerr << "--7--" << std::endl; 
 			throw NotImplementedException(
 			    "Attempting to open a compressed file, but the compression type is not supported.\nConsider "
 			    "explicitly \"INSTALL parquet; LOAD parquet;\" to support this compression scheme");
@@ -153,10 +161,14 @@ optional_ptr<FileSystem> VirtualFileSystem::FindCompressionFileSystem(FileCompre
 		    "Attempting to open a compressed file, but the compression type is not supported");
 	}
 
+	std::cerr << "--8--" << std::endl; 
+
 	// We've checked over all duckdb internal compression types, fallback to try externally registered compression
 	// filesystems.
 	for (auto &cur_compressed_fs : file_system_registry->compressed_fs) {
+		std::cerr << "--9--" << std::endl; 
 		if (cur_compressed_fs.second->file_system->CanHandleFile(filepath)) {
+			std::cerr << "--10--" << std::endl; 
 			return cur_compressed_fs.second->file_system.get();
 		}
 	}

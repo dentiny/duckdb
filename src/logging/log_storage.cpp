@@ -334,8 +334,8 @@ unique_ptr<BufferedFileWriter> FileLogStorage::InitializeFileWriter(DatabaseInst
 
 	FileOpenFlags flags;
 	if (!fs.FileExists(path)) {
-		flags = FileFlags::FILE_FLAGS_DISABLE_LOGGING | FileFlags::FILE_FLAGS_WRITE |
-		        FileFlags::FILE_FLAGS_FILE_CREATE_NEW | UNCOMPRESSED_COMPRESSION_TYPE;
+		flags = FileFlags::FILE_FLAGS_DISABLE_LOGGING | FileFlags::FILE_FLAGS_WRITE | FileFlags::FILE_FLAGS_FILE_CREATE_NEW;
+		flags.SetCompression(FILE_UNCOMPRESSED_TYPE);
 	} else {
 		flags = FileFlags::FILE_FLAGS_DISABLE_LOGGING | FileFlags::FILE_FLAGS_WRITE | FileFlags::FILE_FLAGS_APPEND;
 	}

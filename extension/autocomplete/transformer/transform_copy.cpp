@@ -63,8 +63,8 @@ CopyDatabaseType PEGTransformerFactory::TransformCopyDatabaseFlag(PEGTransformer
 string PEGTransformerFactory::ExtractFormat(const string &file_path) {
 	auto format = StringUtil::Lower(file_path);
 	// We first remove extension suffixes
-	auto gzip_ext = CompressionExtensionFromType(GZIP_COMPRESSION_TYPE);
-	auto zstd_ext = CompressionExtensionFromType(ZSTD_COMPRESSION_TYPE);
+	auto gzip_ext = CompressionExtensionFromType(FILE_GZIP_COMPRESSION_TYPE);
+	auto zstd_ext = CompressionExtensionFromType(FILE_ZSTD_COMPRESSION_TYPE);
 	if (StringUtil::EndsWith(format, gzip_ext)) {
 		format = format.substr(0, format.size() - gzip_ext.size());
 	} else if (StringUtil::EndsWith(format, zstd_ext)) {
