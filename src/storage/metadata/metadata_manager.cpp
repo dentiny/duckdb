@@ -67,7 +67,10 @@ MetadataHandle MetadataManager::AllocateHandle() {
 	}
 	guard.unlock();
 	if (free_block == INVALID_BLOCK || free_block > PeekNextBlockId()) {
-		free_block = AllocateNewBlock(guard);
+		auto new_block = AllocateNewBlock();
+		free_block = new_block.block_id;
+		guard.lock();
+		AddBlock(std::move(new_block));
 	} else {
 		guard.lock();
 	}
@@ -149,7 +152,7 @@ void MetadataManager::ConvertToTransient(unique_lock<mutex> &block_lock, Metadat
 	metadata_block.dirty = true;
 }
 
-block_id_t MetadataManager::AllocateNewBlock(unique_lock<mutex> &block_lock) {
+MetadataBlock MetadataManager::AllocateNewBlock() {
 	auto new_block_id = GetNextBlockId();
 
 	MetadataBlock new_block;
@@ -163,9 +166,7 @@ block_id_t MetadataManager::AllocateNewBlock(unique_lock<mutex> &block_lock) {
 	// zero-initialize the handle
 	memset(handle.Ptr(), 0, block_manager.GetBlockSize());
 
-	block_lock.lock();
-	AddBlock(std::move(new_block));
-	return new_block_id;
+	return new_block;
 }
 
 void MetadataManager::AddBlock(MetadataBlock new_block, bool if_exists) {

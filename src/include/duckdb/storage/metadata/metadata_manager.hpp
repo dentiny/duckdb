@@ -102,7 +102,7 @@ protected:
 	unordered_map<block_id_t, idx_t> modified_blocks;
 
 protected:
-	block_id_t AllocateNewBlock(unique_lock<mutex> &block_lock);
+	MetadataBlock AllocateNewBlock() DUCKDB_EXCLUDES(block_mutex);
 	block_id_t PeekNextBlockId() const;
 	block_id_t GetNextBlockId() const;
 
