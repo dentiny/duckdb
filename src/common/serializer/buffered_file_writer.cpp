@@ -9,7 +9,7 @@
 namespace duckdb {
 
 const FileOpenFlags BufferedFileWriter::DEFAULT_OPEN_FLAGS =
-    FileFlags::FILE_FLAGS_WRITE | FileFlags::FILE_FLAGS_FILE_CREATE;
+	FileOpenFlags(FileOpenFlags::FILE_FLAGS_WRITE | FileOpenFlags::FILE_FLAGS_FILE_CREATE_NEW);
 
 BufferedFileWriter::BufferedFileWriter(FileSystem &fs, const string &path_p, const FileOpenFlags &open_flags)
     : fs(fs), path(path_p), data(make_unsafe_uniq_array_uninitialized<data_t>(FILE_BUFFER_SIZE)), offset(0),
