@@ -108,7 +108,7 @@ protected:
 
 	void AddBlock(MetadataBlock new_block, bool if_exists = false);
 	void AddAndRegisterBlock(unique_lock<mutex> &block_lock, MetadataBlock block);
-	void ConvertToTransient(unique_lock<mutex> &block_lock, MetadataBlock &block);
+	shared_ptr<BlockHandle> CreateNewBlock(MetadataBlock &block) DUCKDB_EXCLUDES(block_mutex);
 	MetadataPointer FromDiskPointerInternal(unique_lock<mutex> &block_lock, MetaBlockPointer pointer);
 };
 

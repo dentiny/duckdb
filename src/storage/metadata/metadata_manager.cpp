@@ -55,7 +55,7 @@ MetadataHandle MetadataManager::AllocateHandle() {
 	// check if there is any free space left in an existing block
 	// if not allocate a new block
 	MetadataPointer pointer;
-	unique_lock<mutex> guard(block_mutex);
+	block_mutex.lock();
 	block_id_t free_block = INVALID_BLOCK;
 	for (auto &kv : blocks) {
 		auto &block = kv.second;
@@ -65,16 +65,15 @@ MetadataHandle MetadataManager::AllocateHandle() {
 			break;
 		}
 	}
-	guard.unlock();
+	block_mutex.lock();
 	if (free_block == INVALID_BLOCK || free_block > PeekNextBlockId()) {
 		auto new_block = AllocateNewBlock();
 		free_block = new_block.block_id;
-		guard.lock();
+		block_mutex.lock();
 		AddBlock(std::move(new_block));
 	} else {
-		guard.lock();
+		block_mutex.lock();
 	}
-	D_ASSERT(guard.owns_lock());
 	D_ASSERT(free_block != INVALID_BLOCK);
 
 	// select the first free metadata block we can find
@@ -85,7 +84,12 @@ MetadataHandle MetadataManager::AllocateHandle() {
 	if (block.block->BlockId() < MAXIMUM_BLOCK) {
 		// this block is a disk-backed block, yet we are planning to write to it
 		// we need to convert it into a transient block before we can write to it
-		ConvertToTransient(guard, block);
+		auto& metadata_block = block;
+		block_mutex.unlock();
+		auto new_block = CreateNewBlock(metadata_block);
+		block_mutex.lock();
+		metadata_block.block = std::move(new_block);
+		metadata_block.dirty = true;
 		D_ASSERT(block.block->BlockId() >= MAXIMUM_BLOCK);
 	}
 	D_ASSERT(!block.free_blocks.empty());
@@ -93,7 +97,7 @@ MetadataHandle MetadataManager::AllocateHandle() {
 	// mark the block as used
 	block.free_blocks.pop_back();
 	D_ASSERT(pointer.index < METADATA_BLOCK_COUNT);
-	guard.unlock();
+	block_mutex.unlock();
 	// pin the block
 	return Pin(pointer);
 }
@@ -130,10 +134,8 @@ MetadataHandle MetadataManager::Pin(const QueryContext &context, const MetadataP
 	return handle;
 }
 
-void MetadataManager::ConvertToTransient(unique_lock<mutex> &block_lock, MetadataBlock &metadata_block) {
-	D_ASSERT(block_lock.owns_lock());
+shared_ptr<BlockHandle> MetadataManager::CreateNewBlock(MetadataBlock &metadata_block) {
 	auto old_block = metadata_block.block;
-	block_lock.unlock();
 	// pin the old block
 	auto old_buffer = buffer_manager.Pin(old_block);
 
@@ -147,9 +149,7 @@ void MetadataManager::ConvertToTransient(unique_lock<mutex> &block_lock, Metadat
 	// unregister the old block
 	block_manager.UnregisterBlock(metadata_block.block_id);
 
-	block_lock.lock();
-	metadata_block.block = std::move(new_block);
-	metadata_block.dirty = true;
+	return new_block;
 }
 
 MetadataBlock MetadataManager::AllocateNewBlock() {
