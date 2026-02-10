@@ -88,7 +88,7 @@ void CSVReaderOptions::SetHeader(bool input) {
 }
 
 void CSVReaderOptions::SetCompression(const string &compression_p) {
-	this->compression = FileCompressionTypeFromString(compression_p);
+	this->compression = compression_p;
 }
 
 string CSVReaderOptions::GetEscape() const {

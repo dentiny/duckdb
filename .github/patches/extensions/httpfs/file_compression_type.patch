@@ -1,0 +1,41 @@
+commit f698d0a195dec6c737641a307c2e16bda5d430d6
+Author: dentiny <dentinyhao@gmail.com>
+Date:   Thu Jan 29 19:10:06 2026 +0000
+
+    Patch file compression type
+
+diff --git a/src/hffs.cpp b/src/hffs.cpp
+index d91e2cf..ebddeb1 100644
+--- a/src/hffs.cpp
++++ b/src/hffs.cpp
+@@ -273,7 +273,7 @@ unique_ptr<HTTPResponse> HuggingFaceFileSystem::GetRangeRequest(FileHandle &hand
+ 
+ unique_ptr<HTTPFileHandle> HuggingFaceFileSystem::CreateHandle(const OpenFileInfo &file, FileOpenFlags flags,
+                                                                optional_ptr<FileOpener> opener) {
+-	D_ASSERT(flags.Compression() == FileCompressionType::UNCOMPRESSED);
++	D_ASSERT(flags.Compression() == FILE_UNCOMPRESSED_TYPE);
+ 
+ 	auto parsed_url = HFUrlParse(file.path);
+ 
+diff --git a/src/httpfs.cpp b/src/httpfs.cpp
+index 8e64164..e71cb44 100644
+--- a/src/httpfs.cpp
++++ b/src/httpfs.cpp
+@@ -384,7 +384,7 @@ HTTPFileHandle::HTTPFileHandle(FileSystem &fs, const OpenFileInfo &file, FileOpe
+ }
+ unique_ptr<HTTPFileHandle> HTTPFileSystem::CreateHandle(const OpenFileInfo &file, FileOpenFlags flags,
+                                                         optional_ptr<FileOpener> opener) {
+-	D_ASSERT(flags.Compression() == FileCompressionType::UNCOMPRESSED);
++	D_ASSERT(flags.Compression() == FILE_UNCOMPRESSED_TYPE);
+ 
+ 	FileOpenerInfo info;
+ 	info.file_path = file.path;
+@@ -408,7 +408,7 @@ unique_ptr<HTTPFileHandle> HTTPFileSystem::CreateHandle(const OpenFileInfo &file
+ 
+ unique_ptr<FileHandle> HTTPFileSystem::OpenFileExtended(const OpenFileInfo &file, FileOpenFlags flags,
+                                                         optional_ptr<FileOpener> opener) {
+-	D_ASSERT(flags.Compression() == FileCompressionType::UNCOMPRESSED);
++	D_ASSERT(flags.Compression() == FILE_UNCOMPRESSED_TYPE);
+ 
+ 	if (flags.ReturnNullIfNotExists()) {
+ 		try {

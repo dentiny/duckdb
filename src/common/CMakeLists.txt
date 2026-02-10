@@ -46,6 +46,8 @@ add_library_unity(
   exception_format_value.cpp
   extra_type_info.cpp
   file_buffer.cpp
+  file_compression_type.cpp
+  file_open_flags.cpp
   file_system.cpp
   filename_pattern.cpp
   fsst.cpp

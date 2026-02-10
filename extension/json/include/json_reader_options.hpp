@@ -95,7 +95,7 @@ struct JSONReaderOptions {
 	//! Whether record types in the JSON
 	JSONRecordType record_type = JSONRecordType::AUTO_DETECT;
 	//! Whether file is compressed or not, and if so which compression type
-	FileCompressionType compression = FileCompressionType::AUTO_DETECT;
+	FileCompressionType compression = FILE_AUTO_COMPRESSION_TYPE;
 	//! Whether or not we should ignore malformed JSON (default to NULL)
 	bool ignore_errors = false;
 	//! Maximum JSON object size (defaults to 16MB minimum)

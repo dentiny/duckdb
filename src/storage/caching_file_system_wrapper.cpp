@@ -308,8 +308,9 @@ void CachingFileSystemWrapper::RegisterSubSystem(unique_ptr<FileSystem> sub_fs) 
 	underlying_file_system.RegisterSubSystem(std::move(sub_fs));
 }
 
-void CachingFileSystemWrapper::RegisterSubSystem(FileCompressionType compression_type, unique_ptr<FileSystem> fs) {
-	underlying_file_system.RegisterSubSystem(compression_type, std::move(fs));
+void CachingFileSystemWrapper::RegisterCompressionFilesystem(const FileCompressionType &compression_type,
+                                                             unique_ptr<FileSystem> fs) {
+	underlying_file_system.RegisterCompressionFilesystem(compression_type, std::move(fs));
 }
 
 void CachingFileSystemWrapper::UnregisterSubSystem(const string &name) {

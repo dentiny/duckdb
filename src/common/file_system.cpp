@@ -48,21 +48,6 @@ extern "C" WINBASEAPI BOOL WINAPI GetPhysicallyInstalledSystemMemory(PULONGLONG)
 
 namespace duckdb {
 
-constexpr FileOpenFlags FileFlags::FILE_FLAGS_READ;
-constexpr FileOpenFlags FileFlags::FILE_FLAGS_WRITE;
-constexpr FileOpenFlags FileFlags::FILE_FLAGS_DIRECT_IO;
-constexpr FileOpenFlags FileFlags::FILE_FLAGS_FILE_CREATE;
-constexpr FileOpenFlags FileFlags::FILE_FLAGS_FILE_CREATE_NEW;
-constexpr FileOpenFlags FileFlags::FILE_FLAGS_APPEND;
-constexpr FileOpenFlags FileFlags::FILE_FLAGS_PRIVATE;
-constexpr FileOpenFlags FileFlags::FILE_FLAGS_NULL_IF_NOT_EXISTS;
-constexpr FileOpenFlags FileFlags::FILE_FLAGS_PARALLEL_ACCESS;
-constexpr FileOpenFlags FileFlags::FILE_FLAGS_EXCLUSIVE_CREATE;
-constexpr FileOpenFlags FileFlags::FILE_FLAGS_NULL_IF_EXISTS;
-constexpr FileOpenFlags FileFlags::FILE_FLAGS_MULTI_CLIENT_ACCESS;
-constexpr FileOpenFlags FileFlags::FILE_FLAGS_DISABLE_LOGGING;
-constexpr FileOpenFlags FileFlags::FILE_FLAGS_ENABLE_EXTENSION_INSTALL;
-
 void FileOpenFlags::Verify() {
 #ifdef DEBUG
 	bool is_read = flags & FileOpenFlags::FILE_FLAGS_READ;
@@ -632,8 +617,9 @@ void FileSystem::RegisterSubSystem(unique_ptr<FileSystem> sub_fs) {
 	throw NotImplementedException("%s: Can't register a sub system on a non-virtual file system", GetName());
 }
 
-void FileSystem::RegisterSubSystem(FileCompressionType compression_type, unique_ptr<FileSystem> sub_fs) {
-	throw NotImplementedException("%s: Can't register a sub system on a non-virtual file system", GetName());
+void FileSystem::RegisterCompressionFilesystem(const FileCompressionType &compression_type, unique_ptr<FileSystem> fs) {
+	throw NotImplementedException("%s: Can't register a compression filesystem on a non-virtual file system",
+	                              GetName());
 }
 
 void FileSystem::UnregisterSubSystem(const string &name) {
@@ -794,7 +780,7 @@ bool FileHandle::CanSeek() {
 }
 
 FileCompressionType FileHandle::GetFileCompressionType() {
-	return FileCompressionType::UNCOMPRESSED;
+	return FILE_UNCOMPRESSED_TYPE;
 }
 
 bool FileHandle::IsPipe() {

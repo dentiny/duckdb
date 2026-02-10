@@ -452,10 +452,12 @@ vector<Value> BindCopyOption(ClientContext &context, TableFunctionBinder &option
 string ExtractFormat(const string &file_path) {
 	auto format = StringUtil::Lower(file_path);
 	// We first remove extension suffixes
-	if (StringUtil::EndsWith(format, CompressionExtensionFromType(FileCompressionType::GZIP))) {
-		format = format.substr(0, format.size() - 3);
-	} else if (StringUtil::EndsWith(format, CompressionExtensionFromType(FileCompressionType::ZSTD))) {
-		format = format.substr(0, format.size() - 4);
+	auto gzip_ext = CompressionExtensionFromType(FILE_GZIP_COMPRESSION_TYPE);
+	auto zstd_ext = CompressionExtensionFromType(FILE_ZSTD_COMPRESSION_TYPE);
+	if (StringUtil::EndsWith(format, gzip_ext)) {
+		format = format.substr(0, format.size() - gzip_ext.size());
+	} else if (StringUtil::EndsWith(format, zstd_ext)) {
+		format = format.substr(0, format.size() - zstd_ext.size());
 	}
 	// Now lets check for the last .
 	size_t dot_pos = format.rfind('.');

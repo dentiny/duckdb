@@ -633,7 +633,7 @@ void UnzipCommand::ExecuteInternal(ExecuteContext &context) const {
 
 	// input
 	FileOpenFlags in_flags(FileFlags::FILE_FLAGS_READ);
-	in_flags.SetCompression(FileCompressionType::GZIP);
+	in_flags.SetCompression(FILE_GZIP_COMPRESSION_TYPE);
 	auto compressed_file_handle = vfs.OpenFile(input_path, in_flags);
 	if (compressed_file_handle == nullptr) {
 		throw CatalogException("Cannot open the file \"%s\"", input_path);

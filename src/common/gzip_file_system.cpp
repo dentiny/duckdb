@@ -314,7 +314,7 @@ public:
 		Initialize(context, write);
 	}
 	FileCompressionType GetFileCompressionType() override {
-		return FileCompressionType::GZIP;
+		return FILE_GZIP_COMPRESSION_TYPE;
 	}
 	GZipFileSystem gzip_fs;
 };
