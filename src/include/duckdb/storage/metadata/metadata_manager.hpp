@@ -9,7 +9,6 @@
 #pragma once
 
 #include "duckdb/common/common.hpp"
-#include "duckdb/common/thread_annotation.hpp"
 #include "duckdb/storage/block.hpp"
 #include "duckdb/storage/block_manager.hpp"
 #include "duckdb/common/atomic.hpp"
@@ -66,7 +65,7 @@ public:
 		return buffer_manager;
 	}
 
-	MetadataHandle AllocateHandle() DUCKDB_NO_THREAD_SAFETY_ANALYSIS;
+	MetadataHandle AllocateHandle();
 	MetadataHandle Pin(const MetadataPointer &pointer);
 
 	MetadataHandle Pin(const QueryContext &context, const MetadataPointer &pointer);
@@ -79,7 +78,7 @@ public:
 	static MetaBlockPointer FromBlockPointer(BlockPointer block_pointer, const idx_t metadata_block_size);
 
 	//! Flush all blocks to disk
-	void Flush() DUCKDB_NO_THREAD_SAFETY_ANALYSIS;
+	void Flush();
 
 	bool BlockHasBeenCleared(const MetaBlockPointer &ptr);
 
@@ -103,13 +102,13 @@ protected:
 	unordered_map<block_id_t, idx_t> modified_blocks;
 
 protected:
-	block_id_t AllocateNewBlock(unique_lock<mutex> &block_lock) DUCKDB_NO_THREAD_SAFETY_ANALYSIS;
+	block_id_t AllocateNewBlock(unique_lock<mutex> &block_lock);
 	block_id_t PeekNextBlockId() const;
 	block_id_t GetNextBlockId() const;
 
-	void AddBlock(MetadataBlock new_block, bool if_exists = false) DUCKDB_REQUIRES(block_mutex);
-	void AddAndRegisterBlock(unique_lock<mutex> &block_lock, MetadataBlock block) DUCKDB_NO_THREAD_SAFETY_ANALYSIS;
-	void ConvertToTransient(unique_lock<mutex> &block_lock, MetadataBlock &block) DUCKDB_NO_THREAD_SAFETY_ANALYSIS;
+	void AddBlock(MetadataBlock new_block, bool if_exists = false);
+	void AddAndRegisterBlock(unique_lock<mutex> &block_lock, MetadataBlock block);
+	void ConvertToTransient(unique_lock<mutex> &block_lock, MetadataBlock &block);
 	MetadataPointer FromDiskPointerInternal(unique_lock<mutex> &block_lock, MetaBlockPointer pointer);
 };
 

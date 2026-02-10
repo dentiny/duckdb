@@ -88,16 +88,13 @@ public:
 	void CleanupEntry(CatalogEntry &catalog_entry);
 
 	//! Returns the entry with the specified name
-	DUCKDB_API EntryLookup GetEntryDetailed(CatalogTransaction transaction, const string &name)
-	    DUCKDB_EXCLUDES(catalog_lock);
-	DUCKDB_API optional_ptr<CatalogEntry> GetEntry(CatalogTransaction transaction, const string &name)
-	    DUCKDB_EXCLUDES(catalog_lock);
-	DUCKDB_API optional_ptr<CatalogEntry> GetEntry(ClientContext &context, const string &name)
-	    DUCKDB_EXCLUDES(catalog_lock);
+	DUCKDB_API EntryLookup GetEntryDetailed(CatalogTransaction transaction, const string &name);
+	DUCKDB_API optional_ptr<CatalogEntry> GetEntry(CatalogTransaction transaction, const string &name);
+	DUCKDB_API optional_ptr<CatalogEntry> GetEntry(ClientContext &context, const string &name);
 
 	//! Gets the entry that is most similar to the given name (i.e. smallest levenshtein distance), or empty string if
 	//! none is found. The returned pair consists of the entry name and the distance (smaller means closer).
-	SimilarCatalogEntry SimilarEntry(CatalogTransaction transaction, const string &name) DUCKDB_EXCLUDES(catalog_lock);
+	SimilarCatalogEntry SimilarEntry(CatalogTransaction transaction, const string &name);
 
 	//! Rollback <entry> to be the currently valid entry for a certain catalog
 	//! entry
@@ -152,11 +149,11 @@ private:
 	//! Create all default entries
 	//! Note: Lock is held on entry and exit, but temporarily released during iteration to avoid deadlocks
 	void CreateDefaultEntries(CatalogTransaction transaction,
-	                          unique_lock<mutex> &lock) DUCKDB_NO_THREAD_SAFETY_ANALYSIS;
+	                          unique_lock<mutex> &lock);
 	//! Attempt to create a default entry with the specified name. Returns the entry if successful, nullptr otherwise.
 	//! Note: Lock is held on entry and exit, but temporarily released during creation to avoid deadlocks
 	optional_ptr<CatalogEntry> CreateDefaultEntry(CatalogTransaction transaction, const string &name,
-	                                              unique_lock<mutex> &lock) DUCKDB_NO_THREAD_SAFETY_ANALYSIS;
+	                                              unique_lock<mutex> &lock);
 
 	bool DropEntryInternal(CatalogTransaction transaction, const string &name, bool allow_drop_internal = false);
 
