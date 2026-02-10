@@ -617,7 +617,7 @@ void FileSystem::RegisterSubSystem(unique_ptr<FileSystem> sub_fs) {
 	throw NotImplementedException("%s: Can't register a sub system on a non-virtual file system", GetName());
 }
 
-void FileSystem::RegisterCompressionFilesystem(const FileCompressionType& compression_type, unique_ptr<FileSystem> fs) {
+void FileSystem::RegisterCompressionFilesystem(const FileCompressionType &compression_type, unique_ptr<FileSystem> fs) {
 	throw NotImplementedException("%s: Can't register a compression filesystem on a non-virtual file system",
 	                              GetName());
 }

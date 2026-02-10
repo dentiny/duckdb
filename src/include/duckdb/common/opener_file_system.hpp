@@ -162,7 +162,8 @@ public:
 		GetFileSystem().RegisterSubSystem(std::move(sub_fs));
 	}
 
-	void RegisterCompressionFilesystem(const FileCompressionType& compression_type, unique_ptr<FileSystem> fs) override {
+	void RegisterCompressionFilesystem(const FileCompressionType &compression_type,
+	                                   unique_ptr<FileSystem> fs) override {
 		GetFileSystem().RegisterCompressionFilesystem(compression_type, std::move(fs));
 	}
 

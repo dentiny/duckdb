@@ -36,7 +36,8 @@ struct FileSystemRegistry {
 
 public:
 	shared_ptr<FileSystemRegistry> RegisterSubSystem(unique_ptr<FileSystem> fs) const;
-	shared_ptr<FileSystemRegistry> RegisterCompressionFilesystem(const FileCompressionType& compression_type, unique_ptr<FileSystem> fs) const;
+	shared_ptr<FileSystemRegistry> RegisterCompressionFilesystem(const FileCompressionType &compression_type,
+	                                                             unique_ptr<FileSystem> fs) const;
 	shared_ptr<FileSystemRegistry> SetDisabledFileSystems(const vector<string> &names) const;
 	shared_ptr<FileSystemRegistry> ExtractSubSystem(const string &name, unique_ptr<FileSystem> &result) const;
 };
@@ -54,7 +55,9 @@ shared_ptr<FileSystemRegistry> FileSystemRegistry::RegisterSubSystem(unique_ptr<
 	return new_registry;
 }
 
-shared_ptr<FileSystemRegistry> FileSystemRegistry::RegisterCompressionFilesystem(const FileCompressionType& compression_type, unique_ptr<FileSystem> fs) const {
+shared_ptr<FileSystemRegistry>
+FileSystemRegistry::RegisterCompressionFilesystem(const FileCompressionType &compression_type,
+                                                  unique_ptr<FileSystem> fs) const {
 	auto new_registry = make_shared_ptr<FileSystemRegistry>(*this);
 	// TODO(hjiang): Specify behavior that compression type has been registered.
 	new_registry->compressed_fs.emplace(compression_type, make_shared_ptr<FileSystemHandle>(std::move(fs)));
@@ -116,8 +119,8 @@ VirtualFileSystem::~VirtualFileSystem() {
 }
 
 optional_ptr<FileSystem> VirtualFileSystem::FindCompressionFileSystem(FileCompressionType compression_type,
-                                                                      const string& filepath) {
-    if (StringUtil::CIEquals(compression_type, FILE_UNCOMPRESSED_TYPE)) {
+                                                                      const string &filepath) {
+	if (StringUtil::CIEquals(compression_type, FILE_UNCOMPRESSED_TYPE)) {
 		return nullptr;
 	}
 
@@ -306,7 +309,8 @@ void VirtualFileSystem::RegisterSubSystem(unique_ptr<FileSystem> fs) {
 	file_system_registry.atomic_store(new_registry);
 }
 
-void VirtualFileSystem::RegisterCompressionFilesystem(const FileCompressionType& compression_type, unique_ptr<FileSystem> fs) {
+void VirtualFileSystem::RegisterCompressionFilesystem(const FileCompressionType &compression_type,
+                                                      unique_ptr<FileSystem> fs) {
 	const lock_guard<mutex> guard(registry_lock);
 	auto new_registry = file_system_registry->RegisterCompressionFilesystem(compression_type, std::move(fs));
 	file_system_registry.atomic_store(new_registry);

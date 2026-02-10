@@ -50,7 +50,7 @@ public:
 		return a == FileLockType::NO_LOCK ? b : a;
 	}
 
-	static FileCompressionType MergeCompression(const FileCompressionType& a, const FileCompressionType& b) {
+	static FileCompressionType MergeCompression(const FileCompressionType &a, const FileCompressionType &b) {
 		return a.empty() ? b : a;
 	}
 
@@ -58,10 +58,10 @@ public:
 		return a == CachingMode::NO_CACHING ? b : a;
 	}
 
-	inline FileOpenFlags operator|(const FileOpenFlags& b) const {
+	inline FileOpenFlags operator|(const FileOpenFlags &b) const {
 		return FileOpenFlags(flags | b.flags, MergeLock(lock, b.lock), MergeCompression(compression, b.compression));
 	}
-	inline FileOpenFlags &operator|=(const FileOpenFlags& b) {
+	inline FileOpenFlags &operator|=(const FileOpenFlags &b) {
 		flags |= b.flags;
 		lock = MergeLock(lock, b.lock);
 		compression = MergeCompression(compression, b.compression);

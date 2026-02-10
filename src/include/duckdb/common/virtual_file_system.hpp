@@ -54,7 +54,7 @@ public:
 
 	void RegisterSubSystem(unique_ptr<FileSystem> fs) override;
 
-	void RegisterCompressionFilesystem(const FileCompressionType& compression_type, unique_ptr<FileSystem> fs) override;
+	void RegisterCompressionFilesystem(const FileCompressionType &compression_type, unique_ptr<FileSystem> fs) override;
 
 	void UnregisterSubSystem(const string &name) override;
 
@@ -97,7 +97,7 @@ private:
 	optional_ptr<FileSystem> FindFileSystemInternal(FileSystemRegistry &registry, const string &path);
 	// Return nullptr if compression is not involved, throw exception if compression is requested but no usable
 	// filesystem gets registered.
-	optional_ptr<FileSystem> FindCompressionFileSystem(FileCompressionType compression_type, const string& path);
+	optional_ptr<FileSystem> FindCompressionFileSystem(FileCompressionType compression_type, const string &path);
 
 private:
 	mutex registry_lock;
