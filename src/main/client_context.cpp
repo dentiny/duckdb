@@ -956,7 +956,7 @@ void ClientContext::LogQueryInternal(ClientContextLock &, const string &query) {
 		try {
 			string log_path(DUCKDB_FORCE_QUERY_LOG);
 			client_data->log_query_writer = make_uniq<BufferedFileWriter>(FileSystem::GetFileSystem(*this), log_path,
-																		  BufferedFileWriter::GetDefaultOpenFlags());
+			                                                              BufferedFileWriter::GetDefaultOpenFlags());
 		} catch (...) {
 			return;
 		}
