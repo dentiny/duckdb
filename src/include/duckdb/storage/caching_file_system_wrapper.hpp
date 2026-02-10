@@ -100,8 +100,7 @@ public:
 	DUCKDB_API vector<OpenFileInfo> Glob(const string &path, FileOpener *opener = nullptr) override;
 
 	DUCKDB_API void RegisterSubSystem(unique_ptr<FileSystem> sub_fs) override;
-	DUCKDB_API void RegisterCompressionFilesystem(FileCompressionType compression_type,
-	                                              unique_ptr<FileSystem> fs) override;
+	DUCKDB_API void RegisterCompressionFilesystem(const FileCompressionType &compression_type, unique_ptr<FileSystem> fs) override;
 	DUCKDB_API void UnregisterSubSystem(const string &name) override;
 	DUCKDB_API unique_ptr<FileSystem> ExtractSubSystem(const string &name) override;
 	DUCKDB_API vector<string> ListSubSystems() override;

@@ -39,18 +39,18 @@ public:
 	}
 	FileOpenFlags(FileLockType lock) : lock(lock) { // NOLINT: allow implicit conversion
 	}
-	FileOpenFlags(FileCompressionType compression) // NOLINT: allow implicit conversion
-	    : compression(compression) {
+	FileOpenFlags(FileCompressionType compression_p) // NOLINT: allow implicit conversion
+	    : compression(std::move(compression_p)) {
 	}
-	FileOpenFlags(idx_t flags, FileLockType lock, FileCompressionType compression)
-	    : flags(flags), lock(lock), compression(compression) {
+	FileOpenFlags(idx_t flags, FileLockType lock, FileCompressionType compression_p)
+	    : flags(flags), lock(lock), compression(std::move(compression_p)) {
 	}
 
 	static constexpr FileLockType MergeLock(FileLockType a, FileLockType b) {
 		return a == FileLockType::NO_LOCK ? b : a;
 	}
 
-	static FileCompressionType MergeCompression(FileCompressionType a, FileCompressionType b) {
+	static FileCompressionType MergeCompression(const FileCompressionType& a, const FileCompressionType& b) {
 		return a.empty() ? b : a;
 	}
 
@@ -58,10 +58,10 @@ public:
 		return a == CachingMode::NO_CACHING ? b : a;
 	}
 
-	inline FileOpenFlags operator|(FileOpenFlags b) const {
+	inline FileOpenFlags operator|(const FileOpenFlags& b) const {
 		return FileOpenFlags(flags | b.flags, MergeLock(lock, b.lock), MergeCompression(compression, b.compression));
 	}
-	inline FileOpenFlags &operator|=(FileOpenFlags b) {
+	inline FileOpenFlags &operator|=(const FileOpenFlags& b) {
 		flags |= b.flags;
 		lock = MergeLock(lock, b.lock);
 		compression = MergeCompression(compression, b.compression);
