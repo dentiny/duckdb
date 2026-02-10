@@ -10,7 +10,7 @@ const FileCompressionType FILE_ZSTD_COMPRESSION_TYPE = "zstd";
 const FileCompressionType FILE_GZIP_COMPRESSION_TYPE = "gzip";
 const FileCompressionType FILE_AUTO_COMPRESSION_TYPE = "auto";
 
-string CompressionExtensionFromType(const FileCompressionType& type) {
+string CompressionExtensionFromType(const FileCompressionType &type) {
 	if (StringUtil::CIEquals(type, FILE_GZIP_COMPRESSION_TYPE)) {
 		return ".gz";
 	}
@@ -20,7 +20,7 @@ string CompressionExtensionFromType(const FileCompressionType& type) {
 	throw NotImplementedException("Compression Extension of file compression type %s is not implemented", type);
 }
 
-bool IsFileCompressed(string path, const FileCompressionType& compression_type) {
+bool IsFileCompressed(string path, const FileCompressionType &compression_type) {
 	std::size_t question_mark_pos = std::string::npos;
 	if (!StringUtil::StartsWith(path, "\\\\?\\")) {
 		question_mark_pos = path.find('?');

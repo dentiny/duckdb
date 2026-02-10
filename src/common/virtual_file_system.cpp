@@ -36,7 +36,8 @@ struct FileSystemRegistry {
 
 public:
 	shared_ptr<FileSystemRegistry> RegisterSubSystem(unique_ptr<FileSystem> fs) const;
-	shared_ptr<FileSystemRegistry> RegisterCompressionFilesystem(FileCompressionType compression_type, unique_ptr<FileSystem> fs) const;
+	shared_ptr<FileSystemRegistry> RegisterCompressionFilesystem(FileCompressionType compression_type,
+	                                                             unique_ptr<FileSystem> fs) const;
 	shared_ptr<FileSystemRegistry> SetDisabledFileSystems(const vector<string> &names) const;
 	shared_ptr<FileSystemRegistry> ExtractSubSystem(const string &name, unique_ptr<FileSystem> &result) const;
 };
@@ -54,7 +55,8 @@ shared_ptr<FileSystemRegistry> FileSystemRegistry::RegisterSubSystem(unique_ptr<
 	return new_registry;
 }
 
-shared_ptr<FileSystemRegistry> FileSystemRegistry::RegisterCompressionFilesystem(FileCompressionType compression_type, unique_ptr<FileSystem> fs) const {
+shared_ptr<FileSystemRegistry> FileSystemRegistry::RegisterCompressionFilesystem(FileCompressionType compression_type,
+                                                                                 unique_ptr<FileSystem> fs) const {
 	auto new_registry = make_shared_ptr<FileSystemRegistry>(*this);
 	// TODO(hjiang): Specify behavior that compression type has been registered.
 	new_registry->compressed_fs.emplace(std::move(compression_type), make_shared_ptr<FileSystemHandle>(std::move(fs)));
@@ -117,17 +119,17 @@ VirtualFileSystem::~VirtualFileSystem() {
 
 optional_ptr<FileSystem> VirtualFileSystem::FindCompressionFileSystem(FileCompressionType compression_type,
                                                                       string filepath) {
-std::cerr << "--1--" << std::endl; 
-    if (StringUtil::CIEquals(compression_type, FILE_UNCOMPRESSED_TYPE)) {
-		std::cerr << "--2--" << std::endl; 
+	std::cerr << "--1--" << std::endl;
+	if (StringUtil::CIEquals(compression_type, FILE_UNCOMPRESSED_TYPE)) {
+		std::cerr << "--2--" << std::endl;
 		return nullptr;
 	}
 
 	// For auto-detection mode, check if it's a known pattern for duckdb internal compressions.
 	bool autodetect_compression = StringUtil::CIEquals(compression_type, FILE_AUTO_COMPRESSION_TYPE);
-	std::cerr << "--3--" << std::endl; 
+	std::cerr << "--3--" << std::endl;
 	if (autodetect_compression) {
-		std::cerr << "--4--" << std::endl; 
+		std::cerr << "--4--" << std::endl;
 		auto lower_path = StringUtil::Lower(filepath);
 		if (StringUtil::EndsWith(lower_path, ".tmp")) {
 			// strip .tmp
@@ -146,14 +148,14 @@ std::cerr << "--1--" << std::endl;
 	// fetch it explicitly.
 	if (!autodetect_compression) {
 		D_ASSERT(compression_type != FILE_AUTO_COMPRESSION_TYPE);
-		std::cerr << "--5--" << std::endl; 
+		std::cerr << "--5--" << std::endl;
 		auto iter = file_system_registry->compressed_fs.find(compression_type);
 		if (iter != file_system_registry->compressed_fs.end()) {
-			std::cerr << "--6--" << std::endl; 
+			std::cerr << "--6--" << std::endl;
 			return iter->second->file_system.get();
 		}
 		if (compression_type == FILE_ZSTD_COMPRESSION_TYPE) {
-			std::cerr << "--7--" << std::endl; 
+			std::cerr << "--7--" << std::endl;
 			throw NotImplementedException(
 			    "Attempting to open a compressed file, but the compression type is not supported.\nConsider "
 			    "explicitly \"INSTALL parquet; LOAD parquet;\" to support this compression scheme");
@@ -162,14 +164,14 @@ std::cerr << "--1--" << std::endl;
 		    "Attempting to open a compressed file, but the compression type is not supported");
 	}
 
-	std::cerr << "--8--" << std::endl; 
+	std::cerr << "--8--" << std::endl;
 
 	// We've checked over all duckdb internal compression types, fallback to try externally registered compression
 	// filesystems.
 	for (auto &cur_compressed_fs : file_system_registry->compressed_fs) {
-		std::cerr << "--9--" << std::endl; 
+		std::cerr << "--9--" << std::endl;
 		if (cur_compressed_fs.second->file_system->CanHandleFile(filepath)) {
-			std::cerr << "--10--" << std::endl; 
+			std::cerr << "--10--" << std::endl;
 			return cur_compressed_fs.second->file_system.get();
 		}
 	}

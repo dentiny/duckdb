@@ -24,9 +24,9 @@ extern const FileCompressionType FILE_GZIP_COMPRESSION_TYPE;
 extern const FileCompressionType FILE_AUTO_COMPRESSION_TYPE;
 
 // Return whether the given filepath is compressed with the given type.
-bool IsFileCompressed(string path, const FileCompressionType& compression_type);
+bool IsFileCompressed(string path, const FileCompressionType &compression_type);
 
 // Return file extension for a given compression type (e.g. ".gz" for gzip).
-string CompressionExtensionFromType(const FileCompressionType& type);
+string CompressionExtensionFromType(const FileCompressionType &type);
 
 } // namespace duckdb
