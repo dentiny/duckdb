@@ -53,14 +53,11 @@ public:
 	void RemoveFiles(const vector<string> &filenames, optional_ptr<FileOpener> opener) override;
 
 	void RegisterSubSystem(unique_ptr<FileSystem> fs) override;
-<<<<<<< HEAD
 
 	void RegisterCompressionFilesystem(string compression_type, unique_ptr<FileSystem> fs) override;
 
-=======
-	void RegisterSubSystem(FileCompressionType compression_type, unique_ptr<FileSystem> fs) override;
 	void UnregisterSubSystem(const string &name) override;
->>>>>>> main
+
 	unique_ptr<FileSystem> ExtractSubSystem(const string &name) override;
 
 	vector<string> ListSubSystems() override;

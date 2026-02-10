@@ -170,15 +170,9 @@ public:
 	//! Multiple clients may access the file at the same time
 	static const FileOpenFlags FILE_FLAGS_MULTI_CLIENT_ACCESS;
 	//! Disables logging to avoid infinite loops when using FileHandle-backed log storage
-<<<<<<< HEAD
 	static const FileOpenFlags FILE_FLAGS_DISABLE_LOGGING;
-=======
-	static constexpr FileOpenFlags FILE_FLAGS_DISABLE_LOGGING =
-	    FileOpenFlags(FileOpenFlags::FILE_FLAGS_DISABLE_LOGGING);
 	//! Opened file is allowed to be a duckdb_extension
-	static constexpr FileOpenFlags FILE_FLAGS_ENABLE_EXTENSION_INSTALL =
-	    FileOpenFlags(FileOpenFlags::FILE_FLAGS_ENABLE_EXTENSION_INSTALL);
->>>>>>> main
+	static const FileOpenFlags FILE_FLAGS_ENABLE_EXTENSION_INSTALL;
 };
 
 } // namespace duckdb

@@ -15,6 +15,7 @@ const FileOpenFlags FileFlags::FILE_FLAGS_EXCLUSIVE_CREATE = FileOpenFlags(FileO
 const FileOpenFlags FileFlags::FILE_FLAGS_NULL_IF_EXISTS = FileOpenFlags(FileOpenFlags::FILE_FLAGS_NULL_IF_EXISTS);
 const FileOpenFlags FileFlags::FILE_FLAGS_MULTI_CLIENT_ACCESS = FileOpenFlags(FileOpenFlags::FILE_FLAGS_MULTI_CLIENT_ACCESS);
 const FileOpenFlags FileFlags::FILE_FLAGS_DISABLE_LOGGING = FileOpenFlags(FileOpenFlags::FILE_FLAGS_DISABLE_LOGGING);
+const FileOpenFlags FileFlags::FILE_FLAGS_ENABLE_EXTENSION_INSTALL = FileOpenFlags(FileOpenFlags::FILE_FLAGS_ENABLE_EXTENSION_INSTALL);
 
 } // namespace duckdb
 
