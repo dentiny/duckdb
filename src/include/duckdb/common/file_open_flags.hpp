@@ -31,6 +31,7 @@ public:
 	static constexpr idx_t FILE_FLAGS_NULL_IF_EXISTS = idx_t(1 << 10);
 	static constexpr idx_t FILE_FLAGS_MULTI_CLIENT_ACCESS = idx_t(1 << 11);
 	static constexpr idx_t FILE_FLAGS_DISABLE_LOGGING = idx_t(1 << 12);
+	static constexpr idx_t FILE_FLAGS_ENABLE_EXTENSION_INSTALL = idx_t(1 << 13);
 
 public:
 	FileOpenFlags() = default;
@@ -128,6 +129,9 @@ public:
 	inline bool DisableLogging() const {
 		return flags & FILE_FLAGS_DISABLE_LOGGING;
 	}
+	inline bool EnableExtensionInstall() const {
+		return flags & FILE_FLAGS_ENABLE_EXTENSION_INSTALL;
+	}
 	inline idx_t GetFlagsInternal() const {
 		return flags;
 	}
@@ -166,7 +170,15 @@ public:
 	//! Multiple clients may access the file at the same time
 	static const FileOpenFlags FILE_FLAGS_MULTI_CLIENT_ACCESS;
 	//! Disables logging to avoid infinite loops when using FileHandle-backed log storage
+<<<<<<< HEAD
 	static const FileOpenFlags FILE_FLAGS_DISABLE_LOGGING;
+=======
+	static constexpr FileOpenFlags FILE_FLAGS_DISABLE_LOGGING =
+	    FileOpenFlags(FileOpenFlags::FILE_FLAGS_DISABLE_LOGGING);
+	//! Opened file is allowed to be a duckdb_extension
+	static constexpr FileOpenFlags FILE_FLAGS_ENABLE_EXTENSION_INSTALL =
+	    FileOpenFlags(FileOpenFlags::FILE_FLAGS_ENABLE_EXTENSION_INSTALL);
+>>>>>>> main
 };
 
 } // namespace duckdb

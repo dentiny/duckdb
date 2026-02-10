@@ -5,6 +5,7 @@
 #include "duckdb/common/file_opener.hpp"
 #include "duckdb/common/helper.hpp"
 #include "duckdb/common/string_util.hpp"
+#include "duckdb/common/multi_file/multi_file_list.hpp"
 #include "duckdb/common/windows.hpp"
 #include "duckdb/function/scalar/string_functions.hpp"
 #include "duckdb/logging/log_type.hpp"
@@ -47,6 +48,24 @@ extern "C" WINBASEAPI BOOL WINAPI GetPhysicallyInstalledSystemMemory(PULONGLONG)
 
 namespace duckdb {
 
+<<<<<<< HEAD
+=======
+constexpr FileOpenFlags FileFlags::FILE_FLAGS_READ;
+constexpr FileOpenFlags FileFlags::FILE_FLAGS_WRITE;
+constexpr FileOpenFlags FileFlags::FILE_FLAGS_DIRECT_IO;
+constexpr FileOpenFlags FileFlags::FILE_FLAGS_FILE_CREATE;
+constexpr FileOpenFlags FileFlags::FILE_FLAGS_FILE_CREATE_NEW;
+constexpr FileOpenFlags FileFlags::FILE_FLAGS_APPEND;
+constexpr FileOpenFlags FileFlags::FILE_FLAGS_PRIVATE;
+constexpr FileOpenFlags FileFlags::FILE_FLAGS_NULL_IF_NOT_EXISTS;
+constexpr FileOpenFlags FileFlags::FILE_FLAGS_PARALLEL_ACCESS;
+constexpr FileOpenFlags FileFlags::FILE_FLAGS_EXCLUSIVE_CREATE;
+constexpr FileOpenFlags FileFlags::FILE_FLAGS_NULL_IF_EXISTS;
+constexpr FileOpenFlags FileFlags::FILE_FLAGS_MULTI_CLIENT_ACCESS;
+constexpr FileOpenFlags FileFlags::FILE_FLAGS_DISABLE_LOGGING;
+constexpr FileOpenFlags FileFlags::FILE_FLAGS_ENABLE_EXTENSION_INSTALL;
+
+>>>>>>> main
 void FileOpenFlags::Verify() {
 #ifdef DEBUG
 	bool is_read = flags & FileOpenFlags::FILE_FLAGS_READ;
@@ -398,6 +417,10 @@ bool FileSystem::SupportsListFilesExtended() const {
 	return false;
 }
 
+bool FileSystem::SupportsGlobExtended() const {
+	return false;
+}
+
 void FileSystem::Read(FileHandle &handle, void *buffer, int64_t nr_bytes, idx_t location) {
 	throw NotImplementedException("%s: Read (with location) is not implemented!", GetName());
 }
@@ -586,7 +609,26 @@ bool FileSystem::HasGlob(const string &str) {
 }
 
 vector<OpenFileInfo> FileSystem::Glob(const string &path, FileOpener *opener) {
+	if (SupportsGlobExtended()) {
+		auto result = GlobFilesExtended(path, FileGlobOptions::ALLOW_EMPTY, opener);
+		return result->GetAllFiles();
+	}
 	throw NotImplementedException("%s: Glob is not implemented!", GetName());
+}
+
+unique_ptr<MultiFileList> FileSystem::Glob(const string &path, const FileGlobInput &input,
+                                           optional_ptr<FileOpener> opener) {
+	if (!SupportsGlobExtended()) {
+		auto result = Glob(path, opener.get());
+		return make_uniq<SimpleMultiFileList>(std::move(result));
+	} else {
+		return GlobFilesExtended(path, input, opener);
+	}
+}
+
+unique_ptr<MultiFileList> FileSystem::GlobFilesExtended(const string &path, const FileGlobInput &input,
+                                                        optional_ptr<FileOpener> opener) {
+	throw NotImplementedException("%s: GlobFilesExtended is not implemented!", GetName());
 }
 
 void FileSystem::RegisterSubSystem(unique_ptr<FileSystem> sub_fs) {
@@ -596,6 +638,10 @@ void FileSystem::RegisterSubSystem(unique_ptr<FileSystem> sub_fs) {
 void FileSystem::RegisterCompressionFilesystem(FileCompressionType compression_type, unique_ptr<FileSystem> fs) {
 	throw NotImplementedException("%s: Can't register a compression filesystem on a non-virtual file system",
 	                              GetName());
+}
+
+void FileSystem::UnregisterSubSystem(const string &name) {
+	throw NotImplementedException("%s: Can't unregister a sub system on a non-virtual file system", GetName());
 }
 
 unique_ptr<FileSystem> FileSystem::ExtractSubSystem(const string &name) {
@@ -622,9 +668,9 @@ bool FileSystem::CanHandleFile(const string &fpath) {
 	throw NotImplementedException("%s: CanHandleFile is not implemented!", GetName());
 }
 
-vector<OpenFileInfo> FileSystem::GlobFiles(const string &pattern, ClientContext &context, const FileGlobInput &input) {
-	auto result = Glob(pattern);
-	if (result.empty()) {
+unique_ptr<MultiFileList> FileSystem::GlobFileList(const string &pattern, const FileGlobInput &input) {
+	auto result = GlobFilesExtended(pattern, input);
+	if (result->IsEmpty()) {
 		if (input.behavior == FileGlobOptions::FALLBACK_GLOB && !HasGlob(pattern)) {
 			// if we have no glob in the pattern and we have an extension, we try to glob
 			if (!HasGlob(pattern)) {
@@ -632,8 +678,8 @@ vector<OpenFileInfo> FileSystem::GlobFiles(const string &pattern, ClientContext 
 					throw InternalException("FALLBACK_GLOB requires an extension to be specified");
 				}
 				string new_pattern = JoinPath(JoinPath(pattern, "**"), "*." + input.extension);
-				result = GlobFiles(new_pattern, context, FileGlobOptions::ALLOW_EMPTY);
-				if (!result.empty()) {
+				result = GlobFileList(new_pattern, FileGlobOptions::ALLOW_EMPTY);
+				if (!result->IsEmpty()) {
 					// we found files by globbing the target as if it was a directory - return them
 					return result;
 				}
@@ -644,6 +690,11 @@ vector<OpenFileInfo> FileSystem::GlobFiles(const string &pattern, ClientContext 
 		}
 	}
 	return result;
+}
+
+vector<OpenFileInfo> FileSystem::GlobFiles(const string &pattern, const FileGlobInput &input) {
+	auto file_list = GlobFileList(pattern, input);
+	return file_list->GetAllFiles();
 }
 
 void FileSystem::Seek(FileHandle &handle, idx_t location) {

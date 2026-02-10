@@ -9,6 +9,7 @@
 #include "duckdb/common/unordered_set.hpp"
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/storage/caching_file_system_wrapper.hpp"
+#include "duckdb/common/multi_file/multi_file_list.hpp"
 
 namespace duckdb {
 
@@ -305,8 +306,9 @@ string VirtualFileSystem::PathSeparator(const string &path) {
 	return FindFileSystem(path, nullptr).PathSeparator(path);
 }
 
-vector<OpenFileInfo> VirtualFileSystem::Glob(const string &path, FileOpener *opener) {
-	return FindFileSystem(path, opener).Glob(path, opener);
+unique_ptr<MultiFileList> VirtualFileSystem::GlobFilesExtended(const string &path, const FileGlobInput &input,
+                                                               optional_ptr<FileOpener> opener) {
+	return FindFileSystem(path, opener).Glob(path, input, opener);
 }
 
 void VirtualFileSystem::RegisterSubSystem(unique_ptr<FileSystem> fs) {
@@ -319,6 +321,13 @@ void VirtualFileSystem::RegisterCompressionFilesystem(FileCompressionType compre
 	const lock_guard<mutex> guard(registry_lock);
 	auto new_registry = file_system_registry->RegisterCompressionFilesystem(std::move(compression_type), std::move(fs));
 	file_system_registry.atomic_store(new_registry);
+}
+
+void VirtualFileSystem::UnregisterSubSystem(const string &name) {
+	auto sub_system = ExtractSubSystem(name);
+
+	lock_guard<mutex> guard(registry_lock);
+	unregistered_file_systems.push_back(std::move(sub_system));
 }
 
 void VirtualFileSystem::SetDisabledFileSystems(const vector<string> &names) {
