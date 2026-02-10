@@ -65,7 +65,7 @@ MetadataHandle MetadataManager::AllocateHandle() {
 			break;
 		}
 	}
-	block_mutex.lock();
+	block_mutex.unlock();
 	if (free_block == INVALID_BLOCK || free_block > PeekNextBlockId()) {
 		auto new_block = AllocateNewBlock();
 		free_block = new_block.block_id;
