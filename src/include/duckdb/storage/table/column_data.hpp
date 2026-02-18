@@ -246,11 +246,11 @@ protected:
 	//! The segments holding the data of this column segment
 	ColumnSegmentTree data;
 	//! The lock for the updates
-	mutable mutex update_lock;
+	mutable annotated_mutex update_lock;
 	//! The updates for this column segment
 	unique_ptr<UpdateSegment> updates;
 	//! The lock for the stats
-	mutable mutex stats_lock;
+	mutable annotated_mutex stats_lock;
 	//! Total transient allocation size
 	atomic<idx_t> allocation_size;
 	//! The stats of the root segment

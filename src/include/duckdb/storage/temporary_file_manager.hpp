@@ -127,10 +127,10 @@ public:
 public:
 	struct TemporaryFileLock {
 	public:
-		explicit TemporaryFileLock(mutex &mutex);
+		explicit TemporaryFileLock(annotated_mutex &annotated_mutex);
 
 	public:
-		lock_guard<mutex> lock;
+		annotated_lock_guard<annotated_mutex> lock;
 	};
 
 public:
@@ -169,7 +169,7 @@ private:
 	const string path;
 	unique_ptr<FileHandle> handle;
 	//! Lock for concurrent access and block index manager
-	mutex file_lock;
+	annotated_mutex file_lock;
 	BlockIndexManager index_manager;
 };
 
@@ -273,10 +273,10 @@ private:
 public:
 	struct TemporaryFileManagerLock {
 	public:
-		explicit TemporaryFileManagerLock(mutex &mutex);
+		explicit TemporaryFileManagerLock(annotated_mutex &annotated_mutex);
 
 	public:
-		lock_guard<mutex> lock;
+		annotated_lock_guard<annotated_mutex> lock;
 	};
 
 	//! Create/Read/Update/Delete operations for temporary buffers
@@ -325,7 +325,7 @@ private:
 	//! The temporary directory
 	string temp_directory;
 	//! Lock for parallel access
-	mutex manager_lock;
+	annotated_mutex manager_lock;
 	//! The set of active temporary file handles
 	TemporaryFileMap files;
 	//! Map of block_id -> temporary file position

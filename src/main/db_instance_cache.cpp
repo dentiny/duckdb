@@ -73,7 +73,7 @@ shared_ptr<DuckDB> DBInstanceCache::GetInstanceInternal(const string &database, 
 	shared_ptr<DuckDB> db_instance;
 	{
 		db_instances_lock.unlock();
-		std::lock_guard<mutex> create_db_lock(cache_entry->update_database_mutex);
+		std::lock_guard<annotated_mutex> create_db_lock(cache_entry->update_database_mutex);
 		db_instance = cache_entry->database.lock();
 	}
 	// cache entry exists - check if the actual database still exists
@@ -100,7 +100,7 @@ shared_ptr<DuckDB> DBInstanceCache::GetInstanceInternal(const string &database, 
 }
 
 shared_ptr<DuckDB> DBInstanceCache::GetInstance(const string &database, const DBConfig &config) {
-	unique_lock<mutex> lock {cache_lock};
+	annotated_unique_lock<annotated_mutex> lock {cache_lock};
 	return GetInstanceInternal(database, config, lock);
 }
 
@@ -129,7 +129,7 @@ shared_ptr<DuckDB> DBInstanceCache::CreateInstanceInternal(const string &databas
 		shared_ptr<DatabaseCacheEntry> cache_entry = make_shared_ptr<DatabaseCacheEntry>();
 		config.db_cache_entry = cache_entry;
 		// Create the new instance after unlocking to avoid new ddb creation requests to be blocked
-		lock_guard<mutex> create_db_lock(cache_entry->update_database_mutex);
+		annotated_lock_guard<annotated_mutex> create_db_lock(cache_entry->update_database_mutex);
 		db_instances[cache_key] = cache_entry;
 		db_instances_lock.unlock();
 		db_instance = make_shared_ptr<DuckDB>(instance_path, &config);
@@ -146,7 +146,8 @@ shared_ptr<DuckDB> DBInstanceCache::CreateInstanceInternal(const string &databas
 
 shared_ptr<DuckDB> DBInstanceCache::CreateInstance(const string &database, DBConfig &config, bool cache_instance,
                                                    const std::function<void(DuckDB &)> &on_create) {
-	return CreateInstanceInternal(database, config, cache_instance, unique_lock<mutex>(cache_lock), on_create);
+	return CreateInstanceInternal(database, config, cache_instance, annotated_unique_lock<annotated_mutex>(cache_lock),
+	                              on_create);
 }
 
 shared_ptr<DuckDB> DBInstanceCache::GetOrCreateInstance(const string &database, DBConfig &config_dict,
@@ -159,7 +160,7 @@ shared_ptr<DuckDB> DBInstanceCache::GetOrCreateInstance(const string &database, 
 shared_ptr<DuckDB> DBInstanceCache::GetOrCreateInstance(const string &database, DBConfig &config_dict,
                                                         CacheBehavior cache_behavior,
                                                         const std::function<void(DuckDB &)> &on_create) {
-	unique_lock<mutex> lock(cache_lock, std::defer_lock);
+	annotated_unique_lock<annotated_mutex> lock(cache_lock, std::defer_lock);
 	bool cache_instance = cache_behavior == CacheBehavior::ALWAYS_CACHE;
 	if (cache_behavior == CacheBehavior::AUTOMATIC) {
 		// cache all unnamed in-memory connections
@@ -171,13 +172,13 @@ shared_ptr<DuckDB> DBInstanceCache::GetOrCreateInstance(const string &database, 
 	if (cache_instance) {
 		// While we do not own the lock, we cannot definitively say that the database instance does not exist.
 		while (!lock.owns_lock()) {
-			// The problem is, that we have to unlock the mutex in GetInstanceInternal, so we can non-blockingly wait
-			// for the database creation within the cache entry.
-			// Now even after unlocking and waiting for the DB creation we cannot guarantee that the database exists (it
-			// could have gone out of scope in the meantime). If that happened we have unlocked the global lock to wait,
-			// however we still return a nullptr. In this case we have to re-lock and try again until we either do not
-			// find a cache entry (can be done without unlocking) or we find a cache entry and the database is valid as
-			// well (in this case we can return that database)
+			// The problem is, that we have to unlock the annotated_mutex in GetInstanceInternal, so we can
+			// non-blockingly wait for the database creation within the cache entry. Now even after unlocking and
+			// waiting for the DB creation we cannot guarantee that the database exists (it could have gone out of scope
+			// in the meantime). If that happened we have unlocked the global lock to wait, however we still return a
+			// nullptr. In this case we have to re-lock and try again until we either do not find a cache entry (can be
+			// done without unlocking) or we find a cache entry and the database is valid as well (in this case we can
+			// return that database)
 			lock.lock();
 			auto instance = GetInstanceInternal(database, config_dict, lock);
 			if (instance) {

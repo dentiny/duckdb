@@ -109,7 +109,7 @@ void EncodingFunctionSet::Initialize(DBConfig &config) {
 }
 
 void DBConfig::RegisterEncodeFunction(const EncodingFunction &function) const {
-	lock_guard<mutex> l(encoding_functions->lock);
+	annotated_lock_guard<annotated_mutex> l(encoding_functions->lock);
 	const auto name = function.GetName();
 	if (encoding_functions->functions.find(name) != encoding_functions->functions.end()) {
 		throw InvalidInputException("Decoding function with name %s already registered", name);
@@ -118,7 +118,7 @@ void DBConfig::RegisterEncodeFunction(const EncodingFunction &function) const {
 }
 
 optional_ptr<EncodingFunction> DBConfig::GetEncodeFunction(const string &name) const {
-	lock_guard<mutex> l(encoding_functions->lock);
+	annotated_lock_guard<annotated_mutex> l(encoding_functions->lock);
 	// Check if the function is already loaded into the global compression functions.
 	if (encoding_functions->functions.find(name) != encoding_functions->functions.end()) {
 		return &encoding_functions->functions[name];
@@ -127,7 +127,7 @@ optional_ptr<EncodingFunction> DBConfig::GetEncodeFunction(const string &name) c
 }
 
 vector<reference<EncodingFunction>> DBConfig::GetLoadedEncodedFunctions() const {
-	lock_guard<mutex> l(encoding_functions->lock);
+	annotated_lock_guard<annotated_mutex> l(encoding_functions->lock);
 	vector<reference<EncodingFunction>> result;
 	for (auto &function : encoding_functions->functions) {
 		result.push_back(function.second);

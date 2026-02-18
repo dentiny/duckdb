@@ -60,7 +60,7 @@ public:
 	shared_ptr<CachedGlobalSettings> GetSettings(shared_ptr<CachedGlobalSettings> &cache) const;
 
 private:
-	mutable mutex lock;
+	mutable annotated_mutex lock;
 	//! Database-global settings
 	UserSettingsMap settings_map;
 	//! Extra parameters that can be SET for loaded extensions

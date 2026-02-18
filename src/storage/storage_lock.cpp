@@ -3,7 +3,6 @@
 #include "duckdb/common/mutex.hpp"
 #include "duckdb/common/common.hpp"
 #include "duckdb/common/assert.hpp"
-
 namespace duckdb {
 
 struct StorageLockInternals : enable_shared_from_this<StorageLockInternals> {

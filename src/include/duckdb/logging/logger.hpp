@@ -128,7 +128,7 @@ public:
 
 protected:
 	const LogConfig config;
-	mutex lock;
+	annotated_mutex lock;
 	const RegisteredLoggingContext context;
 };
 
@@ -184,7 +184,7 @@ protected:
 	atomic<LogMode> mode;
 	atomic<LogLevel> level;
 
-	mutex lock;
+	annotated_mutex lock;
 	LogConfig config;
 	const RegisteredLoggingContext context;
 };

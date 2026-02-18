@@ -49,19 +49,19 @@ struct TopNBoundaryValue {
 	}
 
 	const PhysicalTopN &op;
-	mutex lock;
+	annotated_mutex lock;
 	string boundary_value;
 	bool is_set = false;
 	Vector boundary_vector;
 	OrderModifiers boundary_modifiers;
 
 	string GetBoundaryValue() {
-		lock_guard<mutex> l(lock);
+		annotated_lock_guard<annotated_mutex> l(lock);
 		return boundary_value;
 	}
 
 	void UpdateValue(string_t boundary_val) {
-		unique_lock<mutex> l(lock);
+		annotated_unique_lock<annotated_mutex> l(lock);
 		if (!is_set || boundary_val < string_t(boundary_value)) {
 			boundary_value = boundary_val.GetString();
 			is_set = true;
@@ -476,7 +476,7 @@ public:
 	    : heap(context, op.types, op.orders, op.limit, op.offset), boundary_value(op) {
 	}
 
-	mutex lock;
+	annotated_mutex lock;
 	TopNHeap heap;
 	TopNBoundaryValue boundary_value;
 };
@@ -523,7 +523,7 @@ SinkCombineResultType PhysicalTopN::Combine(ExecutionContext &context, OperatorS
 
 	// scan the local top N and append it to the global heap
 	lstate.heap.Finalize();
-	lock_guard<mutex> guard(gstate.lock);
+	annotated_lock_guard<annotated_mutex> guard(gstate.lock);
 	gstate.heap.Combine(lstate.heap);
 
 	return SinkCombineResultType::FINISHED;
@@ -589,7 +589,7 @@ SourceResultType PhysicalTopN::GetDataInternal(ExecutionContext &context, DataCh
 
 	if (lstate.pos == lstate.end) {
 		// Obtain new scan indices from the global state
-		auto guard = gstate.Lock();
+		const annotated_lock_guard<annotated_mutex> guard {gstate.lock};
 		lstate.pos = gstate.state.pos;
 		gstate.state.pos += TopNGlobalSourceState::TUPLES_PER_BATCH;
 		lstate.end = gstate.state.pos;

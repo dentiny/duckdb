@@ -79,7 +79,7 @@ SinkCombineResultType PhysicalArrowCollector::Combine(ExecutionContext &context,
 		lstate.FinishArray();
 	}
 	// Collect all the finished arrays
-	lock_guard<mutex> l(gstate.glock);
+	annotated_lock_guard<annotated_mutex> l(gstate.glock);
 	// Move the arrays from our local state into the global state
 	gstate.chunks.insert(gstate.chunks.end(), std::make_move_iterator(arrays.begin()),
 	                     std::make_move_iterator(arrays.end()));

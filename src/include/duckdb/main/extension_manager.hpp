@@ -18,7 +18,7 @@ class ExtensionInfo {
 public:
 	ExtensionInfo();
 
-	mutex lock;
+	annotated_mutex lock;
 	atomic<bool> is_loaded;
 	unique_ptr<ExtensionInstallInfo> install_info;
 	unique_ptr<ExtensionLoadedInfo> load_info;
@@ -29,7 +29,7 @@ public:
 	ExtensionActiveLoad(DatabaseInstance &db, ExtensionInfo &info, string extension_name);
 
 	DatabaseInstance &db;
-	unique_lock<mutex> load_lock;
+	annotated_unique_lock<annotated_mutex> load_lock;
 	ExtensionInfo &info;
 	string extension_name;
 
@@ -52,7 +52,7 @@ public:
 
 private:
 	DatabaseInstance &db;
-	mutex lock;
+	annotated_mutex lock;
 	unordered_map<string, unique_ptr<ExtensionInfo>> loaded_extensions_info;
 };
 

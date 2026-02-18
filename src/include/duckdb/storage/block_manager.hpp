@@ -11,6 +11,7 @@
 #include "duckdb/common/common.hpp"
 #include "duckdb/common/mutex.hpp"
 #include "duckdb/common/optional_idx.hpp"
+#include "duckdb/common/thread_annotation.hpp"
 #include "duckdb/common/unordered_map.hpp"
 #include "duckdb/storage/block.hpp"
 #include "duckdb/storage/storage_info.hpp"

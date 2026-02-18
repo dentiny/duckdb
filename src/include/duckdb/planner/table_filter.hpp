@@ -135,7 +135,7 @@ public:
 	                                                optional_ptr<TableFilterSet> existing_filters) const;
 
 private:
-	mutable mutex lock;
+	mutable annotated_mutex lock;
 	reference_map_t<const PhysicalOperator, unique_ptr<TableFilterSet>> filters;
 };
 

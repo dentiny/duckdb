@@ -24,7 +24,7 @@ void WindowCollection::GetCollection(idx_t row_idx, ColumnDataCollectionSpec &sp
 		return;
 	}
 
-	lock_guard<mutex> collection_guard(lock);
+	annotated_lock_guard<annotated_mutex> collection_guard(lock);
 
 	auto collection = make_uniq<ColumnDataCollection>(buffer_manager, types);
 	spec = {row_idx, collection.get()};
@@ -35,7 +35,7 @@ void WindowCollection::GetCollection(idx_t row_idx, ColumnDataCollectionSpec &sp
 }
 
 void WindowCollection::Combine(const ColumnSet &validity_cols) {
-	lock_guard<mutex> collection_guard(lock);
+	annotated_lock_guard<annotated_mutex> collection_guard(lock);
 
 	// If there are no columns (COUNT(*)) then this is a NOP
 	if (types.empty()) {

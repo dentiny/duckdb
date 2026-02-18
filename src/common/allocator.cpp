@@ -89,7 +89,7 @@ private:
 	//! Used for debug purposes
 	atomic<idx_t> allocation_count;
 #ifdef DUCKDB_DEBUG_ALLOCATION
-	mutex pointer_lock;
+	annotated_mutex pointer_lock;
 	//! Set of active outstanding pointers together with stack traces
 	unordered_map<data_ptr_t, pair<idx_t, string>> pointers;
 #endif
@@ -315,7 +315,7 @@ AllocatorDebugInfo::~AllocatorDebugInfo() {
 void AllocatorDebugInfo::AllocateData(data_ptr_t pointer, idx_t size) {
 	allocation_count += size;
 #ifdef DUCKDB_DEBUG_ALLOCATION
-	lock_guard<mutex> l(pointer_lock);
+	annotated_lock_guard<annotated_mutex> l(pointer_lock);
 	pointers[pointer] = make_pair(size, Exception::GetStackTrace());
 #endif
 }
@@ -324,7 +324,7 @@ void AllocatorDebugInfo::FreeData(data_ptr_t pointer, idx_t size) {
 	D_ASSERT(allocation_count >= size);
 	allocation_count -= size;
 #ifdef DUCKDB_DEBUG_ALLOCATION
-	lock_guard<mutex> l(pointer_lock);
+	annotated_lock_guard<annotated_mutex> l(pointer_lock);
 	// verify that the pointer exists
 	D_ASSERT(pointers.find(pointer) != pointers.end());
 	// verify that the stored size matches the passed in size

@@ -10,7 +10,7 @@ ConnectionManager::ConnectionManager() : connection_count(0), current_connection
 }
 
 void ConnectionManager::AddConnection(ClientContext &context) {
-	lock_guard<mutex> lock(connections_lock);
+	annotated_lock_guard<annotated_mutex> lock(connections_lock);
 	for (auto &callback : ExtensionCallback::Iterate(context)) {
 		callback->OnConnectionOpened(context);
 	}
@@ -19,7 +19,7 @@ void ConnectionManager::AddConnection(ClientContext &context) {
 }
 
 void ConnectionManager::RemoveConnection(ClientContext &context) {
-	lock_guard<mutex> lock(connections_lock);
+	annotated_lock_guard<annotated_mutex> lock(connections_lock);
 	for (auto &callback : ExtensionCallback::Iterate(context)) {
 		callback->OnConnectionClosed(context);
 	}
@@ -36,7 +36,7 @@ void ConnectionManager::AssignConnectionId(Connection &connection) {
 }
 
 vector<shared_ptr<ClientContext>> ConnectionManager::GetConnectionList() {
-	lock_guard<mutex> lock(connections_lock);
+	annotated_lock_guard<annotated_mutex> lock(connections_lock);
 	vector<shared_ptr<ClientContext>> result;
 	for (auto &it : connections) {
 		auto connection = it.second.lock();

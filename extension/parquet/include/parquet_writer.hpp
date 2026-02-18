@@ -97,7 +97,7 @@ public:
 public:
 	unique_ptr<ParquetWriter> writer;
 	optional_ptr<const PhysicalOperator> op;
-	mutex lock;
+	annotated_mutex lock;
 	unique_ptr<ColumnDataCollection> combine_buffer;
 	//! If any of the column writers require a transformation to a different shape, this will be initialized and used
 	unique_ptr<ParquetWriteTransformData> transform_data;
@@ -217,7 +217,7 @@ private:
 	atomic<idx_t> num_row_groups;
 	std::shared_ptr<duckdb_apache::thrift::protocol::TProtocol> protocol;
 	duckdb_parquet::FileMetaData file_meta_data;
-	std::mutex lock;
+	annotated_mutex lock;
 
 	vector<unique_ptr<ColumnWriter>> column_writers;
 

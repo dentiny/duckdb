@@ -650,7 +650,7 @@ SinkResultType PhysicalInsert::Sink(ExecutionContext &context, DataChunk &insert
 	D_ASSERT(!return_chunk);
 	auto &data_table = gstate.table.GetStorage();
 	if (!lstate.collection_index.IsValid()) {
-		lock_guard<mutex> l(gstate.lock);
+		annotated_lock_guard<annotated_mutex> l(gstate.lock);
 		lstate.optimistic_writer = make_uniq<OptimisticDataWriter>(context.client, data_table);
 		// Create the local row group collection.
 		auto optimistic_collection = lstate.optimistic_writer->CreateCollection(storage, insert_types);
@@ -698,7 +698,7 @@ SinkCombineResultType PhysicalInsert::Combine(ExecutionContext &context, Operato
 
 	auto append_count = collection.GetTotalRows();
 
-	lock_guard<mutex> lock(gstate.lock);
+	annotated_lock_guard<annotated_mutex> lock(gstate.lock);
 	gstate.insert_count += append_count;
 	if (append_count < row_group_size) {
 		// we have few rows - append to the local storage directly

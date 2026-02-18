@@ -9,6 +9,7 @@
 #pragma once
 
 #include "duckdb/common/common.hpp"
+#include "duckdb/common/thread_annotation.hpp"
 #include "duckdb/storage/block.hpp"
 #include "duckdb/storage/block_manager.hpp"
 #include "duckdb/common/atomic.hpp"
@@ -97,7 +98,7 @@ public:
 protected:
 	BlockManager &block_manager;
 	BufferManager &buffer_manager;
-	mutable mutex block_lock;
+	mutable mutex block_mutex;
 	unordered_map<block_id_t, MetadataBlock> blocks;
 	unordered_map<block_id_t, idx_t> modified_blocks;
 
@@ -106,7 +107,7 @@ protected:
 	block_id_t PeekNextBlockId() const;
 	block_id_t GetNextBlockId() const;
 
-	void AddBlock(unique_lock<mutex> &block_lock, MetadataBlock new_block, bool if_exists = false);
+	void AddBlock(MetadataBlock new_block, bool if_exists = false);
 	void AddAndRegisterBlock(unique_lock<mutex> &block_lock, MetadataBlock block);
 	void ConvertToTransient(unique_lock<mutex> &block_lock, MetadataBlock &block);
 	MetadataPointer FromDiskPointerInternal(unique_lock<mutex> &block_lock, MetaBlockPointer pointer);

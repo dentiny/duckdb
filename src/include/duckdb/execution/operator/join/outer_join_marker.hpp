@@ -16,7 +16,7 @@
 namespace duckdb {
 
 struct OuterJoinGlobalScanState {
-	mutex lock;
+	annotated_mutex lock;
 	ColumnDataCollection *data = nullptr;
 	ColumnDataParallelScanState global_scan;
 };

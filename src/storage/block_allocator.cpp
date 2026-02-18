@@ -244,7 +244,7 @@ void BlockAllocator::Resize(const idx_t new_physical_memory_size) {
 		return;
 	}
 
-	lock_guard<mutex> guard(physical_memory_lock);
+	annotated_lock_guard<annotated_mutex> guard(physical_memory_lock);
 	if (new_physical_memory_size < physical_memory_size) {
 		throw InvalidInputException("The \"block_allocator_size\" setting cannot be reduced (current: %llu)",
 		                            physical_memory_size.load());

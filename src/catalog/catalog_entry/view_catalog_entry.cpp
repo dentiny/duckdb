@@ -128,7 +128,7 @@ void ViewCatalogEntry::BindView(ClientContext &context, BindViewAction action) {
 		                            "view - this likely means the view was attempted to be bound recursively",
 		                            name);
 	}
-	lock_guard<mutex> guard(bind_lock);
+	annotated_lock_guard<annotated_mutex> guard(bind_lock);
 	if (action == BindViewAction::BIND_IF_UNBOUND && view_columns) {
 		// already bound
 		return;
@@ -148,7 +148,7 @@ void ViewCatalogEntry::UpdateBinding(const vector<LogicalType> &types_p, const v
 		// already bound with the current info
 		return;
 	}
-	lock_guard<mutex> guard(bind_lock);
+	annotated_lock_guard<annotated_mutex> guard(bind_lock);
 	auto new_columns = make_shared_ptr<ViewColumnInfo>();
 	new_columns->types = types_p;
 	new_columns->names = names_p;

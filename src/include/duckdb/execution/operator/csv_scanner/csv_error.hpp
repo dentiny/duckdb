@@ -156,7 +156,7 @@ private:
 	//! Return the 1-indexed line number
 	idx_t GetLineInternal(const LinesPerBoundary &error_info);
 	//! CSV Error Handler Mutex
-	mutex main_mutex;
+	annotated_mutex main_mutex;
 	//! Map of <boundary indexes> -> lines read
 	unordered_map<idx_t, LinesPerBoundary> lines_per_batch_map;
 	idx_t max_line_length = 0;

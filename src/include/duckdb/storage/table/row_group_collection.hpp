@@ -180,7 +180,7 @@ private:
 	//! The column types of the row group collection
 	vector<LogicalType> types;
 	//! Lock held when accessing or modifying the owned_row_groups pointer
-	mutable mutex row_group_pointer_lock;
+	mutable annotated_mutex row_group_pointer_lock;
 	//! The owning pointer of the segment tree
 	shared_ptr<RowGroupSegmentTree> owned_row_groups;
 	//! Table statistics

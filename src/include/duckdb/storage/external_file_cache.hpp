@@ -120,7 +120,7 @@ private:
 	//! Mapping from file path to cached file with cached ranges
 	unordered_map<string, unique_ptr<CachedFile>> cached_files;
 	//! Lock for accessing the cached files
-	mutable mutex lock;
+	mutable annotated_mutex lock;
 };
 
 } // namespace duckdb

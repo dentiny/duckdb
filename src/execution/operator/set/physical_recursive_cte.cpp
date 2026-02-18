@@ -57,7 +57,7 @@ public:
 	ExpressionExecutor executor;
 	DataChunk payload_rows;
 
-	mutex intermediate_table_lock;
+	annotated_mutex intermediate_table_lock;
 	ColumnDataCollection intermediate_table;
 	ColumnDataScanState scan_state;
 	bool initialized = false;
@@ -100,7 +100,7 @@ void PopulateChunk(DataChunk &group_chunk, DataChunk &input_chunk, const vector<
 SinkResultType PhysicalRecursiveCTE::Sink(ExecutionContext &context, DataChunk &chunk, OperatorSinkInput &input) const {
 	auto &gstate = input.global_state.Cast<RecursiveCTEState>();
 
-	lock_guard<mutex> guard(gstate.intermediate_table_lock);
+	annotated_lock_guard<annotated_mutex> guard(gstate.intermediate_table_lock);
 	if (!using_key) {
 		if (!union_all) {
 			idx_t match_count = ProbeHT(chunk, gstate);

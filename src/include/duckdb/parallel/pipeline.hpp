@@ -148,7 +148,7 @@ private:
 	//! The base batch index of this pipeline
 	idx_t base_batch_index = 0;
 	//! Lock for accessing the set of batch indexes
-	mutex batch_lock;
+	annotated_mutex batch_lock;
 	//! The set of batch indexes that are currently being processed
 	//! Despite batch indexes being unique - this is a multiset
 	//! The reason is that when we start a new pipeline we insert the current minimum batch index as a placeholder

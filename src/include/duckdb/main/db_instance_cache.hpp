@@ -23,7 +23,7 @@ struct DatabaseCacheEntry {
 	~DatabaseCacheEntry();
 
 	weak_ptr<DuckDB> database;
-	mutex update_database_mutex;
+	annotated_mutex update_database_mutex;
 };
 
 enum class CacheBehavior { AUTOMATIC, ALWAYS_CACHE, NEVER_CACHE };
@@ -53,7 +53,7 @@ private:
 	unordered_map<string, weak_ptr<DatabaseCacheEntry>> db_instances;
 
 	//! Lock to alter cache
-	mutex cache_lock;
+	annotated_mutex cache_lock;
 
 private:
 	shared_ptr<DuckDB> GetInstanceInternal(const string &database, const DBConfig &config,

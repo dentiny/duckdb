@@ -124,8 +124,8 @@ public:
 	unique_ptr<PartialBlock> CreatePartialBlock(ColumnData &data, ColumnSegment &segment, PartialBlockState state,
 	                                            BlockManager &block_manager);
 
-	unique_lock<mutex> GetLock() {
-		return unique_lock<mutex>(partial_block_lock);
+	annotated_unique_lock<annotated_mutex> GetLock() {
+		return annotated_unique_lock<annotated_mutex>(partial_block_lock);
 	}
 	block_id_t GetFreeBlockId();
 
@@ -142,7 +142,7 @@ protected:
 	optional_ptr<ClientContext> context;
 	BlockManager &block_manager;
 	PartialBlockType partial_block_type;
-	mutex partial_block_lock;
+	annotated_mutex partial_block_lock;
 	//! A map of (available space -> PartialBlock) for partially filled blocks
 	//! This is a multimap because there might be outstanding partial blocks with
 	//! the same amount of left-over space

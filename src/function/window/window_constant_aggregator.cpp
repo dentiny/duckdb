@@ -311,7 +311,7 @@ void WindowConstantAggregator::Finalize(ExecutionContext &context, CollectionPtr
 	auto &lastate = sink.local_state.Cast<WindowConstantAggregatorLocalState>();
 
 	//	Single-threaded combine
-	lock_guard<mutex> finalize_guard(gastate.lock);
+	annotated_lock_guard<annotated_mutex> finalize_guard(gastate.lock);
 	lastate.statef.Combine(gastate.statef);
 	lastate.statef.Destroy();
 

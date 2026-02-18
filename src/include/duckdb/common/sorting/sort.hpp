@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "duckdb/common/thread_annotation.hpp"
 #include "duckdb/execution/physical_operator_states.hpp"
 #include "duckdb/execution/progress_data.hpp"
 #include "duckdb/common/sorting/sort_projection_column.hpp"

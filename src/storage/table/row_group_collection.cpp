@@ -97,12 +97,12 @@ MetadataManager &RowGroupCollection::GetMetadataManager() {
 }
 
 shared_ptr<RowGroupSegmentTree> RowGroupCollection::GetRowGroups() const {
-	lock_guard<mutex> guard(row_group_pointer_lock);
+	annotated_lock_guard<annotated_mutex> guard(row_group_pointer_lock);
 	return owned_row_groups;
 }
 
 void RowGroupCollection::SetRowGroups(shared_ptr<RowGroupSegmentTree> new_row_groups) {
-	lock_guard<mutex> guard(row_group_pointer_lock);
+	annotated_lock_guard<annotated_mutex> guard(row_group_pointer_lock);
 	owned_row_groups = std::move(new_row_groups);
 }
 
@@ -265,7 +265,7 @@ bool RowGroupCollection::NextParallelScan(ClientContext &context, ParallelCollec
 		optional_ptr<SegmentNode<RowGroup>> row_group;
 		{
 			// select the next row group to scan from the parallel state
-			lock_guard<mutex> l(state.lock);
+			annotated_lock_guard<annotated_mutex> l(state.lock);
 			if (!state.current_row_group) {
 				// no more data left to scan
 				break;
@@ -308,7 +308,7 @@ bool RowGroupCollection::NextParallelScan(ClientContext &context, ParallelCollec
 		}
 		return true;
 	}
-	lock_guard<mutex> l(state.lock);
+	annotated_lock_guard<annotated_mutex> l(state.lock);
 	scan_state.batch_index = state.batch_index;
 	return false;
 }
@@ -978,7 +978,7 @@ void RowGroupCollection::RemoveFromIndexes(const QueryContext &context, TableInd
 	for (auto &entry : indexes.IndexEntries()) {
 		auto &index = *entry.index;
 		if (index.IsBound()) {
-			lock_guard<mutex> guard(entry.lock);
+			annotated_lock_guard<annotated_mutex> guard(entry.lock);
 
 			// check which indexes we should append to or remove from
 			// note that this method might also involve appending to indexes

@@ -10,6 +10,7 @@
 
 #include "duckdb/common/constants.hpp"
 #include "duckdb/common/shared_ptr.hpp"
+#include "duckdb/common/thread_annotation.hpp"
 
 namespace duckdb {
 struct StorageLockInternals;

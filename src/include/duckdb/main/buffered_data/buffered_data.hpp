@@ -74,7 +74,7 @@ protected:
 	//! The maximum amount of memory we should keep buffered
 	idx_t total_buffer_size;
 	//! Protect against populate/fetch race condition
-	mutex glock;
+	annotated_mutex glock;
 };
 
 } // namespace duckdb

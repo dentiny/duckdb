@@ -28,7 +28,7 @@ public:
 
 	//! The lock for updating the global aggoregate state
 	//! Also used to update the global sample when percentages are used
-	mutex lock;
+	annotated_mutex lock;
 	//! The reservoir sample
 	unique_ptr<BlockingSample> sample;
 };
@@ -41,7 +41,7 @@ SinkResultType PhysicalReservoirSample::Sink(ExecutionContext &context, DataChun
                                              OperatorSinkInput &input) const {
 	auto &global_state = input.global_state.Cast<SampleGlobalSinkState>();
 	// Percentage only has a global sample.
-	lock_guard<mutex> glock(global_state.lock);
+	annotated_lock_guard<annotated_mutex> glock(global_state.lock);
 	if (!global_state.sample) {
 		// always gather full thread percentage
 		auto &allocator = Allocator::Get(context.client);
@@ -81,7 +81,7 @@ SinkFinalizeType PhysicalReservoirSample::Finalize(Pipeline &pipeline, Event &ev
 SourceResultType PhysicalReservoirSample::GetDataInternal(ExecutionContext &context, DataChunk &chunk,
                                                           OperatorSourceInput &input) const {
 	auto &sink = this->sink_state->Cast<SampleGlobalSinkState>();
-	lock_guard<mutex> glock(sink.lock);
+	annotated_lock_guard<annotated_mutex> glock(sink.lock);
 	if (!sink.sample) {
 		return SourceResultType::FINISHED;
 	}

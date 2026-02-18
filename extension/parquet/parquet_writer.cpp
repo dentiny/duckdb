@@ -446,7 +446,7 @@ void ParquetWriter::AnalyzeSchema(ColumnDataCollection &buffer, vector<unique_pt
 	D_ASSERT(buffer.ColumnCount() == column_writers.size());
 	vector<unique_ptr<ParquetAnalyzeSchemaState>> states;
 	bool needs_analyze = false;
-	lock_guard<mutex> glock(lock);
+	annotated_lock_guard<annotated_mutex> glock(lock);
 
 	vector<column_t> column_ids;
 	for (idx_t i = 0; i < column_writers.size(); i++) {
@@ -635,7 +635,7 @@ static void ValidateColumnOffsets(const string &filename, idx_t file_length, con
 }
 
 void ParquetWriter::FlushRowGroup(PreparedRowGroup &prepared) {
-	lock_guard<mutex> glock(lock);
+	annotated_lock_guard<annotated_mutex> glock(lock);
 	auto &row_group = prepared.row_group;
 	auto &states = prepared.states;
 	if (states.empty()) {
@@ -1081,7 +1081,7 @@ void ParquetWriter::GatherWrittenStatistics() {
 
 void ParquetWriter::InitializeSchemaElements() {
 	//! Populate the schema elements of the parquet file we're writing
-	lock_guard<mutex> glock(lock);
+	annotated_lock_guard<annotated_mutex> glock(lock);
 	if (!file_meta_data.schema.empty()) {
 		return;
 	}

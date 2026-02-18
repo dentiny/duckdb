@@ -44,7 +44,7 @@ ExtensionManager &ExtensionManager::Get(ClientContext &context) {
 optional_ptr<ExtensionInfo> ExtensionManager::GetExtensionInfo(const string &name) {
 	auto extension_name = ExtensionHelper::GetExtensionName(name);
 
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	auto entry = loaded_extensions_info.find(extension_name);
 	if (entry == loaded_extensions_info.end()) {
 		return nullptr;
@@ -53,7 +53,7 @@ optional_ptr<ExtensionInfo> ExtensionManager::GetExtensionInfo(const string &nam
 }
 
 vector<string> ExtensionManager::GetExtensions() {
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 
 	vector<string> result;
 	for (auto &entry : loaded_extensions_info) {
@@ -73,7 +73,7 @@ bool ExtensionManager::ExtensionIsLoaded(const string &name) {
 unique_ptr<ExtensionActiveLoad> ExtensionManager::BeginLoad(const string &name) {
 	auto extension_name = ExtensionHelper::GetExtensionName(name);
 
-	unique_lock<mutex> extension_list_lock(lock);
+	annotated_unique_lock<annotated_mutex> extension_list_lock(lock);
 
 	optional_ptr<ExtensionInfo> info;
 	auto entry = loaded_extensions_info.find(extension_name);

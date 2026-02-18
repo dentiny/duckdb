@@ -41,7 +41,7 @@ public:
 	    : op(op), aggregate_result(BufferAllocator::Get(context), op.types) {
 	}
 
-	mutex lock;
+	annotated_mutex lock;
 	const PhysicalPartitionedAggregate &op;
 	//! The per-partition aggregate states
 	value_map_t<unique_ptr<GlobalUngroupedAggregateState>> aggregate_states;
@@ -49,7 +49,7 @@ public:
 	ColumnDataCollection aggregate_result;
 
 	GlobalUngroupedAggregateState &GetOrCreatePartition(ClientContext &context, const Value &partition) {
-		lock_guard<mutex> l(lock);
+		annotated_lock_guard<annotated_mutex> l(lock);
 		// find the state that corresponds to this partition and combine
 		auto entry = aggregate_states.find(partition);
 		if (entry != aggregate_states.end()) {

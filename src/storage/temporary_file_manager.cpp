@@ -192,7 +192,7 @@ TemporaryFileHandle::TemporaryFileHandle(TemporaryFileManager &manager, Temporar
 TemporaryFileHandle::~TemporaryFileHandle() {
 }
 
-TemporaryFileHandle::TemporaryFileLock::TemporaryFileLock(mutex &mutex) : lock(mutex) {
+TemporaryFileHandle::TemporaryFileLock::TemporaryFileLock(annotated_mutex &annotated_mutex) : lock(annotated_mutex) {
 }
 
 TemporaryFileIndex TemporaryFileHandle::TryGetBlockIndex(idx_t block_header_size) {
@@ -433,7 +433,7 @@ TemporaryCompressionLevel TemporaryFileCompressionAdaptivity::GetCompressionLeve
 	bool should_deviate;
 	bool deviate_uncompressed;
 	{
-		lock_guard<mutex> guard(random_engine.lock);
+		annotated_lock_guard<annotated_mutex> guard(random_engine.lock);
 
 		auto min_compressed_time = last_compressed_writes_ns[min_compression_idx];
 		for (idx_t compression_idx = 1; compression_idx < LEVELS; compression_idx++) {
@@ -476,7 +476,7 @@ void TemporaryFileCompressionAdaptivity::Update(const TemporaryCompressionLevel 
 	auto &last_write_ns = level == TemporaryCompressionLevel::UNCOMPRESSED
 	                          ? last_uncompressed_write_ns
 	                          : last_compressed_writes_ns[LevelToIndex(level)];
-	lock_guard<mutex> guard(random_engine.lock);
+	annotated_lock_guard<annotated_mutex> guard(random_engine.lock);
 	last_write_ns = (last_write_ns * (WEIGHT - 1) + duration) / WEIGHT;
 }
 
@@ -492,7 +492,8 @@ TemporaryFileManager::~TemporaryFileManager() {
 	files.Clear();
 }
 
-TemporaryFileManager::TemporaryFileManagerLock::TemporaryFileManagerLock(mutex &mutex) : lock(mutex) {
+TemporaryFileManager::TemporaryFileManagerLock::TemporaryFileManagerLock(annotated_mutex &annotated_mutex)
+    : lock(annotated_mutex) {
 }
 
 idx_t TemporaryFileManager::WriteTemporaryBuffer(block_id_t block_id, FileBuffer &buffer) {
@@ -572,7 +573,7 @@ TemporaryFileManager::CompressBuffer(TemporaryFileCompressionAdaptivity &compres
 }
 
 bool TemporaryFileManager::HasTemporaryBuffer(block_id_t block_id) {
-	lock_guard<mutex> lock(manager_lock);
+	annotated_lock_guard<annotated_mutex> lock(manager_lock);
 	return used_blocks.find(block_id) != used_blocks.end();
 }
 
@@ -672,7 +673,7 @@ idx_t TemporaryFileManager::DeleteTemporaryBuffer(block_id_t id) {
 }
 
 vector<TemporaryFileInformation> TemporaryFileManager::GetTemporaryFiles() {
-	lock_guard<mutex> lock(manager_lock);
+	annotated_lock_guard<annotated_mutex> lock(manager_lock);
 	vector<TemporaryFileInformation> result;
 	for (auto &size : TemporaryBufferSizes()) {
 		for (const auto &file : files.GetMapForSize(size)) {

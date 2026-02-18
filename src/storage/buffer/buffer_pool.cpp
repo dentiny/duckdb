@@ -2,6 +2,7 @@
 
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/thread.hpp"
+#include "duckdb/common/thread_annotation.hpp"
 #include "duckdb/common/typedefs.hpp"
 #include "duckdb/main/settings.hpp"
 #include "duckdb/parallel/concurrentqueue.hpp"

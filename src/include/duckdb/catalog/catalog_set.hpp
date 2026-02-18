@@ -147,8 +147,10 @@ private:
 	optional_ptr<CatalogEntry> CreateCommittedEntry(unique_ptr<CatalogEntry> entry);
 
 	//! Create all default entries
+	//! Note: Lock is held on entry and exit, but temporarily released during iteration to avoid deadlocks
 	void CreateDefaultEntries(CatalogTransaction transaction, unique_lock<mutex> &lock);
 	//! Attempt to create a default entry with the specified name. Returns the entry if successful, nullptr otherwise.
+	//! Note: Lock is held on entry and exit, but temporarily released during creation to avoid deadlocks
 	optional_ptr<CatalogEntry> CreateDefaultEntry(CatalogTransaction transaction, const string &name,
 	                                              unique_lock<mutex> &lock);
 

@@ -83,7 +83,7 @@ public:
 	static constexpr idx_t DERIVED_KEY_LENGTH = 32;
 
 private:
-	mutable mutex lock;
+	mutable annotated_mutex lock;
 	std::unordered_map<std::string, EncryptionKey> derived_keys;
 };
 

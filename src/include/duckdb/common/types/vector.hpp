@@ -333,7 +333,7 @@ public:
 	optional_idx size;
 	string id;
 	//! For caching the hashes of a child buffer
-	mutex cached_hashes_lock;
+	annotated_mutex cached_hashes_lock;
 	Vector cached_hashes;
 };
 

@@ -284,7 +284,7 @@ struct GlobalWriteCSVData : public GlobalFunctionData {
 
 	unique_ptr<CSVWriterState> GetLocalState(ClientContext &context, const idx_t flush_size) {
 		{
-			lock_guard<mutex> guard(local_state_lock);
+			annotated_lock_guard<annotated_mutex> guard(local_state_lock);
 			if (!local_states.empty()) {
 				auto result = std::move(local_states.back());
 				local_states.pop_back();
@@ -297,7 +297,7 @@ struct GlobalWriteCSVData : public GlobalFunctionData {
 	}
 
 	void StoreLocalState(unique_ptr<CSVWriterState> lstate) {
-		lock_guard<mutex> guard(local_state_lock);
+		annotated_lock_guard<annotated_mutex> guard(local_state_lock);
 		lstate->Reset();
 		local_states.push_back(std::move(lstate));
 	}
@@ -305,7 +305,7 @@ struct GlobalWriteCSVData : public GlobalFunctionData {
 	CSVWriter writer;
 
 private:
-	mutex local_state_lock;
+	annotated_mutex local_state_lock;
 	vector<unique_ptr<CSVWriterState>> local_states;
 };
 

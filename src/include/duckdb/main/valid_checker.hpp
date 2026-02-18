@@ -42,7 +42,7 @@ public:
 	}
 
 private:
-	mutex invalidate_lock;
+	annotated_mutex invalidate_lock;
 	//! Set to true when encountering a fatal exception.
 	atomic<bool> is_invalidated;
 	//! The message invalidating the database instance.

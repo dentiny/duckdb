@@ -83,7 +83,7 @@ BufferHandle ColumnDataAllocator::Pin(uint32_t block_id) {
 	if (shared) {
 		// we only need to grab the lock when accessing the vector, because vector access is not thread-safe:
 		// the vector can be resized by another thread while we try to access it
-		lock_guard<mutex> guard(lock);
+		annotated_lock_guard<annotated_mutex> guard(lock);
 		handle = blocks[block_id].GetHandle();
 	} else {
 		handle = blocks[block_id].GetHandle();
@@ -179,7 +179,7 @@ void ColumnDataAllocator::AllocateData(idx_t size, uint32_t &block_id, uint32_t 
 	case ColumnDataAllocatorType::BUFFER_MANAGER_ALLOCATOR:
 	case ColumnDataAllocatorType::HYBRID:
 		if (shared) {
-			lock_guard<mutex> guard(lock);
+			annotated_lock_guard<annotated_mutex> guard(lock);
 			AllocateBuffer(size, block_id, offset, chunk_state);
 		} else {
 			AllocateBuffer(size, block_id, offset, chunk_state);
@@ -220,7 +220,7 @@ void ColumnDataAllocator::UnswizzlePointers(ChunkManagementState &state, Vector 
                                             SwizzleMetaData &swizzle_segment, const VectorMetaData &string_heap_segment,
                                             const idx_t &v_offset, const bool &copied) {
 	D_ASSERT(result.GetType().InternalType() == PhysicalType::VARCHAR);
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	const auto old_base_ptr = char_ptr_cast(swizzle_segment.ptr);
 	const auto new_base_ptr =
 	    char_ptr_cast(GetDataPointer(state, string_heap_segment.block_id, string_heap_segment.offset));

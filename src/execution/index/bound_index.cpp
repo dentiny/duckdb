@@ -30,7 +30,7 @@ BoundIndex::BoundIndex(const string &name, const string &index_type, IndexConstr
 }
 
 void BoundIndex::InitializeLock(IndexLock &state) {
-	state.index_lock = unique_lock<mutex>(lock);
+	state.index_lock = annotated_unique_lock<annotated_mutex>(lock);
 }
 
 ErrorData BoundIndex::Append(DataChunk &chunk, Vector &row_ids) {

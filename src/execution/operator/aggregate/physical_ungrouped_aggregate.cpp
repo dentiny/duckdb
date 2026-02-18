@@ -96,13 +96,13 @@ public:
 };
 
 ArenaAllocator &GlobalUngroupedAggregateState::CreateAllocator() const {
-	lock_guard<mutex> glock(lock);
+	annotated_lock_guard<annotated_mutex> glock(lock);
 	stored_allocators.emplace_back(make_uniq<ArenaAllocator>(client_allocator));
 	return *stored_allocators.back();
 }
 
 void GlobalUngroupedAggregateState::Combine(LocalUngroupedAggregateState &other) {
-	lock_guard<mutex> glock(lock);
+	annotated_lock_guard<annotated_mutex> glock(lock);
 	for (idx_t aggr_idx = 0; aggr_idx < state.aggregate_expressions.size(); aggr_idx++) {
 		auto &aggregate = state.aggregate_expressions[aggr_idx]->Cast<BoundAggregateExpression>();
 
@@ -128,7 +128,7 @@ void GlobalUngroupedAggregateState::Combine(LocalUngroupedAggregateState &other)
 
 void GlobalUngroupedAggregateState::CombineDistinct(LocalUngroupedAggregateState &other,
                                                     DistinctAggregateData &distinct_data) {
-	lock_guard<mutex> glock(lock);
+	annotated_lock_guard<annotated_mutex> glock(lock);
 	for (idx_t aggr_idx = 0; aggr_idx < state.aggregate_expressions.size(); aggr_idx++) {
 		if (!distinct_data.IsDistinct(aggr_idx)) {
 			continue;
@@ -421,7 +421,7 @@ public:
 public:
 	void Schedule() override;
 	void FinalizeTask() {
-		lock_guard<mutex> finalize(lock);
+		annotated_lock_guard<annotated_mutex> finalize(lock);
 		D_ASSERT(!gstate.finished);
 		D_ASSERT(tasks_done < tasks_scheduled);
 		if (++tasks_done == tasks_scheduled) {
@@ -435,7 +435,7 @@ private:
 	const PhysicalUngroupedAggregate &op;
 	UngroupedAggregateGlobalSinkState &gstate;
 
-	mutex lock;
+	annotated_mutex lock;
 	idx_t tasks_scheduled;
 	idx_t tasks_done;
 

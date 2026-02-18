@@ -168,7 +168,7 @@ void TupleDataAllocator::Build(TupleDataSegment &segment, TupleDataPinState &pin
 		idx_t offset = 0;
 		while (offset != append_count) {
 			if (chunks.empty() || chunks.back()->count == STANDARD_VECTOR_SIZE) {
-				chunks.push_back(stl_allocator->MakeUnsafePtr<TupleDataChunk>(*stl_allocator->Make<mutex>()));
+				chunks.push_back(stl_allocator->MakeUnsafePtr<TupleDataChunk>(*stl_allocator->Make<annotated_mutex>()));
 			}
 			auto &chunk = *chunks.back();
 
@@ -356,7 +356,7 @@ void TemplatedSortKeySetPayload(const data_ptr_t row_locations[], const idx_t of
 	using SORT_KEY = SortKey<SORT_KEY_TYPE>;
 	const auto sort_keys = FlatVector::GetData<SORT_KEY *const>(sort_key_chunk_state.row_locations);
 
-	lock_guard<mutex> guard(*sort_key_chunk_state.chunk_lock);
+	annotated_lock_guard<annotated_mutex> guard(*sort_key_chunk_state.chunk_lock);
 	if (sort_keys[offset]->GetPayload() == row_locations[offset]) {
 		return; // Still the same
 	}
@@ -414,7 +414,7 @@ void TupleDataAllocator::InitializeChunkStateInternal(TupleDataPinState &pin_sta
 
 		if (sort_key_payload_state) {
 			D_ASSERT(!layout.IsSortKeyLayout()); // This must be the payload collection
-			lock_guard<mutex> guard(part.lock);
+			annotated_lock_guard<annotated_mutex> guard(part.lock);
 			SortKeySetPayload(row_locations, offset, next, *sort_key_payload_state);
 		}
 
@@ -435,7 +435,7 @@ void TupleDataAllocator::InitializeChunkStateInternal(TupleDataPinState &pin_sta
 		if (recompute && pin_state.properties != TupleDataPinProperties::ALREADY_PINNED) {
 			const auto new_base_heap_ptr = GetBaseHeapPointer(pin_state, part);
 			if (part.base_heap_ptr != new_base_heap_ptr) {
-				lock_guard<mutex> guard(part.lock);
+				annotated_lock_guard<annotated_mutex> guard(part.lock);
 				const auto old_base_heap_ptr = part.base_heap_ptr;
 				if (old_base_heap_ptr != new_base_heap_ptr) {
 					Vector old_heap_ptrs(
@@ -734,7 +734,7 @@ void TupleDataAllocator::ReleaseOrStoreHandles(TupleDataPinState &pin_state, Tup
 }
 
 void TupleDataAllocator::ReleaseOrStoreHandles(TupleDataPinState &pin_state, TupleDataSegment &segment) {
-	mutex dummy_chunk_mutex;
+	annotated_mutex dummy_chunk_mutex;
 	static TupleDataChunk DUMMY_CHUNK(dummy_chunk_mutex);
 	ReleaseOrStoreHandles(pin_state, segment, DUMMY_CHUNK, true);
 }
@@ -755,7 +755,7 @@ void TupleDataAllocator::ReleaseOrStoreHandlesInternal(TupleDataSegment &segment
 			}
 			switch (properties) {
 			case TupleDataPinProperties::KEEP_EVERYTHING_PINNED: {
-				lock_guard<mutex> guard(segment.pinned_handles_lock);
+				annotated_lock_guard<annotated_mutex> guard(segment.pinned_handles_lock);
 				D_ASSERT(blocks.size() == pinned_handles.size());
 				pinned_handles[block_id] = std::move(it->second);
 				break;

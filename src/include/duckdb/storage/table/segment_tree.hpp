@@ -337,7 +337,7 @@ private:
 	//! The nodes in the tree, can be binary searched
 	mutable vector<unique_ptr<SegmentNode<T>>> nodes;
 	//! Lock to access or modify the nodes
-	mutable mutex node_lock;
+	mutable annotated_mutex node_lock;
 	//! Base row id (row id of the first segment)
 	idx_t base_row_id;
 

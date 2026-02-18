@@ -163,7 +163,7 @@ public:
 
 struct ArrowScanGlobalState : public GlobalTableFunctionState {
 	unique_ptr<ArrowArrayStreamWrapper> stream;
-	mutex main_mutex;
+	annotated_mutex main_mutex;
 	idx_t max_threads = 1;
 	idx_t batch_index = 0;
 	bool done = false;

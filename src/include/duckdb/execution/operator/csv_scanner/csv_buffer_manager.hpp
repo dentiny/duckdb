@@ -70,8 +70,8 @@ private:
 	//! If this buffer manager is done (i.e., no more buffers to read beyond the ones that were cached
 	bool done = false;
 	idx_t bytes_read = 0;
-	//! Because the buffer manager can be accessed in Parallel we need a mutex.
-	mutex main_mutex;
+	//! Because the buffer manager can be accessed in Parallel we need a annotated_mutex.
+	annotated_mutex main_mutex;
 	//! If the file_handle used seek
 	bool has_seeked = false;
 	unordered_set<idx_t> reset_when_possible;

@@ -65,7 +65,7 @@ public:
 	string ToSQL() const override;
 
 private:
-	mutable mutex bind_lock;
+	mutable annotated_mutex bind_lock;
 	//! Columns returned by the view, if bound
 	shared_ptr<ViewColumnInfo> view_columns;
 	//! The current bind state of the view

@@ -277,21 +277,21 @@ LazyMultiFileList::LazyMultiFileList(optional_ptr<ClientContext> context_p) : co
 }
 
 vector<OpenFileInfo> LazyMultiFileList::GetAllFiles() const {
-	lock_guard<mutex> lck(lock);
+	annotated_lock_guard<annotated_mutex> lck(lock);
 	while (ExpandNextPathInternal()) {
 	}
 	return expanded_files;
 }
 
 idx_t LazyMultiFileList::GetTotalFileCount() const {
-	lock_guard<mutex> lck(lock);
+	annotated_lock_guard<annotated_mutex> lck(lock);
 	while (ExpandNextPathInternal()) {
 	}
 	return expanded_files.size();
 }
 
 MultiFileCount LazyMultiFileList::GetFileCount(idx_t min_exact_count) const {
-	lock_guard<mutex> lck(lock);
+	annotated_lock_guard<annotated_mutex> lck(lock);
 	// expand files so that we get to min_exact_count
 	while (!all_files_expanded && expanded_files.size() < min_exact_count && ExpandNextPathInternal()) {
 	}
@@ -303,7 +303,7 @@ FileExpandResult LazyMultiFileList::GetExpandResult() const {
 	// GetFile(1) will ensure at least the first 2 files are expanded if they are available
 	(void)GetFile(1);
 
-	lock_guard<mutex> lck(lock);
+	annotated_lock_guard<annotated_mutex> lck(lock);
 	if (expanded_files.size() > 1) {
 		return FileExpandResult::MULTIPLE_FILES;
 	} else if (expanded_files.size() == 1) {
@@ -313,12 +313,12 @@ FileExpandResult LazyMultiFileList::GetExpandResult() const {
 }
 
 bool LazyMultiFileList::FileIsAvailable(idx_t i) const {
-	lock_guard<mutex> lck(lock);
+	annotated_lock_guard<annotated_mutex> lck(lock);
 	return i < expanded_files.size();
 }
 
 OpenFileInfo LazyMultiFileList::GetFile(idx_t i) const {
-	lock_guard<mutex> lck(lock);
+	annotated_lock_guard<annotated_mutex> lck(lock);
 	while (expanded_files.size() <= i) {
 		if (!ExpandNextPathInternal()) {
 			return OpenFileInfo("");
