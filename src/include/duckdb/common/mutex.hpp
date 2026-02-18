@@ -94,7 +94,7 @@ public:
 	}
 };
 
-// Unannotated aliases - use these when thread safety analysis does not work well.
+// Unannotated mutex type, which is alias for STL ones.
 using mutex = std::mutex;
 template <typename M = std::mutex>
 using lock_guard = std::lock_guard<M>;
