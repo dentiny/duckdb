@@ -55,17 +55,17 @@ public:
 	}
 
 	bool HasFormats(LogicalTypeId type) {
-		lock_guard<mutex> lock(format_lock);
+		annotated_lock_guard<annotated_mutex> lock(format_lock);
 		return date_format_map.HasFormats(type);
 	}
 
 	idx_t NumberOfFormats(LogicalTypeId type) {
-		lock_guard<mutex> lock(format_lock);
+		annotated_lock_guard<annotated_mutex> lock(format_lock);
 		return date_format_map.candidate_formats.at(type).size();
 	}
 
 	bool GetFormatAtIndex(LogicalTypeId type, idx_t index, StrpTimeFormat &format) {
-		lock_guard<mutex> lock(format_lock);
+		annotated_lock_guard<annotated_mutex> lock(format_lock);
 		auto &formats = date_format_map.candidate_formats.at(type);
 		if (index >= formats.size()) {
 			return false;
@@ -75,7 +75,7 @@ public:
 	}
 
 	void ShrinkFormatsToSize(LogicalTypeId type, idx_t size) {
-		lock_guard<mutex> lock(format_lock);
+		annotated_lock_guard<annotated_mutex> lock(format_lock);
 		auto &formats = date_format_map.candidate_formats[type];
 		while (formats.size() > size) {
 			formats.pop_back();
@@ -83,7 +83,7 @@ public:
 	}
 
 private:
-	mutex format_lock;
+	annotated_mutex format_lock;
 	DateFormatMap &date_format_map;
 };
 

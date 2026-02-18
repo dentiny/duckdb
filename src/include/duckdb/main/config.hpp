@@ -306,7 +306,7 @@ public:
 	const ExtensionCallbackManager &GetCallbackManager() const;
 
 private:
-	mutable mutex config_lock;
+	mutable annotated_mutex config_lock;
 	unique_ptr<CompressionFunctionSet> compression_functions;
 	unique_ptr<EncodingFunctionSet> encoding_functions;
 	unique_ptr<ArrowTypeExtensionSet> arrow_extensions;

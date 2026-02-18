@@ -739,7 +739,7 @@ public:
 	}
 
 	idx_t Scan(TupleDataLocalScanState &local_scan, DataChunk &chunk) {
-		lock_guard<mutex> guard(lock);
+		annotated_lock_guard<annotated_mutex> guard(lock);
 		const auto result = right_outer_position;
 		payload.Scan(parallel_scan, local_scan, chunk);
 		right_outer_position += chunk.size();
@@ -754,7 +754,7 @@ public:
 	}
 
 private:
-	mutex lock;
+	annotated_mutex lock;
 	TupleDataParallelScanState parallel_scan;
 	idx_t right_outer_position;
 };

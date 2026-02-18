@@ -112,7 +112,7 @@ class RegisteredStateManager {
 public:
 	template <class T, typename... ARGS>
 	shared_ptr<T> GetOrCreate(const string &key, ARGS &&... args) {
-		lock_guard<mutex> l(lock);
+		annotated_lock_guard<annotated_mutex> l(lock);
 		auto lookup = registered_state.find(key);
 		if (lookup != registered_state.end()) {
 			return shared_ptr_cast<ClientContextState, T>(lookup->second);
@@ -124,7 +124,7 @@ public:
 
 	template <class T>
 	shared_ptr<T> Get(const string &key) {
-		lock_guard<mutex> l(lock);
+		annotated_lock_guard<annotated_mutex> l(lock);
 		auto lookup = registered_state.find(key);
 		if (lookup == registered_state.end()) {
 			return nullptr;
@@ -133,17 +133,17 @@ public:
 	}
 
 	void Insert(const string &key, shared_ptr<ClientContextState> state_p) {
-		lock_guard<mutex> l(lock);
+		annotated_lock_guard<annotated_mutex> l(lock);
 		registered_state.insert(make_pair(key, std::move(state_p)));
 	}
 
 	void Remove(const string &key) {
-		lock_guard<mutex> l(lock);
+		annotated_lock_guard<annotated_mutex> l(lock);
 		registered_state.erase(key);
 	}
 
 	vector<shared_ptr<ClientContextState>> States() {
-		lock_guard<mutex> l(lock);
+		annotated_lock_guard<annotated_mutex> l(lock);
 		vector<shared_ptr<ClientContextState>> states;
 		for (auto &entry : registered_state) {
 			states.push_back(entry.second);
@@ -152,7 +152,7 @@ public:
 	}
 
 private:
-	mutex lock;
+	annotated_mutex lock;
 	unordered_map<string, shared_ptr<ClientContextState>> registered_state;
 };
 

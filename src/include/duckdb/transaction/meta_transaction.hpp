@@ -84,7 +84,7 @@ public:
 
 private:
 	//! Lock to prevent all_transactions and transactions from getting out of sync.
-	mutex lock;
+	annotated_mutex lock;
 	//! The set of active transactions for each database.
 	reference_map_t<AttachedDatabase, TransactionReference> transactions;
 	//! The set of referenced databases in invocation order.
@@ -94,7 +94,7 @@ private:
 	//! Whether the meta transaction is marked as read only.
 	bool is_read_only;
 	//! Lock for referenced_databases.
-	mutex referenced_database_lock;
+	annotated_mutex referenced_database_lock;
 	//! The set of used (referenced) databases.
 	reference_map_t<AttachedDatabase, shared_ptr<AttachedDatabase>> referenced_databases;
 	//! Map of name -> database for databases that are in-use by this transaction.

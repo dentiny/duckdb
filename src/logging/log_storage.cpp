@@ -109,12 +109,12 @@ CSVLogStorage::CSVLogStorage(DatabaseInstance &db, bool normalize, idx_t buffer_
 }
 
 void BufferingLogStorage::UpdateConfig(DatabaseInstance &db, case_insensitive_map_t<Value> &config) {
-	lock_guard<mutex> lck(lock);
+	annotated_lock_guard<annotated_mutex> lck(lock);
 	return UpdateConfigInternal(db, config);
 }
 
 bool BufferingLogStorage::IsEnabled(LoggingTargetTable table) {
-	lock_guard<mutex> lck(lock);
+	annotated_lock_guard<annotated_mutex> lck(lock);
 	return IsEnabledInternal(table);
 }
 
@@ -344,7 +344,7 @@ unique_ptr<BufferedFileWriter> FileLogStorage::InitializeFileWriter(DatabaseInst
 }
 
 void FileLogStorage::Truncate() {
-	lock_guard<mutex> lck(lock);
+	annotated_lock_guard<annotated_mutex> lck(lock);
 
 	// Reset buffers
 	ResetAllBuffers();
@@ -491,7 +491,7 @@ unique_ptr<TableRef> FileLogStorage::BindReplaceInternal(ClientContext &context,
 
 unique_ptr<TableRef> FileLogStorage::BindReplace(ClientContext &context, TableFunctionBindInput &input,
                                                  LoggingTargetTable table) {
-	lock_guard<mutex> lck(lock);
+	annotated_lock_guard<annotated_mutex> lck(lock);
 
 	// We only allow scanning enabled tables
 	if (!IsEnabledInternal(table)) {
@@ -633,7 +633,7 @@ static void WriteLoggingContextsToChunk(DataChunk &chunk, const RegisteredLoggin
 
 void BufferingLogStorage::WriteLogEntry(timestamp_t timestamp, LogLevel level, const string &log_type,
                                         const string &log_message, const RegisteredLoggingContext &context) {
-	unique_lock<mutex> lck(lock);
+	annotated_unique_lock<annotated_mutex> lck(lock);
 
 	auto &log_entries_buffer =
 	    normalize_contexts ? buffers[LoggingTargetTable::LOG_ENTRIES] : buffers[LoggingTargetTable::ALL_LOGS];
@@ -693,21 +693,21 @@ void BufferingLogStorage::WriteLogEntries(DataChunk &chunk, const RegisteredLogg
 }
 
 void BufferingLogStorage::FlushAll() {
-	unique_lock<mutex> lck(lock);
+	annotated_unique_lock<annotated_mutex> lck(lock);
 	if (!only_flush_on_full_buffer) {
 		FlushAllInternal();
 	}
 }
 
 void BufferingLogStorage::Flush(LoggingTargetTable table) {
-	unique_lock<mutex> lck(lock);
+	annotated_unique_lock<annotated_mutex> lck(lock);
 	if (!only_flush_on_full_buffer) {
 		FlushInternal(table);
 	}
 }
 
 void BufferingLogStorage::Truncate() {
-	unique_lock<mutex> lck(lock);
+	annotated_unique_lock<annotated_mutex> lck(lock);
 	ResetAllBuffers();
 }
 
@@ -753,7 +753,7 @@ void BufferingLogStorage::WriteLoggingContext(const RegisteredLoggingContext &co
 }
 
 bool InMemoryLogStorage::CanScan(LoggingTargetTable table) {
-	unique_lock<mutex> lck(lock);
+	annotated_unique_lock<annotated_mutex> lck(lock);
 	return IsEnabledInternal(table);
 }
 
@@ -762,13 +762,13 @@ unique_ptr<LogStorageScanState> InMemoryLogStorage::CreateScanState(LoggingTarge
 }
 
 bool InMemoryLogStorage::Scan(LogStorageScanState &state, DataChunk &result) const {
-	unique_lock<mutex> lck(lock);
+	annotated_unique_lock<annotated_mutex> lck(lock);
 	auto &in_mem_scan_state = state.Cast<InMemoryLogStorageScanState>();
 	return GetBuffer(in_mem_scan_state.table).Scan(in_mem_scan_state.scan_state, result);
 }
 
 void InMemoryLogStorage::InitializeScan(LogStorageScanState &state) const {
-	unique_lock<mutex> lck(lock);
+	annotated_unique_lock<annotated_mutex> lck(lock);
 	auto &in_mem_scan_state = state.Cast<InMemoryLogStorageScanState>();
 	GetBuffer(in_mem_scan_state.table)
 	    .InitializeScan(in_mem_scan_state.scan_state, ColumnDataScanProperties::DISALLOW_ZERO_COPY);

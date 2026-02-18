@@ -27,7 +27,7 @@ public:
 		offset = 0;
 	}
 
-	mutex glock;
+	annotated_mutex glock;
 	idx_t limit;
 	idx_t offset;
 	BatchedDataCollection data;
@@ -136,7 +136,7 @@ SinkCombineResultType PhysicalLimit::Combine(ExecutionContext &context, Operator
 	auto &gstate = input.global_state.Cast<LimitGlobalState>();
 	auto &state = input.local_state.Cast<LimitLocalState>();
 
-	lock_guard<mutex> lock(gstate.glock);
+	annotated_lock_guard<annotated_mutex> lock(gstate.glock);
 	if (state.limit.IsValid()) {
 		gstate.limit = state.limit.GetIndex();
 	}

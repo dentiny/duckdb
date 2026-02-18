@@ -95,15 +95,15 @@ struct MultiFileBindData : public TableFunctionData {
 struct MultiFileReaderData {
 	// Create data for an unopened file
 	explicit MultiFileReaderData(const OpenFileInfo &file_to_be_opened)
-	    : reader(nullptr), file_state(MultiFileFileState::UNOPENED), file_mutex(make_uniq<mutex>()),
+	    : reader(nullptr), file_state(MultiFileFileState::UNOPENED), file_mutex(make_uniq<annotated_mutex>()),
 	      file_to_be_opened(file_to_be_opened) {
 	}
 	// Create data for an existing reader
 	explicit MultiFileReaderData(shared_ptr<BaseFileReader> reader_p)
-	    : reader(std::move(reader_p)), file_state(MultiFileFileState::OPEN), file_mutex(make_uniq<mutex>()) {
+	    : reader(std::move(reader_p)), file_state(MultiFileFileState::OPEN), file_mutex(make_uniq<annotated_mutex>()) {
 	}
 	// Create data for an existing reader
-	explicit MultiFileReaderData(shared_ptr<BaseUnionData> union_data_p) : file_mutex(make_uniq<mutex>()) {
+	explicit MultiFileReaderData(shared_ptr<BaseUnionData> union_data_p) : file_mutex(make_uniq<annotated_mutex>()) {
 		if (union_data_p->reader) {
 			reader = std::move(union_data_p->reader);
 			file_state = MultiFileFileState::OPEN;
@@ -120,7 +120,7 @@ struct MultiFileReaderData {
 	//! Flag to indicate the file is being opened
 	MultiFileFileState file_state;
 	//! Mutexes to wait for the file when it is being opened
-	unique_ptr<mutex> file_mutex;
+	unique_ptr<annotated_mutex> file_mutex;
 	//! Options for opening the file
 	shared_ptr<BaseUnionData> union_data;
 	//! The constants that should be applied at the various positions
@@ -148,7 +148,7 @@ struct MultiFileGlobalState : public GlobalTableFunctionState {
 	//! Reader state
 	unique_ptr<MultiFileReaderGlobalState> multi_file_reader_state;
 	//! Lock
-	mutable mutex lock;
+	mutable annotated_mutex lock;
 	//! Signal to other threads that a file failed to open, letting every thread abort.
 	bool error_opening_file = false;
 

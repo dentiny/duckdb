@@ -314,7 +314,7 @@ public:
 	vector<idx_t> lhs_output_in_probe;
 
 	struct {
-		mutex mj_lock;
+		annotated_mutex mj_lock;
 		//! The types of the duplicate eliminated columns, only used in correlated MARK JOIN for flattening
 		//! ANY()/ALL() expressions
 		vector<LogicalType> correlated_types;
@@ -352,7 +352,7 @@ private:
 	                  SelectionVector &sel, bool build_side);
 
 	//! Lock for combining data_collection when merging HTs
-	mutex data_lock;
+	annotated_mutex data_lock;
 	//! Partitioned data collection that the data is sunk into when building
 	unique_ptr<PartitionedTupleData> sink_collection;
 	//! The DataCollection holding the main data of the hash table
@@ -409,7 +409,7 @@ public:
 
 	private:
 		JoinHashTable &ht;
-		mutex lock;
+		annotated_mutex lock;
 		ClientContext &context;
 
 		//! The types of the probe DataChunks

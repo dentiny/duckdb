@@ -101,7 +101,7 @@ public:
 	static bool IsGeoParquetConversionEnabled(const ClientContext &context);
 
 private:
-	mutex write_lock;
+	annotated_mutex write_lock;
 	unordered_map<string, GeoParquetColumnMetadata> geometry_columns;
 	GeoParquetVersion version;
 };

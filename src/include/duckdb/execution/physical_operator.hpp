@@ -65,7 +65,7 @@ public:
 	//! The global operator state.
 	unique_ptr<GlobalOperatorState> op_state;
 	//! Lock for (re)setting any of the operator states.
-	mutex lock;
+	annotated_mutex lock;
 
 public:
 	virtual string GetName() const;

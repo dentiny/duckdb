@@ -52,11 +52,6 @@
 // deadlock can occur if the function acquires the mutex a second time.
 #define DUCKDB_EXCLUDES(...) DUCKDB_THREAD_ANNOTATION_ATTRIBUTE(locks_excluded(__VA_ARGS__))
 
-// NO_THREAD_SAFETY_ANALYSIS is an attribute on functions or methods, which turns off thread safety checking for that
-// method. It provides an escape hatch for functions which are either (1) deliberately thread-unsafe, or (2) are
-// thread-safe, but too complicated for the analysis to understand.
-#define DUCKDB_NO_THREAD_SAFETY_ANALYSIS DUCKDB_THREAD_ANNOTATION_ATTRIBUTE(no_thread_safety_analysis)
-
 // RETURN_CAPABILITY is an attribute on functions or methods, which declares that the function returns a reference to
 // the given capability. It is used to annotate getter methods that return mutexes.
 #define DUCKDB_RETURN_CAPABILITY(x) DUCKDB_THREAD_ANNOTATION_ATTRIBUTE(lock_returned(x))

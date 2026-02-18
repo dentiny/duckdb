@@ -23,7 +23,7 @@ public:
 		return make_uniq<StorageLockKey>(shared_from_this(), StorageLockType::EXCLUSIVE);
 	}
 
-	unique_ptr<StorageLockKey> GetSharedLock() DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
+	unique_ptr<StorageLockKey> GetSharedLock() {
 		exclusive_lock.lock();
 		read_count++;
 		exclusive_lock.unlock();

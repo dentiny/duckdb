@@ -44,7 +44,7 @@ public:
 	vector<MetaBlockPointer> GetStoragePointers();
 
 private:
-	mutex version_lock;
+	annotated_mutex version_lock;
 	FixedSizeAllocator allocator;
 	vector<unique_ptr<ChunkInfo>> vector_info;
 	optional_idx uncheckpointed_delete_commit;

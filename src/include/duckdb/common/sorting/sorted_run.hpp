@@ -61,7 +61,7 @@ public:
 	idx_t SizeInBytes() const;
 
 private:
-	mutex merger_global_state_lock;
+	annotated_mutex merger_global_state_lock;
 	unique_ptr<GlobalSourceState> merge_global_state;
 
 public:

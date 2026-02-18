@@ -63,24 +63,24 @@ GlobalUserSettings &GlobalUserSettings::operator=(const GlobalUserSettings &othe
 }
 
 void GlobalUserSettings::SetUserSetting(idx_t setting_index, Value target_value) {
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	settings_map.SetUserSetting(setting_index, std::move(target_value));
 	++settings_version;
 }
 
 void GlobalUserSettings::ClearSetting(idx_t setting_index) {
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	settings_map.ClearSetting(setting_index);
 	++settings_version;
 }
 
 bool GlobalUserSettings::IsSet(idx_t setting_index) const {
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	return settings_map.IsSet(setting_index);
 }
 
 SettingLookupResult GlobalUserSettings::TryGetSetting(idx_t setting_index, Value &result_value) const {
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	if (!settings_map.TryGetSetting(setting_index, result_value)) {
 		return SettingLookupResult();
 	}
@@ -88,12 +88,12 @@ SettingLookupResult GlobalUserSettings::TryGetSetting(idx_t setting_index, Value
 }
 
 bool GlobalUserSettings::HasExtensionOption(const string &name) const {
-	lock_guard<mutex> l(lock);
+	annotated_lock_guard<annotated_mutex> l(lock);
 	return extension_parameters.find(name) != extension_parameters.end();
 }
 
 idx_t GlobalUserSettings::AddExtensionOption(const string &name, ExtensionOption extension_option) {
-	lock_guard<mutex> l(lock);
+	annotated_lock_guard<annotated_mutex> l(lock);
 	auto setting_index = GeneratedSettingInfo::MaxSettingIndex + extension_parameters.size();
 	extension_option.setting_index = setting_index;
 	extension_parameters.insert(make_pair(name, std::move(extension_option)));
@@ -102,12 +102,12 @@ idx_t GlobalUserSettings::AddExtensionOption(const string &name, ExtensionOption
 }
 
 case_insensitive_map_t<ExtensionOption> GlobalUserSettings::GetExtensionSettings() const {
-	lock_guard<mutex> l(lock);
+	annotated_lock_guard<annotated_mutex> l(lock);
 	return extension_parameters;
 }
 
 bool GlobalUserSettings::TryGetExtensionOption(const String &name, ExtensionOption &result) const {
-	lock_guard<mutex> l(lock);
+	annotated_lock_guard<annotated_mutex> l(lock);
 	auto entry = extension_parameters.find(name.ToStdString());
 	if (entry == extension_parameters.end()) {
 		return false;
@@ -123,7 +123,7 @@ shared_ptr<CachedGlobalSettings> GlobalUserSettings::GetSettings(shared_ptr<Cach
 		// we have a cached version and it is up to date - done
 		return current_cache;
 	}
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	// check if another thread updated the cache while we were waiting for the lock
 	if (cache && current_version == cache->version) {
 		// already written - load

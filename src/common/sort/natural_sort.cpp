@@ -34,7 +34,7 @@ public:
 	const NaturalSort &natural_sort;
 
 	//! Combined rows
-	mutable mutex lock;
+	mutable annotated_mutex lock;
 	HashGroupPtr hash_group;
 
 	// Threading
@@ -105,7 +105,7 @@ SinkCombineResultType NaturalSort::Combine(ExecutionContext &context, OperatorSi
 	auto &lstate = combine.local_state.Cast<NaturalSortLocalSinkState>();
 
 	// Only one partition, so need a global lock.
-	lock_guard<mutex> glock(gstate.lock);
+	annotated_lock_guard<annotated_mutex> glock(gstate.lock);
 	auto &hash_group = gstate.hash_group;
 	if (hash_group) {
 		auto &unsorted = *hash_group->columns;

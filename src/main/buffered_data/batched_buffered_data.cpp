@@ -9,7 +9,7 @@
 namespace duckdb {
 
 void BatchedBufferedData::BlockSink(const InterruptState &blocked_sink, idx_t batch) {
-	lock_guard<mutex> lock(glock);
+	annotated_lock_guard<annotated_mutex> lock(glock);
 	D_ASSERT(!blocked_sinks.count(batch));
 	blocked_sinks.emplace(batch, blocked_sink);
 }
@@ -21,7 +21,7 @@ BatchedBufferedData::BatchedBufferedData(ClientContext &context)
 }
 
 bool BatchedBufferedData::ShouldBlockBatch(idx_t batch) {
-	lock_guard<mutex> lock(glock);
+	annotated_lock_guard<annotated_mutex> lock(glock);
 	bool is_minimum = IsMinimumBatchIndex(lock, batch);
 	if (is_minimum) {
 		// If there is room in the read queue, we want to process the minimum batch
@@ -31,16 +31,16 @@ bool BatchedBufferedData::ShouldBlockBatch(idx_t batch) {
 }
 
 bool BatchedBufferedData::BufferIsEmpty() {
-	lock_guard<mutex> lock(glock);
+	annotated_lock_guard<annotated_mutex> lock(glock);
 	return read_queue.empty();
 }
 
-bool BatchedBufferedData::IsMinimumBatchIndex(lock_guard<mutex> &lock, idx_t batch) {
+bool BatchedBufferedData::IsMinimumBatchIndex(annotated_lock_guard<annotated_mutex> &lock, idx_t batch) {
 	return min_batch == batch;
 }
 
 void BatchedBufferedData::UnblockSinks() {
-	lock_guard<mutex> lock(glock);
+	annotated_lock_guard<annotated_mutex> lock(glock);
 	stack<idx_t> to_remove;
 	for (auto it = blocked_sinks.begin(); it != blocked_sinks.end(); it++) {
 		auto batch = it->first;
@@ -65,7 +65,7 @@ void BatchedBufferedData::UnblockSinks() {
 	}
 }
 
-void BatchedBufferedData::MoveCompletedBatches(lock_guard<mutex> &lock) {
+void BatchedBufferedData::MoveCompletedBatches(annotated_lock_guard<annotated_mutex> &lock) {
 	stack<idx_t> to_remove;
 	for (auto &it : buffer) {
 		auto batch_index = it.first;
@@ -112,7 +112,7 @@ void BatchedBufferedData::MoveCompletedBatches(lock_guard<mutex> &lock) {
 }
 
 void BatchedBufferedData::UpdateMinBatchIndex(idx_t min_batch_index) {
-	lock_guard<mutex> lock(glock);
+	annotated_lock_guard<annotated_mutex> lock(glock);
 
 	auto old_min_batch = min_batch;
 	auto new_min_batch = MaxValue(old_min_batch, min_batch_index);
@@ -164,7 +164,7 @@ StreamExecutionResult BatchedBufferedData::ExecuteTaskInternal(StreamQueryResult
 }
 
 void BatchedBufferedData::CompleteBatch(idx_t batch) {
-	lock_guard<mutex> lock(glock);
+	annotated_lock_guard<annotated_mutex> lock(glock);
 	auto it = buffer.find(batch);
 	if (it == buffer.end()) {
 		return;
@@ -176,7 +176,7 @@ void BatchedBufferedData::CompleteBatch(idx_t batch) {
 
 unique_ptr<DataChunk> BatchedBufferedData::Scan() {
 	unique_ptr<DataChunk> chunk;
-	lock_guard<mutex> lock(glock);
+	annotated_lock_guard<annotated_mutex> lock(glock);
 	if (!read_queue.empty()) {
 		chunk = std::move(read_queue.front());
 		read_queue.pop_front();
@@ -199,7 +199,7 @@ void BatchedBufferedData::Append(const DataChunk &to_append, idx_t batch) {
 	to_append.Copy(*chunk, 0);
 	auto allocation_size = chunk->GetAllocationSize();
 
-	lock_guard<mutex> lock(glock);
+	annotated_lock_guard<annotated_mutex> lock(glock);
 	D_ASSERT(batch >= min_batch);
 	auto is_minimum = IsMinimumBatchIndex(lock, batch);
 	if (is_minimum) {

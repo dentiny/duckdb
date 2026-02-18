@@ -5,7 +5,7 @@
 
 namespace duckdb {
 
-TupleDataChunkPart::TupleDataChunkPart(mutex &lock_p) : lock(lock_p) {
+TupleDataChunkPart::TupleDataChunkPart(annotated_mutex &lock_p) : lock(lock_p) {
 }
 
 void TupleDataChunkPart::SetHeapEmpty() {
@@ -15,7 +15,7 @@ void TupleDataChunkPart::SetHeapEmpty() {
 	base_heap_ptr = nullptr;
 }
 
-TupleDataChunk::TupleDataChunk(mutex &lock_p) : count(0), lock(lock_p) {
+TupleDataChunk::TupleDataChunk(annotated_mutex &lock_p) : count(0), lock(lock_p) {
 }
 
 static inline void SwapTupleDataChunk(TupleDataChunk &a, TupleDataChunk &b) noexcept {
@@ -104,7 +104,7 @@ TupleDataSegment::TupleDataSegment(shared_ptr<TupleDataAllocator> allocator_p)
 }
 
 TupleDataSegment::~TupleDataSegment() {
-	lock_guard<mutex> guard(pinned_handles_lock);
+	annotated_lock_guard<annotated_mutex> guard(pinned_handles_lock);
 	if (allocator) {
 		allocator->SetDestroyBufferUponUnpin(); // Prevent blocks from being added to eviction queue
 	}
@@ -121,7 +121,7 @@ idx_t TupleDataSegment::SizeInBytes() const {
 }
 
 void TupleDataSegment::Unpin() {
-	lock_guard<mutex> guard(pinned_handles_lock);
+	annotated_lock_guard<annotated_mutex> guard(pinned_handles_lock);
 	pinned_row_handles.clear();
 	pinned_heap_handles.clear();
 }

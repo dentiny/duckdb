@@ -141,7 +141,7 @@ struct MergeSortTree {
 
 protected:
 	//! Parallel build machinery
-	mutex build_lock;
+	annotated_mutex build_lock;
 	atomic<idx_t> build_level;
 	atomic<idx_t> build_complete;
 	idx_t build_run;
@@ -151,7 +151,7 @@ protected:
 	bool TryNextRun(idx_t &level_idx, idx_t &run_idx) {
 		const auto fanout = F;
 
-		lock_guard<mutex> stage_guard(build_lock);
+		annotated_lock_guard<annotated_mutex> stage_guard(build_lock);
 
 		// Finished with this level?
 		if (build_complete >= build_num_runs) {

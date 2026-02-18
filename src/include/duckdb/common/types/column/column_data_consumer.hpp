@@ -66,7 +66,7 @@ private:
 	void ConsumeChunks(idx_t delete_index_start, idx_t delete_index_end);
 
 private:
-	mutex lock;
+	annotated_mutex lock;
 	//! The collection being scanned
 	ColumnDataCollection &collection;
 	//! The column ids to scan

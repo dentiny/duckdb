@@ -95,7 +95,7 @@ protected:
 struct EncodingFunctionSet {
 	EncodingFunctionSet() {};
 	static void Initialize(DBConfig &config);
-	mutex lock;
+	annotated_mutex lock;
 	case_insensitive_map_t<EncodingFunction> functions;
 };
 

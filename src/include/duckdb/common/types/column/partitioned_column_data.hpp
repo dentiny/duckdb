@@ -76,7 +76,7 @@ enum class PartitionedColumnDataType : uint8_t {
 
 //! Shared allocators for parallel partitioning
 struct PartitionColumnDataAllocators {
-	mutex lock;
+	annotated_mutex lock;
 	vector<shared_ptr<ColumnDataAllocator>> allocators;
 };
 
@@ -157,7 +157,7 @@ protected:
 	ClientContext &context;
 	vector<LogicalType> types;
 
-	mutex lock;
+	annotated_mutex lock;
 	shared_ptr<PartitionColumnDataAllocators> allocators;
 	vector<unique_ptr<ColumnDataCollection>> partitions;
 

@@ -35,7 +35,7 @@ void ColumnDataConsumer::InitializeScan() {
 }
 
 bool ColumnDataConsumer::AssignChunk(ColumnDataConsumerScanState &state) {
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	if (current_chunk_index == chunk_count) {
 		// All chunks have been assigned
 		state.current_chunk_state.handles.clear();
@@ -65,7 +65,7 @@ void ColumnDataConsumer::FinishChunk(ColumnDataConsumerScanState &state) {
 	idx_t delete_index_start;
 	idx_t delete_index_end;
 	{
-		lock_guard<mutex> guard(lock);
+		annotated_lock_guard<annotated_mutex> guard(lock);
 		D_ASSERT(chunks_in_progress.find(state.chunk_index) != chunks_in_progress.end());
 		delete_index_start = chunk_delete_index;
 		delete_index_end = *std::min_element(chunks_in_progress.begin(), chunks_in_progress.end());

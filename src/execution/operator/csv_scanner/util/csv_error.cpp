@@ -59,7 +59,7 @@ void CSVErrorHandler::ThrowError(const CSVError &csv_error) {
 }
 
 void CSVErrorHandler::Error(const CSVError &csv_error, bool force_error) {
-	lock_guard<mutex> parallel_lock(main_mutex);
+	annotated_lock_guard<annotated_mutex> parallel_lock(main_mutex);
 	if (!force_error && (ignore_errors || (PrintLineNumber(csv_error) && !CanGetLine(csv_error.GetBoundaryIndex())))) {
 		// We store this error, we can't throw it now, or we are ignoring it
 		errors.push_back(csv_error);
@@ -70,7 +70,7 @@ void CSVErrorHandler::Error(const CSVError &csv_error, bool force_error) {
 }
 
 void CSVErrorHandler::ErrorIfNeeded() {
-	lock_guard<mutex> parallel_lock(main_mutex);
+	annotated_lock_guard<annotated_mutex> parallel_lock(main_mutex);
 	if (ignore_errors || errors.empty()) {
 		// Nothing to error
 		return;
@@ -82,7 +82,7 @@ void CSVErrorHandler::ErrorIfNeeded() {
 }
 
 void CSVErrorHandler::ErrorIfAny() {
-	lock_guard<mutex> parallel_lock(main_mutex);
+	annotated_lock_guard<annotated_mutex> parallel_lock(main_mutex);
 	if (ignore_errors || errors.empty()) {
 		// Nothing to error
 		return;
@@ -94,7 +94,7 @@ void CSVErrorHandler::ErrorIfAny() {
 }
 
 void CSVErrorHandler::ErrorIfTypeExists(CSVErrorType error_type) {
-	lock_guard<mutex> parallel_lock(main_mutex);
+	annotated_lock_guard<annotated_mutex> parallel_lock(main_mutex);
 	for (auto &error : errors) {
 		if (error.type == error_type) {
 			// If it's a maximum line size error, we can do it now.
@@ -104,7 +104,7 @@ void CSVErrorHandler::ErrorIfTypeExists(CSVErrorType error_type) {
 }
 
 void CSVErrorHandler::Insert(idx_t boundary_idx, idx_t rows) {
-	lock_guard<mutex> parallel_lock(main_mutex);
+	annotated_lock_guard<annotated_mutex> parallel_lock(main_mutex);
 	if (lines_per_batch_map.find(boundary_idx) == lines_per_batch_map.end()) {
 		lines_per_batch_map[boundary_idx] = {boundary_idx, rows};
 	} else {
@@ -113,17 +113,17 @@ void CSVErrorHandler::Insert(idx_t boundary_idx, idx_t rows) {
 }
 
 void CSVErrorHandler::NewMaxLineSize(idx_t scan_line_size) {
-	lock_guard<mutex> parallel_lock(main_mutex);
+	annotated_lock_guard<annotated_mutex> parallel_lock(main_mutex);
 	max_line_length = std::max(scan_line_size, max_line_length);
 }
 
 bool CSVErrorHandler::AnyErrors() {
-	lock_guard<mutex> parallel_lock(main_mutex);
+	annotated_lock_guard<annotated_mutex> parallel_lock(main_mutex);
 	return !errors.empty();
 }
 
 bool CSVErrorHandler::HasError(const CSVErrorType error_type) {
-	lock_guard<mutex> parallel_lock(main_mutex);
+	annotated_lock_guard<annotated_mutex> parallel_lock(main_mutex);
 	for (const auto &er : errors) {
 		if (er.type == error_type) {
 			return true;
@@ -133,7 +133,7 @@ bool CSVErrorHandler::HasError(const CSVErrorType error_type) {
 }
 
 CSVError CSVErrorHandler::GetFirstError(CSVErrorType error_type) {
-	lock_guard<mutex> parallel_lock(main_mutex);
+	annotated_lock_guard<annotated_mutex> parallel_lock(main_mutex);
 	for (const auto &er : errors) {
 		if (er.type == error_type) {
 			return er;
@@ -143,7 +143,7 @@ CSVError CSVErrorHandler::GetFirstError(CSVErrorType error_type) {
 }
 
 idx_t CSVErrorHandler::GetSize() {
-	lock_guard<mutex> parallel_lock(main_mutex);
+	annotated_lock_guard<annotated_mutex> parallel_lock(main_mutex);
 	return errors.size();
 }
 
@@ -185,7 +185,7 @@ string CSVErrorTypeToEnum(CSVErrorType type) {
 void CSVErrorHandler::FillRejectsTable(InternalAppender &errors_appender, const idx_t file_idx, const idx_t scan_idx,
                                        const CSVFileScan &file, CSVRejectsTable &rejects,
                                        const MultiFileBindData &bind_data, const idx_t limit) {
-	lock_guard<mutex> parallel_lock(main_mutex);
+	annotated_lock_guard<annotated_mutex> parallel_lock(main_mutex);
 	// We first insert the file into the file scans table
 	for (auto &error : file.error_handler->errors) {
 		if (!IsCSVErrorAcceptedReject(error.type)) {
@@ -255,17 +255,17 @@ void CSVErrorHandler::FillRejectsTable(InternalAppender &errors_appender, const 
 }
 
 idx_t CSVErrorHandler::GetMaxLineLength() {
-	lock_guard<mutex> parallel_lock(main_mutex);
+	annotated_lock_guard<annotated_mutex> parallel_lock(main_mutex);
 	return max_line_length;
 }
 
 void CSVErrorHandler::DontPrintErrorLine() {
-	lock_guard<mutex> parallel_lock(main_mutex);
+	annotated_lock_guard<annotated_mutex> parallel_lock(main_mutex);
 	print_line = false;
 }
 
 void CSVErrorHandler::SetIgnoreErrors(bool ignore_errors_p) {
-	lock_guard<mutex> parallel_lock(main_mutex);
+	annotated_lock_guard<annotated_mutex> parallel_lock(main_mutex);
 	ignore_errors = ignore_errors_p;
 }
 
@@ -623,7 +623,7 @@ bool CSVErrorHandler::CanGetLine(idx_t boundary_index) {
 }
 
 idx_t CSVErrorHandler::GetLine(const LinesPerBoundary &error_info) {
-	lock_guard<mutex> parallel_lock(main_mutex);
+	annotated_lock_guard<annotated_mutex> parallel_lock(main_mutex);
 	return GetLineInternal(error_info);
 }
 idx_t CSVErrorHandler::GetLineInternal(const LinesPerBoundary &error_info) {

@@ -343,7 +343,7 @@ public:
 	vector<CompressionType> GetDisabledCompressionMethods() const;
 
 private:
-	mutex lock;
+	annotated_mutex lock;
 	atomic<bool> is_disabled[COMPRESSION_TYPE_COUNT];
 	atomic<bool> is_loaded[PHYSICAL_TYPE_COUNT];
 	vector<vector<CompressionFunction>> functions;

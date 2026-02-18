@@ -53,7 +53,7 @@ WindowMergeSortTree::WindowMergeSortTree(ClientContext &client, const vector<Bou
 }
 
 optional_ptr<LocalSinkState> WindowMergeSortTree::InitializeLocalSort(ExecutionContext &context) const {
-	lock_guard<mutex> local_sort_guard(lock);
+	annotated_lock_guard<annotated_mutex> local_sort_guard(lock);
 	auto local_sink = sort->GetLocalSinkState(context);
 	local_sinks.emplace_back(std::move(local_sink));
 
@@ -142,7 +142,7 @@ void WindowMergeSortTree::Finished() {
 }
 
 bool WindowMergeSortTree::TryPrepareSortStage(WindowMergeSortTreeLocalState &lstate) {
-	lock_guard<mutex> stage_guard(lock);
+	annotated_lock_guard<annotated_mutex> stage_guard(lock);
 
 	switch (build_stage.load()) {
 	case WindowMergeSortStage::INIT:

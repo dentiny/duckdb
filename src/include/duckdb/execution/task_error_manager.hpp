@@ -21,13 +21,13 @@ public:
 	}
 
 	void PushError(ErrorData error) {
-		lock_guard<mutex> elock(error_lock);
+		annotated_lock_guard<annotated_mutex> elock(error_lock);
 		this->exceptions.push_back(std::move(error));
 		has_error = true;
 	}
 
 	ErrorData GetError() {
-		lock_guard<mutex> elock(error_lock);
+		annotated_lock_guard<annotated_mutex> elock(error_lock);
 		D_ASSERT(!exceptions.empty());
 
 		// FIXME: Should we try to get the biggest priority error?
@@ -42,20 +42,20 @@ public:
 	}
 
 	void ThrowException() {
-		lock_guard<mutex> elock(error_lock);
+		annotated_lock_guard<annotated_mutex> elock(error_lock);
 		D_ASSERT(!exceptions.empty());
 		auto &entry = exceptions[0];
 		entry.Throw();
 	}
 
 	void Reset() {
-		lock_guard<mutex> elock(error_lock);
+		annotated_lock_guard<annotated_mutex> elock(error_lock);
 		exceptions.clear();
 		has_error = false;
 	}
 
 private:
-	mutex error_lock;
+	annotated_mutex error_lock;
 	//! Exceptions that occurred during the execution of the current query
 	vector<ErrorData> exceptions;
 	//! Lock-free error flag

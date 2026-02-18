@@ -56,7 +56,7 @@ public:
 	void CancelTasks();
 	PendingExecutionResult ExecuteTask(bool dry_run = false);
 	void WaitForTask();
-	void SignalTaskRescheduled(lock_guard<mutex> &);
+	void SignalTaskRescheduled(annotated_lock_guard<annotated_mutex> &);
 
 	void Reset();
 
@@ -148,7 +148,7 @@ private:
 private:
 	optional_ptr<PhysicalOperator> physical_plan;
 
-	mutex executor_lock;
+	annotated_mutex executor_lock;
 	//! All pipelines of the query plan
 	vector<shared_ptr<Pipeline>> pipelines;
 	//! The root pipelines of the query

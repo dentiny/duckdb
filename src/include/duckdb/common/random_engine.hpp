@@ -42,7 +42,7 @@ public:
 
 	static RandomEngine &Get(ClientContext &context);
 
-	mutex lock;
+	annotated_mutex lock;
 
 private:
 	unique_ptr<RandomState> random_state;

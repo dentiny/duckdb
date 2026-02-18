@@ -38,12 +38,12 @@ unique_ptr<CatalogEntry> SequenceCatalogEntry::Copy(ClientContext &context) cons
 }
 
 SequenceData SequenceCatalogEntry::GetData() const {
-	lock_guard<mutex> seqlock(lock);
+	annotated_lock_guard<annotated_mutex> seqlock(lock);
 	return data;
 }
 
 int64_t SequenceCatalogEntry::CurrentValue() {
-	lock_guard<mutex> seqlock(lock);
+	annotated_lock_guard<annotated_mutex> seqlock(lock);
 	int64_t result;
 	if (data.usage_count == 0u) {
 		throw SequenceException("currval: sequence is not yet defined in this session");
@@ -53,7 +53,7 @@ int64_t SequenceCatalogEntry::CurrentValue() {
 }
 
 int64_t SequenceCatalogEntry::NextValue(DuckTransaction &transaction) {
-	lock_guard<mutex> seqlock(lock);
+	annotated_lock_guard<annotated_mutex> seqlock(lock);
 	int64_t result;
 	result = data.counter;
 	bool overflow = !TryAddOperator::Operation(data.counter, data.increment, data.counter);

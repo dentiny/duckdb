@@ -41,42 +41,42 @@ ExtensionCallbackManager::~ExtensionCallbackManager() {
 }
 
 void ExtensionCallbackManager::Register(ParserExtension extension) {
-	lock_guard<mutex> guard(registry_lock);
+	annotated_lock_guard<annotated_mutex> guard(registry_lock);
 	auto new_registry = make_shared_ptr<ExtensionCallbackRegistry>(*callback_registry);
 	new_registry->parser_extensions.push_back(std::move(extension));
 	callback_registry.atomic_store(new_registry);
 }
 
 void ExtensionCallbackManager::Register(PlannerExtension extension) {
-	lock_guard<mutex> guard(registry_lock);
+	annotated_lock_guard<annotated_mutex> guard(registry_lock);
 	auto new_registry = make_shared_ptr<ExtensionCallbackRegistry>(*callback_registry);
 	new_registry->planner_extensions.push_back(std::move(extension));
 	callback_registry.atomic_store(new_registry);
 }
 
 void ExtensionCallbackManager::Register(OptimizerExtension extension) {
-	lock_guard<mutex> guard(registry_lock);
+	annotated_lock_guard<annotated_mutex> guard(registry_lock);
 	auto new_registry = make_shared_ptr<ExtensionCallbackRegistry>(*callback_registry);
 	new_registry->optimizer_extensions.push_back(std::move(extension));
 	callback_registry.atomic_store(new_registry);
 }
 
 void ExtensionCallbackManager::Register(shared_ptr<OperatorExtension> extension) {
-	lock_guard<mutex> guard(registry_lock);
+	annotated_lock_guard<annotated_mutex> guard(registry_lock);
 	auto new_registry = make_shared_ptr<ExtensionCallbackRegistry>(*callback_registry);
 	new_registry->operator_extensions.push_back(std::move(extension));
 	callback_registry.atomic_store(new_registry);
 }
 
 void ExtensionCallbackManager::Register(const string &name, shared_ptr<StorageExtension> extension) {
-	lock_guard<mutex> guard(registry_lock);
+	annotated_lock_guard<annotated_mutex> guard(registry_lock);
 	auto new_registry = make_shared_ptr<ExtensionCallbackRegistry>(*callback_registry);
 	new_registry->storage_extensions[name] = std::move(extension);
 	callback_registry.atomic_store(new_registry);
 }
 
 void ExtensionCallbackManager::Register(shared_ptr<ExtensionCallback> extension) {
-	lock_guard<mutex> guard(registry_lock);
+	annotated_lock_guard<annotated_mutex> guard(registry_lock);
 	auto new_registry = make_shared_ptr<ExtensionCallbackRegistry>(*callback_registry);
 	new_registry->extension_callbacks.push_back(std::move(extension));
 	callback_registry.atomic_store(new_registry);

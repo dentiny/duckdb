@@ -35,7 +35,7 @@ struct InterruptDoneSignalState {
 	void Await();
 
 protected:
-	mutex lock;
+	annotated_mutex lock;
 	std::condition_variable cv;
 	bool done = false;
 };
@@ -103,7 +103,7 @@ public:
 
 public:
 	//! Global lock
-	mutable mutex lock;
+	mutable annotated_mutex lock;
 
 private:
 	//! Whether we can block tasks

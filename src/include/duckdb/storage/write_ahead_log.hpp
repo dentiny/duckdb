@@ -128,7 +128,7 @@ protected:
 
 protected:
 	StorageManager &storage_manager;
-	mutex wal_lock;
+	annotated_mutex wal_lock;
 	unique_ptr<BufferedFileWriter> writer;
 	string wal_path;
 	atomic<WALInitState> init_state;

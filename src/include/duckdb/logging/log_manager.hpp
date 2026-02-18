@@ -86,7 +86,7 @@ protected:
 	void SetConfigInternal(LogConfig config);
 
 protected:
-	mutex lock;
+	annotated_mutex lock;
 	LogConfig config;
 
 	shared_ptr<Logger> global_logger;

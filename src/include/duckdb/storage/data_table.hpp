@@ -319,7 +319,7 @@ private:
 	//! The set of physical columns stored by this DataTable
 	vector<ColumnDefinition> column_definitions;
 	//! Lock for appending entries to the table
-	mutex append_lock;
+	annotated_mutex append_lock;
 	//! The row groups of the table
 	shared_ptr<RowGroupCollection> row_groups;
 	//! The version of the data table

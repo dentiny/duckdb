@@ -613,7 +613,7 @@ bool TupleDataCollection::Scan(TupleDataParallelScanState &gstate, TupleDataLoca
 
 	const auto segment_index_before = lstate.segment_index;
 	{
-		lock_guard<mutex> guard(gstate.lock);
+		annotated_lock_guard<annotated_mutex> guard(gstate.lock);
 		if (!NextScanIndex(gstate.scan_state, lstate.segment_index, lstate.chunk_index)) {
 			if (!segments.empty()) {
 				FinalizePinState(lstate.pin_state, *segments[segment_index_before]);

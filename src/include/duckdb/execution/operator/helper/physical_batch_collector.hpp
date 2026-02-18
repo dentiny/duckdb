@@ -48,7 +48,7 @@ public:
 	    : data(context, op.types, op.memory_type) {
 	}
 
-	mutex glock;
+	annotated_mutex glock;
 	BatchedDataCollection data;
 	unique_ptr<QueryResult> result;
 };

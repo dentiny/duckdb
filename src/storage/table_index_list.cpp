@@ -24,7 +24,7 @@ IndexEntry::IndexEntry(unique_ptr<Index> index_p) : index(std::move(index_p)) {
 }
 
 template <class T>
-TableIndexIterationHelper<T>::TableIndexIterationHelper(mutex &index_lock,
+TableIndexIterationHelper<T>::TableIndexIterationHelper(annotated_mutex &index_lock,
                                                         const vector<unique_ptr<IndexEntry>> &index_entries)
     : lock(index_lock), index_entries(index_entries) {
 }
@@ -87,7 +87,7 @@ template class TableIndexIterationHelper<Index>;
 
 void TableIndexList::AddIndex(unique_ptr<Index> index) {
 	D_ASSERT(index);
-	lock_guard<mutex> lock(index_entries_lock);
+	annotated_lock_guard<annotated_mutex> lock(index_entries_lock);
 	auto index_entry = make_uniq<IndexEntry>(std::move(index));
 	index_entries.push_back(std::move(index_entry));
 	if (!index_entries.back()->index->IsBound()) {
@@ -96,7 +96,7 @@ void TableIndexList::AddIndex(unique_ptr<Index> index) {
 }
 
 void TableIndexList::RemoveIndex(const string &name) {
-	lock_guard<mutex> lock(index_entries_lock);
+	annotated_lock_guard<annotated_mutex> lock(index_entries_lock);
 	for (idx_t i = 0; i < index_entries.size(); i++) {
 		auto &index = *index_entries[i]->index;
 		if (index.GetIndexName() == name) {
@@ -110,7 +110,7 @@ void TableIndexList::RemoveIndex(const string &name) {
 }
 
 void TableIndexList::CommitDrop(const string &name) {
-	lock_guard<mutex> lock(index_entries_lock);
+	annotated_lock_guard<annotated_mutex> lock(index_entries_lock);
 	for (auto &entry : index_entries) {
 		auto &index = *entry->index;
 		if (index.GetIndexName() == name) {
@@ -122,7 +122,7 @@ void TableIndexList::CommitDrop(const string &name) {
 
 bool TableIndexList::NameIsUnique(const string &name) {
 	// Only covers PK, FK, and UNIQUE indexes.
-	lock_guard<mutex> lock(index_entries_lock);
+	annotated_lock_guard<annotated_mutex> lock(index_entries_lock);
 	for (auto &entry : index_entries) {
 		auto &index = *entry->index;
 		if (index.IsPrimary() || index.IsForeign() || index.IsUnique()) {
@@ -150,7 +150,7 @@ optional_ptr<BoundIndex> TableIndexList::Find(const string &name) {
 void TableIndexList::Bind(ClientContext &context, DataTableInfo &table_info, const char *index_type) {
 	{
 		// Early-out, if we have no unbound indexes.
-		lock_guard<mutex> lock(index_entries_lock);
+		annotated_lock_guard<annotated_mutex> lock(index_entries_lock);
 		if (unbound_count == 0) {
 			return;
 		}
@@ -170,7 +170,7 @@ void TableIndexList::Bind(ClientContext &context, DataTableInfo &table_info, con
 		column_names.push_back(col.Name());
 	}
 
-	unique_lock<mutex> lock(index_entries_lock);
+	annotated_unique_lock<annotated_mutex> lock(index_entries_lock);
 	// Busy-spin trying to bind all indexes.
 	while (true) {
 		optional_ptr<IndexEntry> index_entry;
@@ -259,7 +259,7 @@ bool IsForeignKeyIndex(const vector<PhysicalIndex> &fk_keys, Index &index, Forei
 
 optional_ptr<IndexEntry> TableIndexList::FindForeignKeyIndex(const vector<PhysicalIndex> &fk_keys,
                                                              const ForeignKeyType fk_type) {
-	lock_guard<mutex> lock(index_entries_lock);
+	annotated_lock_guard<annotated_mutex> lock(index_entries_lock);
 	for (auto &entry : index_entries) {
 		auto &index = *entry->index;
 		if (IsForeignKeyIndex(fk_keys, index, fk_type)) {
@@ -278,7 +278,7 @@ void TableIndexList::VerifyForeignKey(optional_ptr<LocalTableStorage> storage, c
 	// Check whether the chunk can be inserted in or deleted from the referenced table storage.
 	auto entry = FindForeignKeyIndex(fk_keys, fk_type);
 	auto &index = *entry->index;
-	lock_guard<mutex> guard(entry->lock);
+	annotated_lock_guard<annotated_mutex> guard(entry->lock);
 	D_ASSERT(index.IsBound());
 	IndexAppendInfo index_append_info;
 	if (storage) {
@@ -301,7 +301,7 @@ void TableIndexList::VerifyForeignKey(optional_ptr<LocalTableStorage> storage, c
 }
 
 unordered_set<column_t> TableIndexList::GetRequiredColumns() {
-	lock_guard<mutex> lock(index_entries_lock);
+	annotated_lock_guard<annotated_mutex> lock(index_entries_lock);
 	unordered_set<column_t> column_ids;
 	for (auto &entry : index_entries) {
 		auto &index = *entry->index;
@@ -313,7 +313,7 @@ unordered_set<column_t> TableIndexList::GetRequiredColumns() {
 }
 
 IndexSerializationResult TableIndexList::SerializeToDisk(QueryContext context, const IndexSerializationInfo &info) {
-	lock_guard<mutex> lock(index_entries_lock);
+	annotated_lock_guard<annotated_mutex> lock(index_entries_lock);
 
 	IndexSerializationResult result;
 
@@ -345,14 +345,14 @@ IndexSerializationResult TableIndexList::SerializeToDisk(QueryContext context, c
 }
 
 void TableIndexList::MergeCheckpointDeltas(transaction_t checkpoint_id) {
-	lock_guard<mutex> lock(index_entries_lock);
+	annotated_lock_guard<annotated_mutex> lock(index_entries_lock);
 	for (auto &entry : index_entries) {
 		// Merge any data appended to the index while the checkpoint was running.
 		auto &index = *entry->index;
 		if (!index.IsBound()) {
 			continue;
 		}
-		lock_guard<mutex> guard(entry->lock);
+		annotated_lock_guard<annotated_mutex> guard(entry->lock);
 		auto &bound_index = index.Cast<BoundIndex>();
 		auto &art = bound_index.Cast<ART>();
 

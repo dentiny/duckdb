@@ -26,7 +26,7 @@ public:
 		return "duckdb";
 	}
 
-	mutex &GetWriteLock() {
+	annotated_mutex &GetWriteLock() {
 		return write_lock;
 	}
 
@@ -87,7 +87,7 @@ private:
 	//! The DependencyManager manages dependencies between different catalog objects
 	unique_ptr<DependencyManager> dependency_manager;
 	//! Write lock for the catalog
-	mutex write_lock;
+	annotated_mutex write_lock;
 	//! The catalog set holding the schemas
 	unique_ptr<CatalogSet> schemas;
 

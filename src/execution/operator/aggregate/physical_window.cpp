@@ -87,7 +87,7 @@ public:
 	}
 
 	bool TryPrepareNextStage() {
-		lock_guard<mutex> prepare_guard(lock);
+		annotated_lock_guard<annotated_mutex> prepare_guard(lock);
 		switch (stage.load()) {
 		case WindowGroupStage::SORT:
 			if (sorted == blocks) {
@@ -173,7 +173,7 @@ public:
 	//! The bin number
 	idx_t hash_bin;
 	//! Single threading lock
-	mutex lock;
+	annotated_mutex lock;
 	//! The the number of blocks per thread.
 	idx_t per_thread = 0;
 	//! The the number of blocks per thread.
@@ -517,7 +517,7 @@ void WindowHashGroup::UpdateScanner(ScannerPtr &scanner, idx_t begin_idx) const 
 
 void WindowHashGroup::AllocateMasks() {
 	//	Single-threaded building as this is mostly memory allocation
-	lock_guard<mutex> gestate_guard(lock);
+	annotated_lock_guard<annotated_mutex> gestate_guard(lock);
 	if (partition_mask.IsMaskSet()) {
 		return;
 	}
@@ -735,7 +735,7 @@ void WindowLocalSourceState::Materialize(ExecutionContext &context, InterruptSta
 	// 	There is no good place to read the column data,
 	//	and if we do it twice we can split the results.
 	if (window_hash_group->materialized >= window_hash_group->blocks) {
-		lock_guard<mutex> prepare_guard(window_hash_group->lock);
+		annotated_lock_guard<annotated_mutex> prepare_guard(window_hash_group->lock);
 		if (!window_hash_group->rows) {
 			window_hash_group->rows = sort_strategy.GetColumnData(task_local.group_idx, source);
 		}
@@ -755,7 +755,7 @@ void WindowLocalSourceState::Mask(ExecutionContext &context, InterruptState &int
 
 WindowHashGroup::ExecutorGlobalStates &WindowHashGroup::GetGlobalStates(ClientContext &client) {
 	//	Single-threaded building as this is mostly memory allocation
-	lock_guard<mutex> gestate_guard(lock);
+	annotated_lock_guard<annotated_mutex> gestate_guard(lock);
 	const auto &executors = gsink.executors;
 	if (gestates.size() == executors.size()) {
 		return gestates;
@@ -881,7 +881,7 @@ WindowLocalSourceState::WindowLocalSourceState(WindowGlobalSourceState &gsource)
 }
 
 bool WindowGlobalSourceState::TryNextTask(TaskPtr &task, Task &task_local) {
-	unique_lock<mutex> guard {lock};
+	annotated_unique_lock<annotated_mutex> guard {lock};
 	FinishTask(task);
 
 	if (!HasMoreTasks()) {
@@ -1120,7 +1120,7 @@ SourceResultType PhysicalWindow::GetDataInternal(ExecutionContext &context, Data
 				throw;
 			}
 		} else {
-			const lock_guard<mutex> guard {gsource.lock};
+			const annotated_lock_guard<annotated_mutex> guard {gsource.lock};
 			if (!gsource.HasMoreTasks()) {
 				// no more tasks - exit
 				gsource.UnblockTasks();

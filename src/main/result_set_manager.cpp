@@ -38,13 +38,13 @@ ResultSetManager &ResultSetManager::Get(DatabaseInstance &db_p) {
 }
 
 ManagedResultSet ResultSetManager::Add(ColumnDataAllocator &allocator) {
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	auto &handles = *open_results.emplace(allocator, make_uniq<vector<shared_ptr<BlockHandle>>>()).first->second;
 	return ManagedResultSet(db, handles);
 }
 
 void ResultSetManager::Remove(ColumnDataAllocator &allocator) {
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	open_results.erase(allocator);
 }
 

@@ -29,10 +29,10 @@ public:
 	}
 	optional_ptr<ColumnDataCollection> working_table_ref;
 
-	mutex lhs_lock;
+	annotated_mutex lhs_lock;
 
 	void MergeIT(ColumnDataCollection &input) {
-		lock_guard<mutex> guard(lhs_lock);
+		annotated_lock_guard<annotated_mutex> guard(lhs_lock);
 		working_table_ref->Combine(input);
 	}
 };

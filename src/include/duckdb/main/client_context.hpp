@@ -319,7 +319,7 @@ private:
 
 private:
 	//! Lock on using the ClientContext in parallel
-	mutex context_lock;
+	annotated_mutex context_lock;
 	//! The currently active query context
 	unique_ptr<ActiveQueryContext> active_query;
 	//! The current query progress
@@ -330,14 +330,14 @@ private:
 
 class ClientContextLock {
 public:
-	explicit ClientContextLock(mutex &context_lock) : client_guard(context_lock) {
+	explicit ClientContextLock(annotated_mutex &context_lock) : client_guard(context_lock) {
 	}
 
 	~ClientContextLock() {
 	}
 
 private:
-	lock_guard<mutex> client_guard;
+	annotated_lock_guard<annotated_mutex> client_guard;
 };
 
 //! The QueryContext wraps an optional client context.

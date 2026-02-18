@@ -234,7 +234,7 @@ private:
 	bool HasUnloadedDeletes() const;
 
 private:
-	mutable mutex row_group_lock;
+	mutable annotated_mutex row_group_lock;
 	vector<MetaBlockPointer> column_pointers;
 	//! Whether or not each column is loaded (mutable because `const` can lazy load)
 	mutable unique_ptr<atomic<bool>[]> is_loaded;

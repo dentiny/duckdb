@@ -110,7 +110,7 @@ public:
 	//! If there is concurrent usage of the block elsewhere - use the THREAD_SAFE mode which creates an extra copy
 	shared_ptr<BlockHandle> ConvertToPersistent(
 	    QueryContext context, block_id_t block_id, shared_ptr<BlockHandle> old_block, BufferHandle old_handle,
-	    ConvertToPersistentMode mode = ConvertToPersistentMode::DESTRUCTIVE) DUCKDB_NO_THREAD_SAFETY_ANALYSIS;
+	    ConvertToPersistentMode mode = ConvertToPersistentMode::DESTRUCTIVE);
 	shared_ptr<BlockHandle> ConvertToPersistent(QueryContext context, block_id_t block_id,
 	                                            shared_ptr<BlockHandle> old_block,
 	                                            ConvertToPersistentMode mode = ConvertToPersistentMode::DESTRUCTIVE);

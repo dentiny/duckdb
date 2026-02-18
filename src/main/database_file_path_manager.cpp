@@ -12,7 +12,7 @@ DatabasePathInfo::DatabasePathInfo(DatabaseManager &manager, string name_p, Acce
 }
 
 idx_t DatabaseFilePathManager::ApproxDatabaseCount() const {
-	lock_guard<mutex> path_lock(db_paths_lock);
+	annotated_lock_guard<annotated_mutex> path_lock(db_paths_lock);
 	return db_paths.size();
 }
 
@@ -22,7 +22,7 @@ InsertDatabasePathResult DatabaseFilePathManager::InsertDatabasePath(DatabaseMan
 	if (path.empty() || path == IN_MEMORY_PATH) {
 		throw InternalException("DatabaseFilePathManager::InsertDatabasePath - cannot insert in-memory database");
 	}
-	lock_guard<mutex> path_lock(db_paths_lock);
+	annotated_lock_guard<annotated_mutex> path_lock(db_paths_lock);
 	auto entry = db_paths.emplace(path, DatabasePathInfo(manager, name, options.access_mode));
 	if (!entry.second) {
 		auto &existing = entry.first->second;
@@ -63,7 +63,7 @@ void DatabaseFilePathManager::EraseDatabasePath(const string &path) {
 	if (path.empty() || path == IN_MEMORY_PATH) {
 		return;
 	}
-	lock_guard<mutex> path_lock(db_paths_lock);
+	annotated_lock_guard<annotated_mutex> path_lock(db_paths_lock);
 	auto entry = db_paths.find(path);
 	if (entry != db_paths.end()) {
 		if (entry->second.reference_count <= 1) {
@@ -78,7 +78,7 @@ void DatabaseFilePathManager::DetachDatabase(DatabaseManager &manager, const str
 	if (path.empty() || path == IN_MEMORY_PATH) {
 		return;
 	}
-	lock_guard<mutex> path_lock(db_paths_lock);
+	annotated_lock_guard<annotated_mutex> path_lock(db_paths_lock);
 	auto entry = db_paths.find(path);
 	if (entry != db_paths.end()) {
 		entry->second.attached_databases.erase(manager);

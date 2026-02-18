@@ -96,7 +96,7 @@ void WindowCustomAggregator::Finalize(ExecutionContext &context, CollectionPtr c
                                       OperatorSinkInput &sink) {
 	//	Single threaded Finalize for now
 	auto &gcsink = sink.global_state.Cast<WindowCustomAggregatorGlobalState>();
-	lock_guard<mutex> gestate_guard(gcsink.lock);
+	annotated_lock_guard<annotated_mutex> gestate_guard(gcsink.lock);
 	if (gcsink.finalized) {
 		return;
 	}
