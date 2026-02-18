@@ -24,7 +24,7 @@ public:
 	unique_ptr<GlobalSinkState> sort_global;
 
 	//	Source
-	annotated_mutex scan_lock;
+	mutex scan_lock;
 	TupleDataParallelScanState parallel_scan;
 	atomic<idx_t> tasks_completed;
 	unique_ptr<GlobalSourceState> sort_source;
@@ -61,7 +61,7 @@ public:
 	const HashedSort &hashed_sort;
 	BufferManager &buffer_manager;
 	Allocator &allocator;
-	mutable annotated_mutex lock;
+	mutable mutex lock;
 
 	// OVER(PARTITION BY...) (hash grouping)
 	GroupingPartition grouping_data;
@@ -145,7 +145,7 @@ void HashedSortGlobalSinkState::SyncLocalPartition(GroupingPartition &local_part
 void HashedSortGlobalSinkState::UpdateLocalPartition(GroupingPartition &local_partition,
                                                      GroupingAppend &partition_append) {
 	// Make sure grouping_data doesn't change under us.
-	annotated_lock_guard<annotated_mutex> guard(lock);
+	lock_guard<mutex> guard(lock);
 
 	if (!local_partition) {
 		local_partition = CreatePartition(grouping_data->GetRadixBits());
@@ -178,8 +178,8 @@ void HashedSortGlobalSinkState::CombineLocalPartition(GroupingPartition &local_p
 	local_partition->FlushAppendState(*local_append);
 
 	// Make sure grouping_data doesn't change under us.
-	// Combine has an internal annotated_mutex, so this is single-threaded anyway.
-	annotated_lock_guard<annotated_mutex> guard(lock);
+	// Combine has an internal mutex, so this is single-threaded anyway.
+	lock_guard<mutex> guard(lock);
 	SyncLocalPartition(local_partition, local_append);
 	fixed_bits = true;
 
@@ -189,7 +189,7 @@ void HashedSortGlobalSinkState::CombineLocalPartition(GroupingPartition &local_p
 		hash_groups.resize(groups.size());
 	}
 
-	//	Create missing HashedSortGroups inside the annotated_mutex
+	//	Create missing HashedSortGroups inside the mutex
 	for (idx_t group_idx = 0; group_idx < groups.size(); ++group_idx) {
 		auto &hash_group = hash_groups[group_idx];
 		if (hash_group) {
@@ -215,7 +215,7 @@ ProgressData HashedSortGlobalSinkState::GetSinkProgress(ClientContext &client, c
 	// Sort::GetSinkProgress assumes that there is only 1 sort.
 	// So we just use it to figure out how many rows have been sorted.
 	const ProgressData zero_progress;
-	annotated_lock_guard<annotated_mutex> guard(lock);
+	lock_guard<mutex> guard(lock);
 	const auto &sort = hashed_sort.sort;
 	for (auto &hash_group : hash_groups) {
 		if (!hash_group || !hash_group->sort_global) {
@@ -437,7 +437,7 @@ void HashedSort::SortColumnData(ExecutionContext &context, hash_t hash_bin, Oper
 		hash_group.count += combined;
 
 		//	Whoever finishes last can Finalize
-		annotated_lock_guard<annotated_mutex> finalize_guard(hash_group.scan_lock);
+		lock_guard<mutex> finalize_guard(hash_group.scan_lock);
 		if (hash_group.count == partition.Count() && !hash_group.sort_source) {
 			OperatorSinkFinalizeInput lfinalize {*hash_group.sort_global, finalize.interrupt_state};
 			sort->Finalize(context.client, lfinalize);
@@ -578,7 +578,7 @@ static SourceResultType MaterializeHashGroupData(ExecutionContext &context, idx_
 
 	//	OVER(PARTITION BY...)
 	if (gsink.grouping_data) {
-		annotated_lock_guard<annotated_mutex> reset_guard(hash_group.scan_lock);
+		lock_guard<mutex> reset_guard(hash_group.scan_lock);
 		auto &partitions = gsink.grouping_data->GetPartitions();
 		if (hash_bin < partitions.size()) {
 			//	Release the memory now that we have finished scanning it.

@@ -39,7 +39,7 @@ public:
 	//! System and query state
 	ClientContext &client;
 	const FullSort &full_sort;
-	mutable annotated_mutex lock;
+	mutable mutex lock;
 
 	// OVER(...) (sorting)
 	HashGroupPtr hash_group;
@@ -63,7 +63,7 @@ ProgressData FullSortGlobalSinkState::GetSinkProgress(ClientContext &client, con
 	// Sort::GetSinkProgress assumes that there is only 1 sort.
 	// So we just use it to figure out how many rows have been sorted.
 	const ProgressData zero_progress;
-	annotated_lock_guard<annotated_mutex> guard(lock);
+	lock_guard<mutex> guard(lock);
 	const auto &sort = full_sort.sort;
 
 	const auto group_progress = sort->GetSinkProgress(client, *hash_group->sort_global, zero_progress);
