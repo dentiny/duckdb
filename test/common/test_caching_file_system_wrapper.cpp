@@ -49,27 +49,27 @@ public:
 		idx_t size;
 	};
 
-	mutable mutex read_calls_mutex;
+	mutable annotated_mutex read_calls_mutex;
 	vector<ReadCall> read_calls DUCKDB_GUARDED_BY(read_calls_mutex);
 
 	string GetName() const override {
 		return "TrackingFileSystem";
 	}
 	void Read(FileHandle &handle, void *buffer, int64_t nr_bytes, idx_t location) override {
-		const lock_guard<mutex> lock(read_calls_mutex);
+		const annotated_lock_guard<annotated_mutex> lock(read_calls_mutex);
 		read_calls.push_back({handle.GetPath(), location, UnsafeNumericCast<idx_t>(nr_bytes)});
 		LocalFileSystem::Read(handle, buffer, nr_bytes, location);
 	}
 
 	// Clear all read invocations track.
 	void Clear() {
-		const lock_guard<mutex> lock(read_calls_mutex);
+		const annotated_lock_guard<annotated_mutex> lock(read_calls_mutex);
 		read_calls.clear();
 	}
 
 	// Get read operation counts with the given operation to match.
 	size_t GetReadCount(const string &path, idx_t location, idx_t size) const {
-		const lock_guard<mutex> lock(read_calls_mutex);
+		const annotated_lock_guard<annotated_mutex> lock(read_calls_mutex);
 		size_t count = 0;
 		for (const auto &call : read_calls) {
 			if (call.path == path && call.location == location && call.size == size) {

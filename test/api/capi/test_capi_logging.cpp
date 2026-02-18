@@ -12,18 +12,18 @@ class CustomLogStore {
 public:
 	// Concurrent insertions.
 	void Insert(const string &msg) {
-		duckdb::lock_guard<duckdb::mutex> lck(m);
+		duckdb::annotated_lock_guard<duckdb::annotated_mutex> lck(m);
 		store.insert(msg);
 	}
 
 	// NOTE: Not concurrency-safe helper functions.
 
 	void Reset() {
-		duckdb::lock_guard<duckdb::mutex> lck(m);
+		duckdb::annotated_lock_guard<duckdb::annotated_mutex> lck(m);
 		store.clear();
 	}
 	bool Contains(const string &key) const {
-		duckdb::lock_guard<duckdb::mutex> lck(m);
+		duckdb::annotated_lock_guard<duckdb::annotated_mutex> lck(m);
 		for (const auto &elem : store) {
 			if (StringUtil::Contains(elem, key)) {
 				return true;
@@ -32,12 +32,12 @@ public:
 		return false;
 	}
 	bool Find(const string &key) const {
-		duckdb::lock_guard<duckdb::mutex> lck(m);
+		duckdb::annotated_lock_guard<duckdb::annotated_mutex> lck(m);
 		return store.find(key) != store.end();
 	}
 
 private:
-	mutable duckdb::mutex m;
+	mutable duckdb::annotated_mutex m;
 	unordered_set<string> store DUCKDB_GUARDED_BY(m);
 };
 
