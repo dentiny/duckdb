@@ -492,7 +492,8 @@ TemporaryFileManager::~TemporaryFileManager() {
 	files.Clear();
 }
 
-TemporaryFileManager::TemporaryFileManagerLock::TemporaryFileManagerLock(annotated_mutex &annotated_mutex) : lock(annotated_mutex) {
+TemporaryFileManager::TemporaryFileManagerLock::TemporaryFileManagerLock(annotated_mutex &annotated_mutex)
+    : lock(annotated_mutex) {
 }
 
 idx_t TemporaryFileManager::WriteTemporaryBuffer(block_id_t block_id, FileBuffer &buffer) {

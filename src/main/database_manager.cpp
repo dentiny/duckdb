@@ -71,7 +71,8 @@ shared_ptr<AttachedDatabase> DatabaseManager::GetDatabase(const string &name) {
 	return GetDatabaseInternal(guard, name);
 }
 
-shared_ptr<AttachedDatabase> DatabaseManager::GetDatabaseInternal(const annotated_lock_guard<annotated_mutex> &, const string &name) {
+shared_ptr<AttachedDatabase> DatabaseManager::GetDatabaseInternal(const annotated_lock_guard<annotated_mutex> &,
+                                                                  const string &name) {
 	if (StringUtil::Lower(name) == SYSTEM_CATALOG) {
 		return system;
 	}
