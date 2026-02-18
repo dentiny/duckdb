@@ -401,31 +401,36 @@ jobs:
       if: (success() || failure()) && steps.build.conclusion == 'success'
       shell: bash
       run: |
-        python3 scripts/run_tests_one_by_one.py build/release/test/unittest --verify-vector dictionary_expression --skip-compiled
+        # TODO(hjiang): Enable run test python script.
+        ./build/release/test/unittest --verify-vector dictionary_expression --skip-compiled
 
     - name: Test dictionary_operator
       if: (success() || failure()) && steps.build.conclusion == 'success'
       shell: bash
       run: |
-        python3 scripts/run_tests_one_by_one.py build/release/test/unittest --verify-vector dictionary_operator --skip-compiled
+        # TODO(hjiang): Enable run test python script.
+        ./build/release/test/unittest --verify-vector dictionary_operator --skip-compiled
 
     - name: Test constant_operator
       if: (success() || failure()) && steps.build.conclusion == 'success'
       shell: bash
       run: |
-        python3 scripts/run_tests_one_by_one.py build/release/test/unittest --verify-vector constant_operator --skip-compiled
+        # TODO(hjiang): Enable run test python script.
+        ./build/release/test/unittest --verify-vector constant_operator --skip-compiled
 
     - name: Test sequence_operator
       if: (success() || failure()) && steps.build.conclusion == 'success'
       shell: bash
       run: |
-        python3 scripts/run_tests_one_by_one.py build/release/test/unittest --verify-vector sequence_operator --skip-compiled
+        # TODO(hjiang): Enable run test python script.
+        ./build/release/test/unittest --verify-vector sequence_operator --skip-compiled
 
     - name: Test nested_shuffle
       if: (success() || failure()) && steps.build.conclusion == 'success'
       shell: bash
       run: |
-        python3 scripts/run_tests_one_by_one.py build/release/test/unittest --verify-vector nested_shuffle --skip-compiled
+        # TODO(hjiang): Enable run test python script.
+        ./build/release/test/unittest --verify-vector nested_shuffle --skip-compiled
 
     - name: Test variant_vector
       if: (success() || failure()) && steps.build.conclusion == 'success'
@@ -443,7 +448,8 @@ jobs:
       if: (success() || failure()) && steps.build.conclusion == 'success'
       shell: bash
       run: |
-        python3 scripts/run_tests_one_by_one.py build/release/test/unittest --on-init "SET debug_physical_table_scan_execution_strategy=SYNCHRONOUS;"
+        # TODO(hjiang): Enable run test python script.
+        ./build/release/test/unittest --on-init "SET debug_physical_table_scan_execution_strategy=SYNCHRONOUS;"
 
     - name: Test block prefetching
       if: (success() || failure()) && steps.build.conclusion == 'success'

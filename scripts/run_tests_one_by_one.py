@@ -69,6 +69,7 @@ parser.add_argument(
     default=True,
 )
 
+# TODO(hjiang): Currently extra_args are only used for listing tests, in the next PR I will pass proper flags to unit test executable to unblock more CI workflow using the test script.
 args, extra_args = parser.parse_known_args()
 
 if not args.unittest_program:

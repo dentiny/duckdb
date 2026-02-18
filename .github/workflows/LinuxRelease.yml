@@ -148,7 +148,8 @@ jobs:
     - name: Release specific tests
       shell: bash
       run: |
-        python3 scripts/run_tests_one_by_one.py build/release/test/unittest --select-tag release
+        # TODO(hjiang): Enable run test python script.
+        ./build/release/test/unittest --select-tag release
 
     - name: Tools Tests
       shell: bash
@@ -251,7 +252,8 @@ jobs:
           echo Tests
           python3 scripts/run_tests_one_by_one.py build/release/test/unittest \"*\" --time_execution
           echo Release specific tests
-          python3 scripts/run_tests_one_by_one.py build/release/test/unittest --select-tag release
+          # TODO(hjiang): Enable run test python script.
+          ./build/release/test/unittest --select-tag release
           echo Tools Tests
           python3 -m pytest tools/shell/tests --shell-binary build/release/duckdb
           echo Examples
