@@ -109,7 +109,7 @@ void CSVWriter::WriteChunk(DataChunk &input) {
 
 void CSVWriter::WriteRawString(const string &raw_string) {
 	if (shared) {
-		lock_guard<mutex> flock(lock);
+		annotated_lock_guard<annotated_mutex> flock(lock);
 		bytes_written += raw_string.size();
 		write_stream.WriteData(const_data_ptr_cast(raw_string.c_str()), raw_string.size());
 	} else {
@@ -135,7 +135,7 @@ void CSVWriter::WriteHeader() {
 
 void CSVWriter::Flush(CSVWriterState &local_state) {
 	if (shared) {
-		lock_guard<mutex> flock(lock);
+		annotated_lock_guard<annotated_mutex> flock(lock);
 		FlushInternal(local_state);
 	} else {
 		FlushInternal(local_state);
@@ -150,7 +150,7 @@ void CSVWriter::Flush() {
 
 void CSVWriter::Reset(optional_ptr<CSVWriterState> local_state) {
 	if (shared) {
-		lock_guard<mutex> flock(lock);
+		annotated_lock_guard<annotated_mutex> flock(lock);
 		ResetInternal(local_state);
 	} else {
 		ResetInternal(local_state);
@@ -159,7 +159,7 @@ void CSVWriter::Reset(optional_ptr<CSVWriterState> local_state) {
 
 void CSVWriter::Close() {
 	if (shared) {
-		lock_guard<mutex> flock(lock);
+		annotated_lock_guard<annotated_mutex> flock(lock);
 		if (file_writer) {
 			file_writer->Close();
 		}
@@ -199,7 +199,7 @@ void CSVWriter::ResetInternal(optional_ptr<CSVWriterState> local_state) {
 
 idx_t CSVWriter::BytesWritten() {
 	if (shared) {
-		lock_guard<mutex> flock(lock);
+		annotated_lock_guard<annotated_mutex> flock(lock);
 		return bytes_written;
 	}
 	return bytes_written;
@@ -214,7 +214,7 @@ static idx_t GetFileSize(unique_ptr<BufferedFileWriter> &file_writer, idx_t &byt
 
 idx_t CSVWriter::FileSize() {
 	if (shared) {
-		lock_guard<mutex> flock(lock);
+		annotated_lock_guard<annotated_mutex> flock(lock);
 		return GetFileSize(file_writer, bytes_written);
 	}
 	return GetFileSize(file_writer, bytes_written);

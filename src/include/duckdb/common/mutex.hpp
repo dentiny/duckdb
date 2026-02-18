@@ -13,9 +13,9 @@
 
 namespace duckdb {
 // Annotated mutex implementation.
-class DUCKDB_CAPABILITY("mutex") mutex : public internal::mutex_impl_t<mutex> {
+class DUCKDB_CAPABILITY("mutex") annotated_mutex : public internal::mutex_impl_t<annotated_mutex> {
 private:
-	using Impl = internal::mutex_impl_t<mutex>;
+	using Impl = internal::mutex_impl_t<annotated_mutex>;
 
 public:
 	void lock() DUCKDB_ACQUIRE() {
@@ -31,49 +31,49 @@ public:
 
 // Annotated lock_guard implementation.
 template <typename M>
-class DUCKDB_SCOPED_CAPABILITY lock_guard : public internal::lock_impl_t<lock_guard<M>> {
+class DUCKDB_SCOPED_CAPABILITY annotated_lock_guard : public internal::lock_impl_t<annotated_lock_guard<M>> {
 private:
-	using Impl = internal::lock_impl_t<lock_guard<M>>;
+	using Impl = internal::lock_impl_t<annotated_lock_guard<M>>;
 
 public:
-	explicit lock_guard(M &m) DUCKDB_ACQUIRE(m) : Impl(m) {
+	explicit annotated_lock_guard(M &m) DUCKDB_ACQUIRE(m) : Impl(m) {
 	}
-	lock_guard(M &m, std::adopt_lock_t t) DUCKDB_REQUIRES(m) : Impl(m, t) {
+	annotated_lock_guard(M &m, std::adopt_lock_t t) DUCKDB_REQUIRES(m) : Impl(m, t) {
 	}
 
 	// Disable copy and enable move.
-	lock_guard(const lock_guard &) = delete;
-	lock_guard &operator=(const lock_guard &) = delete;
-	lock_guard(lock_guard &&) = default;
-	lock_guard &operator=(lock_guard &&) = default;
+	annotated_lock_guard(const annotated_lock_guard &) = delete;
+	annotated_lock_guard &operator=(const annotated_lock_guard &) = delete;
+	annotated_lock_guard(annotated_lock_guard &&) = default;
+	annotated_lock_guard &operator=(annotated_lock_guard &&) = default;
 
-	~lock_guard() DUCKDB_RELEASE() = default;
+	~annotated_lock_guard() DUCKDB_RELEASE() = default;
 };
 
 // Annotated unique_lock implementation.
 template <typename M>
-class DUCKDB_SCOPED_CAPABILITY unique_lock : public internal::lock_impl_t<unique_lock<M>> {
+class DUCKDB_SCOPED_CAPABILITY annotated_unique_lock : public internal::lock_impl_t<annotated_unique_lock<M>> {
 private:
-	using Impl = internal::lock_impl_t<unique_lock<M>>;
+	using Impl = internal::lock_impl_t<annotated_unique_lock<M>>;
 
 public:
-	unique_lock() = default;
-	explicit unique_lock(M &m) DUCKDB_ACQUIRE(m) : Impl(m) {
+	annotated_unique_lock() = default;
+	explicit annotated_unique_lock(M &m) DUCKDB_ACQUIRE(m) : Impl(m) {
 	}
-	unique_lock(M &m, std::defer_lock_t t) noexcept DUCKDB_EXCLUDES(m) : Impl(m, t) {
+	annotated_unique_lock(M &m, std::defer_lock_t t) noexcept DUCKDB_EXCLUDES(m) : Impl(m, t) {
 	}
-	unique_lock(M &m, std::try_to_lock_t t) DUCKDB_TRY_ACQUIRE(true, m) : Impl(m, t) {
+	annotated_unique_lock(M &m, std::try_to_lock_t t) DUCKDB_TRY_ACQUIRE(true, m) : Impl(m, t) {
 	}
-	unique_lock(M &m, std::adopt_lock_t t) DUCKDB_REQUIRES(m) : Impl(m, t) {
+	annotated_unique_lock(M &m, std::adopt_lock_t t) DUCKDB_REQUIRES(m) : Impl(m, t) {
 	}
 
 	// Disable copy and enable move.
-	unique_lock(const unique_lock &) = delete;
-	unique_lock &operator=(const unique_lock &) = delete;
-	unique_lock(unique_lock &&) = default;
-	unique_lock &operator=(unique_lock &&) = default;
+	annotated_unique_lock(const annotated_unique_lock &) = delete;
+	annotated_unique_lock &operator=(const annotated_unique_lock &) = delete;
+	annotated_unique_lock(annotated_unique_lock &&) = default;
+	annotated_unique_lock &operator=(annotated_unique_lock &&) = default;
 
-	~unique_lock() DUCKDB_RELEASE() = default;
+	~annotated_unique_lock() DUCKDB_RELEASE() = default;
 
 	void lock() DUCKDB_ACQUIRE() {
 		Impl::lock();
@@ -93,4 +93,12 @@ public:
 		Impl::unlock();
 	}
 };
+
+// Unannotated aliases - use these when thread safety analysis does not work well.
+using mutex = std::mutex;
+template <typename M = std::mutex>
+using lock_guard = std::lock_guard<M>;
+template <typename M = std::mutex>
+using unique_lock = std::unique_lock<M>;
+
 } // namespace duckdb

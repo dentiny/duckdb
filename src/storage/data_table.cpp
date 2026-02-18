@@ -91,7 +91,7 @@ DataTable::DataTable(ClientContext &context, DataTable &parent, ColumnDefinition
 	default_executor.AddExpression(default_value);
 
 	// prevent any new tuples from being added to the parent
-	lock_guard<mutex> parent_lock(parent.append_lock);
+	annotated_lock_guard<annotated_mutex> parent_lock(parent.append_lock);
 
 	this->row_groups = parent.row_groups->AddColumn(context, new_column, default_executor);
 
@@ -106,7 +106,7 @@ DataTable::DataTable(ClientContext &context, DataTable &parent, idx_t removed_co
     : db(parent.db), info(parent.info), version(DataTableVersion::MAIN_TABLE) {
 	// prevent any new tuples from being added to the parent
 	auto &local_storage = LocalStorage::Get(context, db);
-	lock_guard<mutex> parent_lock(parent.append_lock);
+	annotated_lock_guard<annotated_mutex> parent_lock(parent.append_lock);
 
 	for (auto &column_def : parent.column_definitions) {
 		column_definitions.emplace_back(column_def.Copy());
@@ -158,7 +158,7 @@ DataTable::DataTable(ClientContext &context, DataTable &parent, BoundConstraint 
 	info->BindIndexes(context);
 
 	auto &local_storage = LocalStorage::Get(context, db);
-	lock_guard<mutex> parent_lock(parent.append_lock);
+	annotated_lock_guard<annotated_mutex> parent_lock(parent.append_lock);
 	for (auto &column_def : parent.column_definitions) {
 		column_definitions.emplace_back(column_def.Copy());
 	}
@@ -175,7 +175,7 @@ DataTable::DataTable(ClientContext &context, DataTable &parent, idx_t changed_id
     : db(parent.db), info(parent.info), version(DataTableVersion::MAIN_TABLE) {
 	auto &local_storage = LocalStorage::Get(context, db);
 	// prevent any tuples from being added to the parent
-	lock_guard<mutex> lock(append_lock);
+	annotated_lock_guard<annotated_mutex> lock(append_lock);
 	for (auto &column_def : parent.column_definitions) {
 		column_definitions.emplace_back(column_def.Copy());
 	}
@@ -388,12 +388,12 @@ string DataTableInfo::GetSchemaName() {
 }
 
 string DataTableInfo::GetTableName() {
-	lock_guard<mutex> l(name_lock);
+	annotated_lock_guard<annotated_mutex> l(name_lock);
 	return table;
 }
 
 void DataTableInfo::SetTableName(string name) {
-	lock_guard<mutex> l(name_lock);
+	annotated_lock_guard<annotated_mutex> l(name_lock);
 	table = std::move(name);
 }
 
@@ -698,7 +698,7 @@ void DataTable::VerifyUniqueIndexes(TableIndexList &indexes, optional_ptr<LocalT
 			D_ASSERT(index.IsBound());
 			auto &art = index.Cast<ART>();
 
-			lock_guard<mutex> guard(entry.lock);
+			annotated_lock_guard<annotated_mutex> guard(entry.lock);
 			IndexAppendInfo index_append_info;
 			if (storage) {
 				auto delete_index = storage->delete_indexes.Find(art.GetIndexName());
@@ -1016,7 +1016,7 @@ void DataTable::LocalAppend(TableCatalogEntry &table, ClientContext &context, Co
 }
 
 void DataTable::AppendLock(DuckTransaction &transaction, TableAppendState &state) {
-	state.append_lock = unique_lock<mutex>(append_lock);
+	state.append_lock = annotated_unique_lock<annotated_mutex>(append_lock);
 	if (!IsMainTable()) {
 		throw TransactionException("Transaction conflict: attempting to insert into table \"%s\" but it has been %s by "
 		                           "a different transaction",
@@ -1157,7 +1157,7 @@ void DataTable::WriteToLog(DuckTransaction &transaction, WriteAheadLog &log, idx
 }
 
 void DataTable::CommitAppend(transaction_t commit_id, idx_t row_start, idx_t count) {
-	lock_guard<mutex> lock(append_lock);
+	annotated_lock_guard<annotated_mutex> lock(append_lock);
 	row_groups->CommitAppend(commit_id, row_start, count);
 }
 
@@ -1168,7 +1168,7 @@ void DataTable::RevertAppendInternal(idx_t start_row) {
 }
 
 void DataTable::RevertAppend(DuckTransaction &transaction, idx_t start_row, idx_t count) {
-	lock_guard<mutex> lock(append_lock);
+	annotated_lock_guard<annotated_mutex> lock(append_lock);
 	auto table_lock = transaction.SharedLockTable(*info);
 
 	// revert any appends to indexes
@@ -1182,7 +1182,7 @@ void DataTable::RevertAppend(DuckTransaction &transaction, idx_t start_row, idx_
 				row_data[i] = NumericCast<row_t>(current_row_base + i);
 			}
 			for (auto &entry : info->indexes.IndexEntries()) {
-				lock_guard<mutex> guard(entry.lock);
+				annotated_lock_guard<annotated_mutex> guard(entry.lock);
 				auto &index = *entry.index;
 				optional_ptr<BoundIndex> remove_index;
 				if (entry.added_data_during_checkpoint) {
@@ -1230,7 +1230,7 @@ ErrorData DataTable::AppendToIndexes(TableIndexList &indexes, optional_ptr<Table
 	// Append the entries to the indexes.
 	ErrorData error;
 	for (auto &entry : indexes.IndexEntries()) {
-		lock_guard<mutex> guard(entry.lock);
+		annotated_lock_guard<annotated_mutex> guard(entry.lock);
 		auto &index = *entry.index;
 		if (!index.IsBound()) {
 			// Buffer only the key columns, and store their mapping.

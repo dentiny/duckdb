@@ -53,7 +53,7 @@ public:
 	bool HasParserExtensions() const;
 
 private:
-	mutex registry_lock;
+	annotated_mutex registry_lock;
 	shared_ptr<ExtensionCallbackRegistry> callback_registry;
 };
 

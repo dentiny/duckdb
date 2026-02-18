@@ -198,7 +198,7 @@ protected:
 	idx_t count;
 	idx_t data_size;
 
-	mutex lock;
+	annotated_mutex lock;
 	unsafe_vector<unique_ptr<TupleDataCollection>> partitions;
 
 public:

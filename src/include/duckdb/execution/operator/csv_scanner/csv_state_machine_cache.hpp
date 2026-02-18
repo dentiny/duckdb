@@ -90,7 +90,7 @@ private:
 	unordered_map<CSVStateMachineOptions, StateMachine, HashCSVStateMachineConfig> state_machine_cache;
 	//! Default value for options used to initialize CSV State Machine Cache
 
-	//! Because the state machine cache can be accessed in Parallel we need a mutex.
-	mutex main_mutex;
+	//! Because the state machine cache can be accessed in Parallel we need a annotated_mutex.
+	annotated_mutex main_mutex;
 };
 } // namespace duckdb

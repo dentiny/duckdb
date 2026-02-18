@@ -55,7 +55,7 @@ public:
 	    : updated_count(0), return_collection(context, return_types) {
 	}
 
-	mutex lock;
+	annotated_mutex lock;
 	atomic<idx_t> updated_count;
 	unordered_set<row_t> updated_rows;
 	ColumnDataCollection return_collection;
@@ -142,7 +142,7 @@ SinkResultType PhysicalUpdate::Sink(ExecutionContext &context, DataChunk &chunk,
 		table.Update(update_state, context.client, row_ids, columns, update_chunk);
 
 		if (return_chunk) {
-			lock_guard<mutex> glock(g_state.lock);
+			annotated_lock_guard<annotated_mutex> glock(g_state.lock);
 			g_state.return_collection.Append(mock_chunk);
 		}
 		g_state.updated_count += chunk.size();
@@ -158,7 +158,7 @@ SinkResultType PhysicalUpdate::Sink(ExecutionContext &context, DataChunk &chunk,
 	idx_t update_count = 0;
 	auto row_id_data = FlatVector::GetData<row_t>(row_ids);
 
-	lock_guard<mutex> glock(g_state.lock);
+	annotated_lock_guard<annotated_mutex> glock(g_state.lock);
 	for (idx_t i = 0; i < update_chunk.size(); i++) {
 		auto row_id = row_id_data[i];
 		const auto is_new = g_state.updated_rows.insert(row_id).second;

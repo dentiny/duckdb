@@ -28,7 +28,7 @@ public:
 	explicit InsertGlobalState(ClientContext &context, const vector<LogicalType> &return_types, DuckTableEntry &table);
 
 public:
-	mutex lock;
+	annotated_mutex lock;
 	DuckTableEntry &table;
 	idx_t insert_count;
 	ColumnDataCollection return_collection;

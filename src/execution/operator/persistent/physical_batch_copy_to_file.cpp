@@ -77,8 +77,8 @@ public:
 
 	BatchMemoryManager memory_manager;
 	BatchTaskManager<BatchCopyTask> task_manager;
-	mutex lock;
-	mutex flush_lock;
+	annotated_mutex lock;
+	annotated_mutex flush_lock;
 	//! Whether or not the copy has been initialized
 	atomic<bool> initialized;
 	//! The total number of rows copied to the file
@@ -108,7 +108,7 @@ public:
 		if (initialized) {
 			return;
 		}
-		lock_guard<mutex> guard(lock);
+		annotated_lock_guard<annotated_mutex> guard(lock);
 		if (initialized) {
 			return;
 		}
@@ -128,7 +128,7 @@ public:
 
 	void AddBatchData(idx_t batch_index, unique_ptr<PreparedBatchData> new_batch, idx_t memory_usage) {
 		// move the batch data to the set of prepared batch data
-		lock_guard<mutex> l(lock);
+		annotated_lock_guard<annotated_mutex> l(lock);
 		auto prepared_data = make_uniq<FixedPreparedBatchData>();
 		prepared_data->prepared_data = std::move(new_batch);
 		prepared_data->memory_usage = memory_usage;
@@ -191,7 +191,7 @@ SinkResultType PhysicalBatchCopyToFile::Sink(ExecutionContext &context, DataChun
 		FlushBatchData(context.client, gstate);
 
 		if (!memory_manager.IsMinimumBatchIndex(batch_index) && memory_manager.OutOfMemory(batch_index)) {
-			const lock_guard<mutex> guard {memory_manager.lock};
+			const annotated_lock_guard<annotated_mutex> guard {memory_manager.lock};
 			if (!memory_manager.IsMinimumBatchIndex(batch_index)) {
 				// no tasks to process, we are not the minimum batch index and we have no memory available to buffer
 				// block the task for now
@@ -244,7 +244,7 @@ SinkCombineResultType PhysicalBatchCopyToFile::Combine(ExecutionContext &context
 
 	if (!gstate.any_finished) {
 		// signal that this thread is finished processing batches and that we should move on to Finalize
-		lock_guard<mutex> l(gstate.lock);
+		annotated_lock_guard<annotated_mutex> l(gstate.lock);
 		gstate.any_finished = true;
 	}
 	memory_manager.UpdateMinBatchIndex(state.partition_info.min_batch_index.GetIndex());
@@ -393,7 +393,7 @@ void PhysicalBatchCopyToFile::AddRawBatchData(ClientContext &context, GlobalSink
 	auto &gstate = gstate_p.Cast<FixedBatchCopyGlobalState>();
 
 	// add the batch index to the set of raw batches
-	lock_guard<mutex> l(gstate.lock);
+	annotated_lock_guard<annotated_mutex> l(gstate.lock);
 	auto entry = gstate.raw_batches.insert(make_pair(batch_index, std::move(raw_batch)));
 	if (!entry.second) {
 		throw InternalException("Duplicate batch index %llu encountered in PhysicalFixedBatchCopy", batch_index);
@@ -414,7 +414,7 @@ void PhysicalBatchCopyToFile::RepartitionBatches(ClientContext &context, GlobalS
 	auto &task_manager = gstate.task_manager;
 
 	// repartition batches until the min index is reached
-	lock_guard<mutex> l(gstate.lock);
+	annotated_lock_guard<annotated_mutex> l(gstate.lock);
 	if (gstate.raw_batches.empty()) {
 		return;
 	}
@@ -520,7 +520,7 @@ void PhysicalBatchCopyToFile::FlushBatchData(ClientContext &context, GlobalSinkS
 	// grab the flush lock - we can only call flush_batch with this lock
 	// otherwise the data might end up in the wrong order
 	{
-		lock_guard<mutex> l(gstate.flush_lock);
+		annotated_lock_guard<annotated_mutex> l(gstate.flush_lock);
 		if (gstate.any_flushing) {
 			return;
 		}
@@ -530,7 +530,7 @@ void PhysicalBatchCopyToFile::FlushBatchData(ClientContext &context, GlobalSinkS
 	while (true) {
 		unique_ptr<FixedPreparedBatchData> batch_data;
 		{
-			lock_guard<mutex> l(gstate.lock);
+			annotated_lock_guard<annotated_mutex> l(gstate.lock);
 			if (gstate.batch_data.empty()) {
 				// no batch data left to flush
 				break;
@@ -593,7 +593,7 @@ void PhysicalBatchCopyToFile::AddLocalBatch(ClientContext &context, GlobalSinkSt
 	// unblock tasks so they can help process batches (if any are blocked)
 	bool any_unblocked;
 	{
-		const lock_guard<mutex> guard {memory_manager.lock};
+		const annotated_lock_guard<annotated_mutex> guard {memory_manager.lock};
 		any_unblocked = memory_manager.UnblockTasks();
 	}
 	// if any threads were unblocked they can pick up execution of the tasks

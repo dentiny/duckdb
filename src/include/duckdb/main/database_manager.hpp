@@ -104,7 +104,7 @@ public:
 	//! Gets a list of all attached database paths
 	vector<string> GetAttachedDatabasePaths();
 
-	shared_ptr<AttachedDatabase> GetDatabaseInternal(const lock_guard<mutex> &, const string &name);
+	shared_ptr<AttachedDatabase> GetDatabaseInternal(const annotated_lock_guard<annotated_mutex> &, const string &name);
 
 private:
 	optional_ptr<AttachedDatabase> FinalizeAttach(ClientContext &context, AttachInfo &info,
@@ -115,7 +115,7 @@ private:
 	//! The system database is a special database that holds system entries (e.g. functions)
 	shared_ptr<AttachedDatabase> system;
 	//! Lock for databases
-	mutex databases_lock;
+	annotated_mutex databases_lock;
 	//! The set of attached databases
 	case_insensitive_map_t<shared_ptr<AttachedDatabase>> databases;
 	//! The next object id handed out by the NextOid method

@@ -24,7 +24,7 @@ struct TupleDataSegment;
 
 struct TupleDataChunkPart {
 public:
-	explicit TupleDataChunkPart(mutex &lock);
+	explicit TupleDataChunkPart(annotated_mutex &lock);
 
 	//! Disable copy constructors
 	TupleDataChunkPart(const TupleDataChunkPart &other) = delete;
@@ -51,7 +51,7 @@ public:
 	//! Tuple count for this chunk part
 	uint32_t count;
 	//! Lock for recomputing heap pointers
-	reference<mutex> lock;
+	reference<annotated_mutex> lock;
 
 private:
 	//! Marker for empty heaps
@@ -114,7 +114,7 @@ private:
 
 struct TupleDataChunk {
 public:
-	explicit TupleDataChunk(mutex &lock_p);
+	explicit TupleDataChunk(annotated_mutex &lock_p);
 
 	//! Disable copy constructors
 	TupleDataChunk(const TupleDataChunk &other) = delete;
@@ -142,7 +142,7 @@ public:
 	//! Tuple count for this chunk
 	idx_t count;
 	//! Lock for recomputing heap pointers
-	reference<mutex> lock;
+	reference<annotated_mutex> lock;
 };
 
 struct TupleDataSegment {
@@ -181,7 +181,7 @@ public:
 	idx_t data_size;
 
 	//! Lock for modifying pinned_handles
-	mutex pinned_handles_lock;
+	annotated_mutex pinned_handles_lock;
 	//! Where handles to row blocks will be stored with TupleDataPinProperties::KEEP_EVERYTHING_PINNED
 	unsafe_arena_vector<BufferHandle> pinned_row_handles;
 	//! Where handles to heap blocks will be stored with TupleDataPinProperties::KEEP_EVERYTHING_PINNED

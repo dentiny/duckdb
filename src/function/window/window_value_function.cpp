@@ -30,14 +30,14 @@ public:
 	}
 
 	void Finalize(CollectionPtr collection) {
-		lock_guard<mutex> ignore_nulls_guard(lock);
+		annotated_lock_guard<annotated_mutex> ignore_nulls_guard(lock);
 		if (child_idx != DConstants::INVALID_INDEX && executor.IgnoreNulls()) {
 			ignore_nulls = &collection->validities[child_idx];
 		}
 	}
 
 	// IGNORE NULLS
-	mutex lock;
+	annotated_mutex lock;
 	ValidityMask all_valid;
 	optional_ptr<ValidityMask> ignore_nulls;
 

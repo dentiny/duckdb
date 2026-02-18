@@ -26,7 +26,7 @@ public:
 
 	ColumnDataCollection rhs_materialized;
 	ColumnDataAppendState append_state;
-	mutex rhs_lock;
+	annotated_mutex rhs_lock;
 };
 
 unique_ptr<GlobalSinkState> PhysicalCrossProduct::GetGlobalSinkState(ClientContext &context) const {
@@ -35,7 +35,7 @@ unique_ptr<GlobalSinkState> PhysicalCrossProduct::GetGlobalSinkState(ClientConte
 
 SinkResultType PhysicalCrossProduct::Sink(ExecutionContext &context, DataChunk &chunk, OperatorSinkInput &input) const {
 	auto &sink = input.global_state.Cast<CrossProductGlobalState>();
-	lock_guard<mutex> client_guard(sink.rhs_lock);
+	annotated_lock_guard<annotated_mutex> client_guard(sink.rhs_lock);
 	sink.rhs_materialized.Append(sink.append_state, chunk);
 	return SinkResultType::NEED_MORE_INPUT;
 }

@@ -79,7 +79,7 @@ private:
 	const data_ptr_t virtual_memory_space;
 
 	//! Mutex for modifying physical memory size
-	mutex physical_memory_lock;
+	annotated_mutex physical_memory_lock;
 	//! Size of the physical memory
 	atomic<idx_t> physical_memory_size;
 

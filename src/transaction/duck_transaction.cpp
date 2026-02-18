@@ -140,7 +140,7 @@ UndoBufferReference DuckTransaction::CreateUpdateInfo(idx_t type_size, DataTable
 }
 
 void DuckTransaction::PushSequenceUsage(SequenceCatalogEntry &sequence, const SequenceData &data) {
-	lock_guard<mutex> l(sequence_lock);
+	annotated_lock_guard<annotated_mutex> l(sequence_lock);
 	auto entry = sequence_usage.find(sequence);
 	if (entry == sequence_usage.end()) {
 		auto undo_entry = undo_buffer.CreateEntry(UndoFlags::SEQUENCE_VALUE, sizeof(SequenceValue));
@@ -158,7 +158,7 @@ void DuckTransaction::PushSequenceUsage(SequenceCatalogEntry &sequence, const Se
 }
 
 void DuckTransaction::ModifyTable(DataTable &tbl) {
-	lock_guard<mutex> guard(modified_tables_lock);
+	annotated_lock_guard<annotated_mutex> guard(modified_tables_lock);
 	auto table_ref = reference<DataTable>(tbl);
 	auto entry = modified_tables.find(table_ref);
 	if (entry != modified_tables.end()) {
@@ -326,14 +326,14 @@ unique_ptr<StorageLockKey> DuckTransaction::TryGetCheckpointLock() {
 }
 
 shared_ptr<CheckpointLock> DuckTransaction::SharedLockTable(DataTableInfo &info) {
-	unique_lock<mutex> transaction_lock(active_locks_lock);
+	annotated_unique_lock<annotated_mutex> transaction_lock(active_locks_lock);
 	auto entry = active_locks.find(info);
 	if (entry == active_locks.end()) {
 		entry = active_locks.insert(entry, make_pair(std::ref(info), make_uniq<ActiveTableLock>()));
 	}
 	auto &active_table_lock = *entry->second;
 	transaction_lock.unlock(); // release transaction-level lock before acquiring table-level lock
-	lock_guard<mutex> table_lock(active_table_lock.checkpoint_lock_mutex);
+	annotated_lock_guard<annotated_mutex> table_lock(active_table_lock.checkpoint_lock_mutex);
 	auto checkpoint_lock = active_table_lock.checkpoint_lock.lock();
 	// check if it is expired (or has never been acquired yet)
 	if (checkpoint_lock) {

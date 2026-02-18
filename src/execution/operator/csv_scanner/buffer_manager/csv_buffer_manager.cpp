@@ -51,7 +51,7 @@ bool CSVBufferManager::ReadNextAndCacheIt() {
 }
 
 shared_ptr<CSVBufferHandle> CSVBufferManager::GetBuffer(const idx_t pos) {
-	lock_guard<mutex> parallel_lock(main_mutex);
+	annotated_lock_guard<annotated_mutex> parallel_lock(main_mutex);
 	if (pos == 0 && done && cached_buffers.empty()) {
 		if (is_pipe) {
 			throw InvalidInputException("Recursive CTEs are not allowed when using piped csv files");
@@ -80,7 +80,7 @@ shared_ptr<CSVBufferHandle> CSVBufferManager::GetBuffer(const idx_t pos) {
 }
 
 void CSVBufferManager::ResetBuffer(const idx_t buffer_idx) {
-	lock_guard<mutex> parallel_lock(main_mutex);
+	annotated_lock_guard<annotated_mutex> parallel_lock(main_mutex);
 	if (buffer_idx >= cached_buffers.size()) {
 		// Nothing to reset
 		return;

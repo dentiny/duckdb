@@ -13,7 +13,7 @@ PhysicalMaterializedCollector::PhysicalMaterializedCollector(PhysicalPlan &physi
 
 class MaterializedCollectorGlobalState : public GlobalSinkState {
 public:
-	mutex glock;
+	annotated_mutex glock;
 	unique_ptr<ColumnDataCollection> collection;
 	shared_ptr<ClientContext> context;
 };
@@ -39,7 +39,7 @@ SinkCombineResultType PhysicalMaterializedCollector::Combine(ExecutionContext &c
 		return SinkCombineResultType::FINISHED;
 	}
 
-	lock_guard<mutex> l(gstate.glock);
+	annotated_lock_guard<annotated_mutex> l(gstate.glock);
 	if (!gstate.collection) {
 		gstate.collection = std::move(lstate.collection);
 	} else {

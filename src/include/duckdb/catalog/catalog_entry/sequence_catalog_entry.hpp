@@ -67,7 +67,7 @@ public:
 
 private:
 	//! Lock for getting a value on the sequence
-	mutable mutex lock;
+	mutable annotated_mutex lock;
 	//! Sequence data
 	SequenceData data;
 };

@@ -30,7 +30,7 @@ struct ProducerToken {
 
 	TaskScheduler &scheduler;
 	unique_ptr<QueueProducerToken> token;
-	mutex producer_lock;
+	annotated_mutex producer_lock;
 };
 
 //! The TaskScheduler is responsible for managing tasks and threads
@@ -97,7 +97,7 @@ private:
 	//! The task queue
 	unique_ptr<ConcurrentQueue> queue;
 	//! Lock for modifying the thread count
-	mutex thread_lock;
+	annotated_mutex thread_lock;
 	//! The active background threads of the task scheduler
 	vector<unique_ptr<SchedulerThread>> threads;
 	//! Markers used by the various threads, if the markers are set to "false" the thread execution is stopped

@@ -15,7 +15,7 @@ SimpleBufferedData::~SimpleBufferedData() {
 }
 
 void SimpleBufferedData::BlockSink(const InterruptState &blocked_sink) {
-	lock_guard<mutex> lock(glock);
+	annotated_lock_guard<annotated_mutex> lock(glock);
 	blocked_sinks.push(blocked_sink);
 }
 
@@ -34,7 +34,7 @@ void SimpleBufferedData::UnblockSinks() {
 		return;
 	}
 	// Reschedule enough blocked sinks to populate the buffer
-	lock_guard<mutex> lock(glock);
+	annotated_lock_guard<annotated_mutex> lock(glock);
 	while (!blocked_sinks.empty()) {
 		auto &blocked_sink = blocked_sinks.front();
 		if (buffered_count >= BufferSize()) {
@@ -91,7 +91,7 @@ unique_ptr<DataChunk> SimpleBufferedData::Scan() {
 		return nullptr;
 	}
 
-	lock_guard<mutex> lock(glock);
+	annotated_lock_guard<annotated_mutex> lock(glock);
 	if (buffered_chunks.empty()) {
 		Close();
 		return nullptr;
@@ -112,7 +112,7 @@ void SimpleBufferedData::Append(const DataChunk &to_append) {
 	to_append.Copy(*chunk, 0);
 	auto allocation_size = chunk->GetAllocationSize();
 
-	unique_lock<mutex> lock(glock);
+	annotated_unique_lock<annotated_mutex> lock(glock);
 	buffered_count += allocation_size;
 	buffered_chunks.push(std::move(chunk));
 }

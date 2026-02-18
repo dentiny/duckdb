@@ -44,7 +44,7 @@ public:
 
 private:
 	//! The lock to add entries to the db_paths map
-	mutable mutex db_paths_lock;
+	mutable annotated_mutex db_paths_lock;
 	//! A set containing all attached database path
 	//! This allows to attach many databases efficiently, and to avoid attaching the
 	//! same file path twice

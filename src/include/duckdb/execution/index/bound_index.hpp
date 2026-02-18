@@ -212,7 +212,7 @@ public:
 
 protected:
 	//! Lock used for any changes to the index
-	mutex lock;
+	annotated_mutex lock;
 
 	//! The vector of bound expressions to generate the Index keys based on a data chunk.
 	//! The leaves of the bound expressions are BoundReferenceExpressions.

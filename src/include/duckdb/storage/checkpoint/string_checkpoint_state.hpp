@@ -59,7 +59,7 @@ public:
 	reference<StringBlock> FindOverflowBlock(block_id_t block_id);
 
 private:
-	mutex block_lock;
+	annotated_mutex block_lock;
 	unordered_map<block_id_t, shared_ptr<BlockHandle>> handles;
 
 	StorageLock overflow_blocks_lock;

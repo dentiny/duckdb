@@ -82,7 +82,7 @@ public:
 	//! The resulting sorted data
 	unique_ptr<ColumnDataCollection> sorted;
 	//! Finalize guard
-	mutable mutex lock;
+	mutable annotated_mutex lock;
 	//! Local sort set
 	mutable vector<LocalSortStatePtr> local_sinks;
 	//! Finalize stage

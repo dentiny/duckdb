@@ -262,19 +262,19 @@ void LocalTableStorage::AppendToIndexes(DuckTransaction &transaction, TableAppen
 }
 
 PhysicalIndex LocalTableStorage::CreateOptimisticCollection(unique_ptr<OptimisticWriteCollection> collection) {
-	lock_guard<mutex> l(collections_lock);
+	annotated_lock_guard<annotated_mutex> l(collections_lock);
 	optimistic_collections.push_back(std::move(collection));
 	return PhysicalIndex(optimistic_collections.size() - 1);
 }
 
 OptimisticWriteCollection &LocalTableStorage::GetOptimisticCollection(const PhysicalIndex collection_index) {
-	lock_guard<mutex> l(collections_lock);
+	annotated_lock_guard<annotated_mutex> l(collections_lock);
 	auto &collection = optimistic_collections[collection_index.index];
 	return *collection;
 }
 
 void LocalTableStorage::ResetOptimisticCollection(const PhysicalIndex collection_index) {
-	lock_guard<mutex> l(collections_lock);
+	annotated_lock_guard<annotated_mutex> l(collections_lock);
 	optimistic_collections[collection_index.index].reset();
 }
 
@@ -299,13 +299,13 @@ void LocalTableStorage::Rollback() {
 // LocalTableManager
 //===--------------------------------------------------------------------===//
 optional_ptr<LocalTableStorage> LocalTableManager::GetStorage(DataTable &table) const {
-	lock_guard<mutex> l(table_storage_lock);
+	annotated_lock_guard<annotated_mutex> l(table_storage_lock);
 	auto entry = table_storage.find(table);
 	return entry == table_storage.end() ? nullptr : entry->second.get();
 }
 
 LocalTableStorage &LocalTableManager::GetOrCreateStorage(ClientContext &context, DataTable &table) {
-	lock_guard<mutex> l(table_storage_lock);
+	annotated_lock_guard<annotated_mutex> l(table_storage_lock);
 	auto entry = table_storage.find(table);
 	if (entry == table_storage.end()) {
 		auto new_storage = make_shared_ptr<LocalTableStorage>(context, table);
@@ -318,12 +318,12 @@ LocalTableStorage &LocalTableManager::GetOrCreateStorage(ClientContext &context,
 }
 
 bool LocalTableManager::IsEmpty() const {
-	lock_guard<mutex> l(table_storage_lock);
+	annotated_lock_guard<annotated_mutex> l(table_storage_lock);
 	return table_storage.empty();
 }
 
 shared_ptr<LocalTableStorage> LocalTableManager::MoveEntry(DataTable &table) {
-	lock_guard<mutex> l(table_storage_lock);
+	annotated_lock_guard<annotated_mutex> l(table_storage_lock);
 	auto entry = table_storage.find(table);
 	if (entry == table_storage.end()) {
 		return nullptr;
@@ -334,12 +334,12 @@ shared_ptr<LocalTableStorage> LocalTableManager::MoveEntry(DataTable &table) {
 }
 
 reference_map_t<DataTable, shared_ptr<LocalTableStorage>> LocalTableManager::MoveEntries() {
-	lock_guard<mutex> l(table_storage_lock);
+	annotated_lock_guard<annotated_mutex> l(table_storage_lock);
 	return std::move(table_storage);
 }
 
 idx_t LocalTableManager::EstimatedSize() const {
-	lock_guard<mutex> l(table_storage_lock);
+	annotated_lock_guard<annotated_mutex> l(table_storage_lock);
 	idx_t estimated_size = 0;
 	for (auto &storage : table_storage) {
 		estimated_size += storage.second->EstimatedSize();
@@ -348,7 +348,7 @@ idx_t LocalTableManager::EstimatedSize() const {
 }
 
 void LocalTableManager::InsertEntry(DataTable &table, shared_ptr<LocalTableStorage> entry) {
-	lock_guard<mutex> l(table_storage_lock);
+	annotated_lock_guard<annotated_mutex> l(table_storage_lock);
 	D_ASSERT(table_storage.find(table) == table_storage.end());
 	table_storage[table] = std::move(entry);
 }

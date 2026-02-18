@@ -36,7 +36,7 @@ public:
 		}
 	}
 
-	mutex delete_lock;
+	annotated_mutex delete_lock;
 	idx_t deleted_count;
 	ColumnDataCollection return_collection;
 	unordered_set<row_t> deleted_row_ids;
@@ -70,7 +70,7 @@ SinkResultType PhysicalDelete::Sink(ExecutionContext &context, DataChunk &chunk,
 
 	auto &row_ids = chunk.data[row_id_index];
 
-	lock_guard<mutex> delete_guard(g_state.delete_lock);
+	annotated_lock_guard<annotated_mutex> delete_guard(g_state.delete_lock);
 	if (!return_chunk && !g_state.has_unique_indexes) {
 		g_state.deleted_count += table.Delete(*l_state.delete_state, context.client, row_ids, chunk.size());
 		return SinkResultType::NEED_MORE_INPUT;

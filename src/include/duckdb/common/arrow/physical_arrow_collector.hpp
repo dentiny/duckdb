@@ -14,7 +14,7 @@ public:
 	//! The result returned by GetResult
 	unique_ptr<QueryResult> result;
 	vector<unique_ptr<ArrowArrayWrapper>> chunks;
-	mutex glock;
+	annotated_mutex glock;
 	shared_ptr<ClientContext> context;
 	idx_t tuple_count = 0;
 };

@@ -124,7 +124,7 @@ private:
 	//! Whether this ColumnDataAllocator is shared across ColumnDataCollections that allocate in parallel
 	bool shared = false;
 	//! Lock used in case this ColumnDataAllocator is shared across threads
-	mutex lock;
+	annotated_mutex lock;
 	//! Total allocated size
 	idx_t allocated_size = 0;
 	//! Partition index (optional, if partitioned)

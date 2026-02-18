@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Bind annotated mutex and lock type with standard implementation, so that duckdb::unique_lock<duckdb::mutex> could
+// Bind annotated mutex and lock type with standard implementation, so that duckdb::annotated_unique_lock<duckdb::annotated_mutex> could
 // inherit std::unique_lock<std::mutex>.
 
 #pragma once
@@ -16,13 +16,13 @@
 namespace duckdb {
 
 // Forward declaration for annotated mutex types.
-class mutex;
+class annotated_mutex;
 
 // Forward declaration for annotated lock types.
 template <typename M>
-class unique_lock;
+class annotated_unique_lock;
 template <typename M>
-class lock_guard;
+class annotated_lock_guard;
 
 namespace internal {
 
@@ -36,7 +36,7 @@ using standard_impl_t = typename standard_impl<T>::type;
 
 // Specialization for `std::mutex`.
 template <>
-struct standard_impl<::duckdb::mutex> {
+struct standard_impl<::duckdb::annotated_mutex> {
 	using type = std::mutex;
 };
 
@@ -46,13 +46,13 @@ using mutex_impl_t = standard_impl_t<M>;
 
 // Specialization for `std::unique_lock`.
 template <typename M>
-struct standard_impl<::duckdb::unique_lock<M>> {
+struct standard_impl<::duckdb::annotated_unique_lock<M>> {
 	using type = std::unique_lock<mutex_impl_t<M>>;
 };
 
 // Specialization for `std::lock_guard`.
 template <typename M>
-struct standard_impl<::duckdb::lock_guard<M>> {
+struct standard_impl<::duckdb::annotated_lock_guard<M>> {
 	using type = std::lock_guard<mutex_impl_t<M>>;
 };
 

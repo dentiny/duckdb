@@ -182,7 +182,7 @@ private:
 	bool ExpandNextPathInternal() const;
 
 protected:
-	mutable mutex lock;
+	mutable annotated_mutex lock;
 	//! The expanded files
 	mutable vector<OpenFileInfo> expanded_files;
 	//! Whether or not all files have been expanded

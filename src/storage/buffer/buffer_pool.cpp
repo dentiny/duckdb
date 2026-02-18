@@ -85,7 +85,7 @@ public:
 	//! Garbage collect dead nodes in the eviction queue.
 	void Purge();
 	template <typename FN>
-	void IterateUnloadableBlocks(FN fn) DUCKDB_NO_THREAD_SAFETY_ANALYSIS;
+	void IterateUnloadableBlocks(FN fn);
 
 	//! Increment the dead node counter in the purge queue.
 	inline void IncrementDeadNodes() {

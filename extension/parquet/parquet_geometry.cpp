@@ -190,7 +190,7 @@ void GeoParquetFileMetadata::AddGeoParquetStats(ClientContext &context, const st
                                                 const LogicalType &type, const GeometryStatsData &stats,
                                                 GeoParquetVersion version) {
 	// Lock the metadata
-	lock_guard<mutex> glock(write_lock);
+	annotated_lock_guard<annotated_mutex> glock(write_lock);
 
 	const auto it = geometry_columns.find(column_name);
 	if (it == geometry_columns.end()) {

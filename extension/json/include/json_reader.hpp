@@ -296,7 +296,7 @@ private:
 	unique_ptr<JSONError> error;
 
 public:
-	mutable mutex lock;
+	mutable annotated_mutex lock;
 };
 
 } // namespace duckdb

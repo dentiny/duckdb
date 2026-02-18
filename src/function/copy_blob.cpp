@@ -57,7 +57,7 @@ unique_ptr<FunctionData> WriteBlobBind(ClientContext &context, CopyFunctionBindI
 //----------------------------------------------------------------------------------------------------------------------
 struct WriteBlobGlobalState final : public GlobalFunctionData {
 	unique_ptr<FileHandle> handle;
-	mutex lock;
+	annotated_mutex lock;
 };
 
 unique_ptr<GlobalFunctionData> WriteBlobInitializeGlobal(ClientContext &context, FunctionData &bind_data,
@@ -91,7 +91,7 @@ void WriteBlobSink(ExecutionContext &context, FunctionData &bind_data, GlobalFun
 	D_ASSERT(input.ColumnCount() == 1);
 
 	auto &state = gstate.Cast<WriteBlobGlobalState>();
-	lock_guard<mutex> glock(state.lock);
+	annotated_lock_guard<annotated_mutex> glock(state.lock);
 
 	auto &handle = state.handle;
 
@@ -132,7 +132,7 @@ void WriteBlobCombine(ExecutionContext &context, FunctionData &bind_data, Global
 //----------------------------------------------------------------------------------------------------------------------
 void WriteBlobFinalize(ClientContext &context, FunctionData &bind_data, GlobalFunctionData &gstate) {
 	auto &state = gstate.Cast<WriteBlobGlobalState>();
-	lock_guard<mutex> glock(state.lock);
+	annotated_lock_guard<annotated_mutex> glock(state.lock);
 
 	state.handle->Close();
 }

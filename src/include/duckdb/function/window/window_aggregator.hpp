@@ -140,7 +140,7 @@ public:
 	ValidityArray filter_mask;
 
 	//! Lock for single threading
-	mutable mutex lock;
+	mutable annotated_mutex lock;
 
 	//! Count of local tasks
 	mutable std::atomic<idx_t> locals;

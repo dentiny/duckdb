@@ -72,7 +72,7 @@ struct QueueProducerToken {
 };
 
 void ConcurrentQueue::Enqueue(ProducerToken &token, shared_ptr<Task> task) {
-	lock_guard<mutex> producer_lock(token.producer_lock);
+	annotated_lock_guard<annotated_mutex> producer_lock(token.producer_lock);
 	task->token = token;
 	if (q.enqueue(token.token->queue_token, std::move(task))) {
 		++tasks_in_queue;
@@ -84,7 +84,7 @@ void ConcurrentQueue::Enqueue(ProducerToken &token, shared_ptr<Task> task) {
 
 void ConcurrentQueue::EnqueueBulk(ProducerToken &token, vector<shared_ptr<Task>> &tasks) {
 	typedef std::make_signed<std::size_t>::type ssize_t;
-	lock_guard<mutex> producer_lock(token.producer_lock);
+	annotated_lock_guard<annotated_mutex> producer_lock(token.producer_lock);
 	for (auto &task : tasks) {
 		task->token = token;
 	}
@@ -97,7 +97,7 @@ void ConcurrentQueue::EnqueueBulk(ProducerToken &token, vector<shared_ptr<Task>>
 }
 
 bool ConcurrentQueue::DequeueFromProducer(ProducerToken &token, shared_ptr<Task> &task) {
-	lock_guard<mutex> producer_lock(token.producer_lock);
+	annotated_lock_guard<annotated_mutex> producer_lock(token.producer_lock);
 	if (!q.try_dequeue_from_producer(token.token->queue_token, task)) {
 		return false;
 	}
@@ -124,14 +124,14 @@ idx_t ConcurrentQueue::GetProducerCount() const {
 }
 
 idx_t ConcurrentQueue::GetTaskCountForProducer(ProducerToken &token) const {
-	lock_guard<mutex> producer_lock(token.producer_lock);
+	annotated_lock_guard<annotated_mutex> producer_lock(token.producer_lock);
 	return q.size_producer_approx(token.token->queue_token);
 }
 
 #else
 struct ConcurrentQueue {
 	reference_map_t<QueueProducerToken, std::queue<shared_ptr<Task>>> q;
-	mutable mutex qlock;
+	mutable annotated_mutex qlock;
 
 	void Enqueue(ProducerToken &token, shared_ptr<Task> task);
 	void EnqueueBulk(ProducerToken &token, vector<shared_ptr<Task>> &tasks);
@@ -144,13 +144,13 @@ struct ConcurrentQueue {
 };
 
 void ConcurrentQueue::Enqueue(ProducerToken &token, shared_ptr<Task> task) {
-	lock_guard<mutex> lock(qlock);
+	annotated_lock_guard<annotated_mutex> lock(qlock);
 	task->token = token;
 	q[std::ref(*token.token)].push(std::move(task));
 }
 
 void ConcurrentQueue::EnqueueBulk(ProducerToken &token, vector<shared_ptr<Task>> &tasks) {
-	lock_guard<mutex> lock(qlock);
+	annotated_lock_guard<annotated_mutex> lock(qlock);
 	for (auto &task : tasks) {
 		task->token = token;
 		q[std::ref(*token.token)].push(std::move(task));
@@ -158,7 +158,7 @@ void ConcurrentQueue::EnqueueBulk(ProducerToken &token, vector<shared_ptr<Task>>
 }
 
 bool ConcurrentQueue::DequeueFromProducer(ProducerToken &token, shared_ptr<Task> &task) {
-	lock_guard<mutex> lock(qlock);
+	annotated_lock_guard<annotated_mutex> lock(qlock);
 	D_ASSERT(!q.empty());
 
 	const auto it = q.find(std::ref(*token.token));
@@ -177,7 +177,7 @@ bool ConcurrentQueue::Dequeue(shared_ptr<Task> &task) {
 }
 
 idx_t ConcurrentQueue::GetTasksInQueue() const {
-	lock_guard<mutex> lock(qlock);
+	annotated_lock_guard<annotated_mutex> lock(qlock);
 	idx_t task_count = 0;
 	for (auto &producer : q) {
 		task_count += producer.second.size();
@@ -190,12 +190,12 @@ idx_t ConcurrentQueue::GetApproxSize() const {
 }
 
 idx_t ConcurrentQueue::GetProducerCount() const {
-	lock_guard<mutex> lock(qlock);
+	annotated_lock_guard<annotated_mutex> lock(qlock);
 	return q.size();
 }
 
 idx_t ConcurrentQueue::GetTaskCountForProducer(ProducerToken &token) const {
-	lock_guard<mutex> lock(qlock);
+	annotated_lock_guard<annotated_mutex> lock(qlock);
 	const auto it = q.find(std::ref(*token.token));
 	if (it == q.end()) {
 		return 0;
@@ -208,7 +208,7 @@ struct QueueProducerToken {
 	}
 
 	~QueueProducerToken() {
-		lock_guard<mutex> lock(queue->qlock);
+		annotated_lock_guard<annotated_mutex> lock(queue->qlock);
 		queue->q.erase(*this);
 	}
 
@@ -498,7 +498,7 @@ idx_t TaskScheduler::GetEstimatedCPUId() {
 }
 
 void TaskScheduler::RelaunchThreads() {
-	lock_guard<mutex> t(thread_lock);
+	annotated_lock_guard<annotated_mutex> t(thread_lock);
 	auto n = requested_thread_count.load();
 	RelaunchThreadsInternal(n);
 }

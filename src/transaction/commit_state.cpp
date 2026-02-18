@@ -245,7 +245,7 @@ void CommitState::CommitEntry(UndoFlags type, data_ptr_t data) {
 		}
 		// Grab a write lock on the catalog
 		auto &duck_catalog = catalog.Cast<DuckCatalog>();
-		lock_guard<mutex> write_lock(duck_catalog.GetWriteLock());
+		annotated_lock_guard<annotated_mutex> write_lock(duck_catalog.GetWriteLock());
 		lock_guard<mutex> read_lock(old_entry.set->GetCatalogLock());
 		// Set the timestamp of the catalog entry to the given commit_id, marking it as committed
 		CatalogSet::UpdateTimestamp(old_entry.Parent(), commit_id);

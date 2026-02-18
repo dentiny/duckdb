@@ -17,17 +17,17 @@ namespace duckdb {
 struct ParquetMetadataFilePaths {
 	MultiFileListScanData scan_data;
 	shared_ptr<MultiFileList> file_list;
-	mutex file_lock;
+	annotated_mutex file_lock;
 
 	bool NextFile(OpenFileInfo &result) {
 		D_ASSERT(file_list);
-		unique_lock<mutex> lock(file_lock);
+		annotated_unique_lock<annotated_mutex> lock(file_lock);
 		return file_list->Scan(scan_data, result);
 	}
 
 	FileExpandResult GetExpandResult() {
 		D_ASSERT(file_list);
-		unique_lock<mutex> lock(file_lock);
+		annotated_unique_lock<annotated_mutex> lock(file_lock);
 		return file_list->GetExpandResult();
 	}
 };
@@ -106,7 +106,7 @@ struct ParquetMetadataGlobalState : public GlobalTableFunctionState {
 
 	double GetProgress() const {
 		// Not the most accurate, instantly assumes all files are done and equal
-		unique_lock<mutex> lock(file_paths->file_lock);
+		annotated_unique_lock<annotated_mutex> lock(file_paths->file_lock);
 		return static_cast<double>(file_paths->scan_data.current_file_idx) / file_paths->file_list->GetTotalFileCount();
 	}
 

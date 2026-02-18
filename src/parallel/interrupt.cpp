@@ -40,7 +40,7 @@ void InterruptState::Callback() const {
 
 void InterruptDoneSignalState::Signal() {
 	{
-		unique_lock<mutex> lck {lock};
+		annotated_unique_lock<annotated_mutex> lck {lock};
 		done = true;
 	}
 	cv.notify_all();

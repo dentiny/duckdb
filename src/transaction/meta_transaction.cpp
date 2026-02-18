@@ -44,7 +44,7 @@ static void VerifyAllTransactionsUnique(AttachedDatabase &db, vector<reference<A
 #endif
 
 optional_ptr<Transaction> MetaTransaction::TryGetTransaction(AttachedDatabase &db) {
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	auto entry = transactions.find(db);
 	if (entry == transactions.end()) {
 		return nullptr;
@@ -54,7 +54,7 @@ optional_ptr<Transaction> MetaTransaction::TryGetTransaction(AttachedDatabase &d
 }
 
 Transaction &MetaTransaction::GetTransaction(AttachedDatabase &db) {
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	auto entry = transactions.find(db);
 	if (entry == transactions.end()) {
 		auto &new_transaction = db.GetTransactionManager().StartTransaction(context);
@@ -195,7 +195,7 @@ void MetaTransaction::SetActiveQuery(transaction_t query_number) {
 }
 
 optional_ptr<AttachedDatabase> MetaTransaction::GetReferencedDatabase(const string &name) {
-	lock_guard<mutex> guard(referenced_database_lock);
+	annotated_lock_guard<annotated_mutex> guard(referenced_database_lock);
 	auto entry = used_databases.find(name);
 	if (entry != used_databases.end()) {
 		return entry->second.get();
@@ -204,7 +204,7 @@ optional_ptr<AttachedDatabase> MetaTransaction::GetReferencedDatabase(const stri
 }
 
 shared_ptr<AttachedDatabase> MetaTransaction::GetReferencedDatabaseOwning(const string &name) {
-	lock_guard<mutex> guard(referenced_database_lock);
+	annotated_lock_guard<annotated_mutex> guard(referenced_database_lock);
 	for (auto &entry : referenced_databases) {
 		if (StringUtil::CIEquals(entry.first.get().name, name)) {
 			return entry.second;
@@ -214,13 +214,13 @@ shared_ptr<AttachedDatabase> MetaTransaction::GetReferencedDatabaseOwning(const 
 }
 
 void MetaTransaction::DetachDatabase(AttachedDatabase &database) {
-	lock_guard<mutex> guard(referenced_database_lock);
+	annotated_lock_guard<annotated_mutex> guard(referenced_database_lock);
 	used_databases.erase(database.GetName());
 }
 
 AttachedDatabase &MetaTransaction::UseDatabase(shared_ptr<AttachedDatabase> &database) {
 	auto &db_ref = *database;
-	lock_guard<mutex> guard(referenced_database_lock);
+	annotated_lock_guard<annotated_mutex> guard(referenced_database_lock);
 	auto entry = referenced_databases.find(db_ref);
 	if (entry == referenced_databases.end()) {
 		auto used_entry = used_databases.emplace(db_ref.GetName(), db_ref);

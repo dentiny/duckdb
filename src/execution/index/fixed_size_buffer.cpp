@@ -57,7 +57,7 @@ FixedSizeBuffer::FixedSizeBuffer(BlockManager &block_manager, const idx_t segmen
 }
 
 FixedSizeBuffer::~FixedSizeBuffer() {
-	lock_guard<mutex> l(lock);
+	annotated_lock_guard<annotated_mutex> l(lock);
 	D_ASSERT(readers == 0);
 
 	if (InMemory()) {
@@ -231,7 +231,7 @@ void FixedSizeBuffer::SetAllocationSize(const idx_t available_segments, const id
 }
 
 SegmentHandle::SegmentHandle(FixedSizeBuffer &buffer_p, const idx_t offset) : buffer_ptr(buffer_p) {
-	lock_guard<mutex> l(buffer_ptr->lock);
+	annotated_lock_guard<annotated_mutex> l(buffer_ptr->lock);
 
 	if (!buffer_ptr->InMemory() && !buffer_ptr->loaded) {
 		buffer_ptr->LoadFromDisk();

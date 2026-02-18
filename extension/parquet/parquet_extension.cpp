@@ -403,7 +403,7 @@ static void ParquetWriteCombine(ExecutionContext &context, FunctionData &bind_da
 		return;
 	}
 
-	unique_lock<mutex> guard(global_state.lock);
+	annotated_unique_lock<annotated_mutex> guard(global_state.lock);
 	if (global_state.combine_buffer) {
 		// There is still some data, combine it
 		global_state.combine_buffer->Combine(local_state.buffer);

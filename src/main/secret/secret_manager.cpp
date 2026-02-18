@@ -40,7 +40,7 @@ constexpr const char *SecretManager::TEMPORARY_STORAGE_NAME;
 constexpr const char *SecretManager::LOCAL_FILE_STORAGE_NAME;
 
 void SecretManager::Initialize(DatabaseInstance &db) {
-	lock_guard<mutex> lck(manager_lock);
+	annotated_lock_guard<annotated_mutex> lck(manager_lock);
 
 	// Construct default path
 	LocalFileSystem fs;
@@ -72,7 +72,7 @@ void SecretManager::Initialize(DatabaseInstance &db) {
 }
 
 void SecretManager::LoadSecretStorage(unique_ptr<SecretStorage> storage) {
-	lock_guard<mutex> lck(manager_lock);
+	annotated_lock_guard<annotated_mutex> lck(manager_lock);
 	return LoadSecretStorageInternal(std::move(storage));
 }
 
@@ -130,12 +130,12 @@ unique_ptr<BaseSecret> SecretManager::DeserializeSecret(Deserializer &deserializ
 }
 
 void SecretManager::RegisterSecretType(SecretType &type) {
-	lock_guard<mutex> lck(manager_lock);
+	annotated_lock_guard<annotated_mutex> lck(manager_lock);
 	RegisterSecretTypeInternal(type);
 }
 
 void SecretManager::RegisterSecretFunction(CreateSecretFunction function, OnCreateConflict on_conflict) {
-	unique_lock<mutex> lck(manager_lock);
+	annotated_unique_lock<annotated_mutex> lck(manager_lock);
 	RegisterSecretFunctionInternal(std::move(function), on_conflict);
 }
 
@@ -204,7 +204,7 @@ unique_ptr<SecretEntry> SecretManager::RegisterSecretInternal(CatalogTransaction
 }
 
 optional_ptr<CreateSecretFunction> SecretManager::LookupFunctionInternal(const string &type, const string &provider) {
-	unique_lock<mutex> lck(manager_lock);
+	annotated_unique_lock<annotated_mutex> lck(manager_lock);
 	auto lookup = secret_functions.find(type);
 
 	if (lookup != secret_functions.end()) {
@@ -437,7 +437,7 @@ void SecretManager::RegisterSecretTypeInternal(SecretType &type) {
 }
 
 bool SecretManager::TryLookupTypeInternal(const string &type, SecretType &type_out) {
-	unique_lock<mutex> lck(manager_lock);
+	annotated_unique_lock<annotated_mutex> lck(manager_lock);
 	auto lookup = secret_types.find(type);
 	if (lookup != secret_types.end()) {
 		type_out = lookup->second;
@@ -494,7 +494,7 @@ vector<SecretEntry> SecretManager::AllSecrets(CatalogTransaction transaction) {
 }
 
 vector<SecretType> SecretManager::AllSecretTypes() {
-	unique_lock<mutex> lck(manager_lock);
+	annotated_unique_lock<annotated_mutex> lck(manager_lock);
 	vector<SecretType> result;
 
 	for (const auto &secret : secret_types) {
@@ -553,7 +553,7 @@ string SecretManager::PersistentSecretPath() {
 
 void SecretManager::InitializeSecrets(CatalogTransaction transaction) {
 	if (!initialized) {
-		lock_guard<mutex> lck(manager_lock);
+		annotated_lock_guard<annotated_mutex> lck(manager_lock);
 		if (initialized) {
 			// some sneaky other thread beat us to it
 			return;
@@ -622,7 +622,7 @@ void SecretManager::ThrowProviderNotFoundError(const string &type, const string 
 }
 
 optional_ptr<SecretStorage> SecretManager::GetSecretStorage(const string &name) {
-	lock_guard<mutex> lock(manager_lock);
+	annotated_lock_guard<annotated_mutex> lock(manager_lock);
 
 	auto lookup = secret_storages.find(name);
 	if (lookup != secret_storages.end()) {
@@ -633,7 +633,7 @@ optional_ptr<SecretStorage> SecretManager::GetSecretStorage(const string &name) 
 }
 
 vector<reference<SecretStorage>> SecretManager::GetSecretStorages() {
-	lock_guard<mutex> lock(manager_lock);
+	annotated_lock_guard<annotated_mutex> lock(manager_lock);
 
 	vector<reference<SecretStorage>> result;
 
@@ -650,7 +650,7 @@ DefaultSecretGenerator::DefaultSecretGenerator(Catalog &catalog, SecretManager &
 }
 
 unique_ptr<CatalogEntry> DefaultSecretGenerator::CreateDefaultEntryInternal(const string &entry_name) {
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	auto secret_lu = persistent_secrets.find(entry_name);
 	if (secret_lu == persistent_secrets.end()) {
 		return nullptr;
@@ -723,7 +723,7 @@ unique_ptr<CatalogEntry> DefaultSecretGenerator::CreateDefaultEntry(ClientContex
 vector<string> DefaultSecretGenerator::GetDefaultEntries() {
 	vector<string> ret;
 
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	for (const auto &res : persistent_secrets) {
 		ret.push_back(res);
 	}

@@ -195,7 +195,7 @@ private:
 	void ThrowOnSettingChangeIfInitialized();
 
 	//! Lock for types, functions, settings and storages
-	mutex manager_lock;
+	annotated_mutex manager_lock;
 	//! Secret functions;
 	case_insensitive_map_t<CreateSecretFunctionSet> secret_functions;
 	//! Secret types;
@@ -227,7 +227,7 @@ protected:
 	unique_ptr<CatalogEntry> CreateDefaultEntryInternal(const string &entry_name);
 
 	SecretManager &secret_manager;
-	mutex lock;
+	annotated_mutex lock;
 	case_insensitive_set_t persistent_secrets;
 };
 

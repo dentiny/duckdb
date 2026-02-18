@@ -15,7 +15,7 @@ WriteOverflowStringsToDisk::~WriteOverflowStringsToDisk() {
 }
 
 shared_ptr<BlockHandle> UncompressedStringSegmentState::GetHandle(BlockManager &manager_p, block_id_t block_id) {
-	lock_guard<mutex> lock(block_lock);
+	annotated_lock_guard<annotated_mutex> lock(block_lock);
 	auto entry = handles.find(block_id);
 	if (entry != handles.end()) {
 		return entry->second;
@@ -27,7 +27,7 @@ shared_ptr<BlockHandle> UncompressedStringSegmentState::GetHandle(BlockManager &
 }
 
 void UncompressedStringSegmentState::RegisterBlock(BlockManager &manager_p, block_id_t block_id) {
-	lock_guard<mutex> lock(block_lock);
+	annotated_lock_guard<annotated_mutex> lock(block_lock);
 	auto entry = handles.find(block_id);
 	if (entry != handles.end()) {
 		throw InternalException("UncompressedStringSegmentState::RegisterBlock - block id %llu already exists",

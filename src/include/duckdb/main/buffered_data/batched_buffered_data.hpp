@@ -42,7 +42,7 @@ public:
 	StreamExecutionResult ExecuteTaskInternal(StreamQueryResult &result, ClientContextLock &context_lock) override;
 	unique_ptr<DataChunk> Scan() override;
 	void UpdateMinBatchIndex(idx_t min_batch_index);
-	bool IsMinimumBatchIndex(lock_guard<mutex> &lock, idx_t batch);
+	bool IsMinimumBatchIndex(annotated_lock_guard<annotated_mutex> &lock, idx_t batch);
 	void CompleteBatch(idx_t batch);
 	bool BufferIsEmpty();
 	void UnblockSinks() override;
@@ -56,7 +56,7 @@ public:
 
 private:
 	void ResetReplenishState();
-	void MoveCompletedBatches(lock_guard<mutex> &lock);
+	void MoveCompletedBatches(annotated_lock_guard<annotated_mutex> &lock);
 
 private:
 	//! The buffer where chunks are written before they are ready to be read.

@@ -80,7 +80,7 @@ public:
 	//! not the lifetime of the local state that constructed part of the tree
 	mutable vector<unique_ptr<ArenaAllocator>> tree_allocators;
 	//! Finalize guard
-	mutable mutex lock;
+	mutable annotated_mutex lock;
 	//! Finalize stage
 	atomic<WindowDistinctSortStage> stage;
 	//! Tasks launched
@@ -167,7 +167,7 @@ WindowDistinctAggregatorGlobalState::WindowDistinctAggregatorGlobalState(ClientC
 }
 
 optional_ptr<LocalSinkState> WindowDistinctAggregatorGlobalState::InitializeLocalSort(ExecutionContext &context) const {
-	lock_guard<mutex> local_sort_guard(lock);
+	annotated_lock_guard<annotated_mutex> local_sort_guard(lock);
 	auto local_sink = sort->GetLocalSinkState(context);
 	++tasks_assigned;
 	local_sinks.emplace_back(std::move(local_sink));
@@ -326,7 +326,7 @@ void WindowDistinctAggregatorLocalState::ExecuteTask(ExecutionContext &context,
 }
 
 bool WindowDistinctAggregatorGlobalState::TryPrepareNextStage(WindowDistinctAggregatorLocalState &lstate) {
-	lock_guard<mutex> stage_guard(lock);
+	annotated_lock_guard<annotated_mutex> stage_guard(lock);
 
 	switch (stage.load()) {
 	case WindowDistinctSortStage::INIT:
@@ -478,7 +478,7 @@ void WindowDistinctAggregatorLocalState::Sorted() {
 bool WindowDistinctSortTree::TryNextRun(idx_t &level_idx, idx_t &run_idx) {
 	const auto fanout = FANOUT;
 
-	lock_guard<mutex> stage_guard(build_lock);
+	annotated_lock_guard<annotated_mutex> stage_guard(build_lock);
 
 	//	Verify we are not done
 	if (build_level >= tree.size()) {

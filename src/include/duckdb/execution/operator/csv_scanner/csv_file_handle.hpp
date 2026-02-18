@@ -25,7 +25,7 @@ public:
 	CSVFileHandle(ClientContext &context, unique_ptr<FileHandle> file_handle_p, const OpenFileInfo &file,
 	              const CSVReaderOptions &options);
 
-	mutex main_mutex;
+	annotated_mutex main_mutex;
 
 	bool CanSeek() const;
 	void Seek(idx_t position) const;

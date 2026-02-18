@@ -82,7 +82,7 @@ typedef unordered_map<HivePartitionKey, idx_t, HivePartitionKey::Hash, HiveParti
 //! each HivePartitionedColumnData will hold a local copy of the key->partition map
 class GlobalHivePartitionState {
 public:
-	mutex lock;
+	annotated_mutex lock;
 	hive_partition_map_t partition_map;
 };
 

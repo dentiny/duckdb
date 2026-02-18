@@ -851,7 +851,7 @@ bool MultiFileColumnMapper::EvaluateFilterAgainstConstant(TableFilter &filter, c
 			//! No filter_data assigned (does this mean the DynamicFilter is broken??)
 			return true;
 		}
-		lock_guard<mutex> lock(dynamic_filter.filter_data->lock);
+		annotated_lock_guard<annotated_mutex> lock(dynamic_filter.filter_data->lock);
 		if (!dynamic_filter.filter_data->initialized) {
 			//! Not initialized
 			return true;
@@ -992,7 +992,7 @@ static unique_ptr<TableFilter> TryCastTableFilter(const TableFilter &global_filt
 		if (!dynamic_filter.filter_data->filter) {
 			return nullptr;
 		}
-		lock_guard<mutex> lock(dynamic_filter.filter_data->lock);
+		annotated_lock_guard<annotated_mutex> lock(dynamic_filter.filter_data->lock);
 		return TryCastTableFilter(*dynamic_filter.filter_data->filter, mapping, target_type);
 	}
 	case TableFilterType::IS_NULL:

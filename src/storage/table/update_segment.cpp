@@ -984,7 +984,7 @@ static UpdateSegment::merge_update_function_t GetMergeUpdateFunction(PhysicalTyp
 // Update statistics
 //===--------------------------------------------------------------------===//
 unique_ptr<BaseStatistics> UpdateSegment::GetStatistics() {
-	lock_guard<mutex> stats_guard(stats_lock);
+	annotated_lock_guard<annotated_mutex> stats_guard(stats_lock);
 	return stats.statistics.ToUnique();
 }
 
@@ -1285,7 +1285,7 @@ void UpdateSegment::Update(TransactionData transaction, DataTable &data_table, i
 	// update statistics
 	SelectionVector sel;
 	{
-		lock_guard<mutex> stats_guard(stats_lock);
+		annotated_lock_guard<annotated_mutex> stats_guard(stats_lock);
 		count = statistics_update_function(this, stats, update_format, count, sel);
 	}
 	if (count == 0) {

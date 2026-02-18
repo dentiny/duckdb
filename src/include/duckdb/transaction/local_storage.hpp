@@ -103,7 +103,7 @@ public:
 	OptimisticWriteCollection &GetPrimaryCollection();
 
 private:
-	mutex collections_lock;
+	annotated_mutex collections_lock;
 };
 
 class LocalTableManager {
@@ -117,7 +117,7 @@ public:
 	void InsertEntry(DataTable &table, shared_ptr<LocalTableStorage> entry);
 
 private:
-	mutable mutex table_storage_lock;
+	mutable annotated_mutex table_storage_lock;
 	reference_map_t<DataTable, shared_ptr<LocalTableStorage>> table_storage;
 };
 

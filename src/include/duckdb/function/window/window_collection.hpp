@@ -53,7 +53,7 @@ public:
 	const idx_t count;
 
 	//! Guard for range updates
-	mutex lock;
+	annotated_mutex lock;
 	//! The paging buffer manager to use
 	BufferManager &buffer_manager;
 	//! The component column data collections

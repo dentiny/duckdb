@@ -147,7 +147,7 @@ unique_ptr<GlobalTableFunctionState> DuckDBExtensionsInit(ClientContext &context
 		if (!ext_info) {
 			continue;
 		}
-		lock_guard<mutex> guard(ext_info->lock);
+		annotated_lock_guard<annotated_mutex> guard(ext_info->lock);
 		if (!ext_info->is_loaded) {
 			continue;
 		}

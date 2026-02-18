@@ -87,7 +87,7 @@ public:
 	}
 
 	//! The lock for updating the global aggregate state
-	mutex lock;
+	annotated_mutex lock;
 	//! The global aggregate hash table
 	unique_ptr<PerfectAggregateHashTable> ht;
 };
@@ -166,7 +166,7 @@ SinkCombineResultType PhysicalPerfectHashAggregate::Combine(ExecutionContext &co
 	auto &lstate = input.local_state.Cast<PerfectHashAggregateLocalState>();
 	auto &gstate = input.global_state.Cast<PerfectHashAggregateGlobalState>();
 
-	lock_guard<mutex> l(gstate.lock);
+	annotated_lock_guard<annotated_mutex> l(gstate.lock);
 	gstate.ht->Combine(*lstate.ht);
 
 	return SinkCombineResultType::FINISHED;

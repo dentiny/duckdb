@@ -330,7 +330,7 @@ void DBConfig::SetOption(optional_ptr<DatabaseInstance> db, const ConfigurationO
 	if (!option.set_global) {
 		throw InvalidInputException("Could not set option \"%s\" as a global option", option.name);
 	}
-	lock_guard<mutex> guard(config_lock);
+	annotated_lock_guard<annotated_mutex> guard(config_lock);
 	D_ASSERT(option.reset_global);
 	option.set_global(db.get(), *this, input);
 }
@@ -344,7 +344,7 @@ void DBConfig::ResetOption(optional_ptr<DatabaseInstance> db, const Configuratio
 	if (!option.reset_global) {
 		throw InternalException("Could not reset option \"%s\" as a global option", option.name);
 	}
-	lock_guard<mutex> guard(config_lock);
+	annotated_lock_guard<annotated_mutex> guard(config_lock);
 	D_ASSERT(option.set_global);
 	option.reset_global(db.get(), *this);
 }

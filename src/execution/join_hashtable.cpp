@@ -134,13 +134,13 @@ JoinHashTable::~JoinHashTable() {
 
 void JoinHashTable::Merge(JoinHashTable &other) {
 	{
-		lock_guard<mutex> guard(data_lock);
+		annotated_lock_guard<annotated_mutex> guard(data_lock);
 		data_collection->Combine(*other.data_collection);
 	}
 
 	if (join_type == JoinType::MARK) {
 		auto &info = correlated_mark_join_info;
-		lock_guard<mutex> mj_lock(info.mj_lock);
+		annotated_lock_guard<annotated_mutex> mj_lock(info.mj_lock);
 		has_null = has_null || other.has_null;
 		if (!info.correlated_types.empty()) {
 			auto &other_info = other.correlated_mark_join_info;
@@ -389,7 +389,7 @@ void JoinHashTable::Build(PartitionedTupleDataAppendState &append_state, DataChu
 	// special case: correlated mark join
 	if (join_type == JoinType::MARK && !correlated_mark_join_info.correlated_types.empty()) {
 		auto &info = correlated_mark_join_info;
-		lock_guard<mutex> mj_lock(info.mj_lock);
+		annotated_lock_guard<annotated_mutex> mj_lock(info.mj_lock);
 		// Correlated MARK join
 		// for the correlated mark join we need to keep track of COUNT(*) and COUNT(COLUMN) for each of the correlated
 		// columns push into the aggregate hash table
@@ -1351,7 +1351,7 @@ void ScanStructure::NextMarkJoin(DataChunk &keys, DataChunk &probe_data, DataChu
 		ConstructMarkJoinResult(keys, probe_data, result);
 	} else {
 		auto &info = ht.correlated_mark_join_info;
-		lock_guard<mutex> mj_lock(info.mj_lock);
+		annotated_lock_guard<annotated_mutex> mj_lock(info.mj_lock);
 
 		// there are correlated columns
 		// first we fetch the counts from the aggregate hashtable corresponding to these entries
@@ -1856,7 +1856,7 @@ ProbeSpill::ProbeSpill(JoinHashTable &ht, ClientContext &context, const vector<L
 
 ProbeSpillLocalState ProbeSpill::RegisterThread() {
 	ProbeSpillLocalAppendState result;
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	local_partitions.emplace_back(global_partitions->CreateShared());
 	local_partition_append_states.emplace_back(make_uniq<PartitionedColumnDataAppendState>());
 	local_partitions.back()->InitializeAppendState(*local_partition_append_states.back());

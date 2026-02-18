@@ -1060,7 +1060,7 @@ bool ColumnDataCollection::Scan(ColumnDataParallelScanState &state, ColumnDataLo
 	idx_t segment_index;
 	idx_t row_index;
 	{
-		lock_guard<mutex> l(state.lock);
+		annotated_lock_guard<annotated_mutex> l(state.lock);
 		if (!NextScanIndex(state.scan_state, chunk_index, segment_index, row_index)) {
 			return false;
 		}

@@ -139,7 +139,7 @@ bool ExternalFileCache::IsEnabled() const {
 }
 
 void ExternalFileCache::SetEnabled(bool enable_p) {
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	enable = enable_p;
 	if (!enable) {
 		cached_files.clear();
@@ -147,7 +147,7 @@ void ExternalFileCache::SetEnabled(bool enable_p) {
 }
 
 vector<CachedFileInformation> ExternalFileCache::GetCachedFileInformation() const {
-	unique_lock<mutex> files_guard(lock);
+	annotated_unique_lock<annotated_mutex> files_guard(lock);
 	vector<CachedFileInformation> result;
 	for (const auto &file : cached_files) {
 		auto ranges_guard = file.second->lock.GetSharedLock();
@@ -173,7 +173,7 @@ BufferManager &ExternalFileCache::GetBufferManager() const {
 }
 
 ExternalFileCache::CachedFile &ExternalFileCache::GetOrCreateCachedFile(const string &path) {
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	auto &entry = cached_files[path];
 	if (!entry) {
 		entry = make_uniq<CachedFile>(path);

@@ -115,7 +115,7 @@ public:
 	bool finished_first_phase;
 	bool started_last_phase;
 	//! Synchronize changes to the global index scan state.
-	mutex index_scan_lock;
+	annotated_mutex index_scan_lock;
 
 public:
 	unique_ptr<LocalTableFunctionState> InitLocalState(ExecutionContext &context,
@@ -158,7 +158,7 @@ public:
 			auto phase_to_be_performed = ExecutionPhase::NONE;
 			{
 				// Synchronize changes to the shared global state.
-				lock_guard<mutex> l(index_scan_lock);
+				annotated_lock_guard<annotated_mutex> l(index_scan_lock);
 				if (!finished_first_phase) {
 					l_state.batch_index = next_batch_index;
 					next_batch_index++;
@@ -617,7 +617,7 @@ bool TryScanIndex(ART &art, IndexEntry &entry, const ColumnList &column_list, Ta
 		return false;
 	}
 
-	lock_guard<mutex> guard(entry.lock);
+	annotated_lock_guard<annotated_mutex> guard(entry.lock);
 	vector<reference<ART>> arts_to_scan;
 	arts_to_scan.push_back(art);
 	if (entry.deleted_rows_in_use) {

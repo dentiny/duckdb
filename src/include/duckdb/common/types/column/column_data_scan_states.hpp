@@ -68,7 +68,7 @@ struct ColumnDataScanState {
 
 struct ColumnDataParallelScanState {
 	ColumnDataScanState scan_state;
-	mutex lock;
+	annotated_mutex lock;
 };
 
 struct ColumnDataLocalScanState {

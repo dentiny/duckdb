@@ -25,7 +25,7 @@ public:
 	CSVRejectsTable(string rejects_scan, string rejects_error)
 	    : count(0), scan_table(std::move(rejects_scan)), errors_table(std::move(rejects_error)) {
 	}
-	mutex write_lock;
+	annotated_mutex write_lock;
 	string name;
 	idx_t count;
 	string scan_table;

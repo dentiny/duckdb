@@ -1410,7 +1410,7 @@ void IEJoinGlobalSourceState::FinishTask(TaskPtr task) {
 }
 
 bool IEJoinGlobalSourceState::TryNextTask(TaskPtr &task, Task &task_local) {
-	const lock_guard<mutex> guard {lock};
+	const annotated_lock_guard<annotated_mutex> guard {lock};
 	FinishTask(task);
 
 	if (!HasMoreTasks()) {
@@ -1536,7 +1536,7 @@ SourceResultType PhysicalIEJoin::GetDataInternal(ExecutionContext &context, Data
 		if (!lsource.TaskFinished() || lsource.TryAssignTask()) {
 			lsource.ExecuteTask(context, result, input.interrupt_state);
 		} else {
-			const lock_guard<mutex> guard {gsource.lock};
+			const annotated_lock_guard<annotated_mutex> guard {gsource.lock};
 			if (gsource.TryPrepareNextStage() || gsource.stage == IEJoinSourceStage::DONE) {
 				gsource.UnblockTasks();
 			} else {

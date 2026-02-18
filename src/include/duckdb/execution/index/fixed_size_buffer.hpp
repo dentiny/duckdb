@@ -54,7 +54,7 @@ private:
 	//! Returns a pointer to the buffer in memory, and calls Deserialize, if the buffer is not in memory.
 	//! DEPRECATED. Use segment handles.
 	data_ptr_t GetDeprecated(const bool dirty_p = true) {
-		lock_guard<mutex> l(lock);
+		annotated_lock_guard<annotated_mutex> l(lock);
 		if (!InMemory()) {
 			LoadFromDisk();
 		}
@@ -111,7 +111,7 @@ private:
 	//! The block handle of the on-disk buffer
 	shared_ptr<BlockHandle> block_handle;
 	//! The lock for this fixed size buffer handle
-	mutex lock;
+	annotated_mutex lock;
 };
 
 class SegmentHandle {
@@ -174,7 +174,7 @@ public:
 	}
 
 	void MarkModified() {
-		lock_guard<mutex> l(buffer_ptr->lock);
+		annotated_lock_guard<annotated_mutex> l(buffer_ptr->lock);
 		buffer_ptr->dirty = true;
 	}
 

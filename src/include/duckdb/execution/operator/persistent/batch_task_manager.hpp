@@ -20,12 +20,12 @@ template <class TASK>
 class BatchTaskManager {
 public:
 	void AddTask(unique_ptr<TASK> task) {
-		lock_guard<mutex> l(task_lock);
+		annotated_lock_guard<annotated_mutex> l(task_lock);
 		task_queue.push(std::move(task));
 	}
 
 	unique_ptr<TASK> GetTask() {
-		lock_guard<mutex> l(task_lock);
+		annotated_lock_guard<annotated_mutex> l(task_lock);
 		if (task_queue.empty()) {
 			return nullptr;
 		}
@@ -35,12 +35,12 @@ public:
 	}
 
 	idx_t TaskCount() {
-		lock_guard<mutex> l(task_lock);
+		annotated_lock_guard<annotated_mutex> l(task_lock);
 		return task_queue.size();
 	}
 
 private:
-	mutex task_lock;
+	annotated_mutex task_lock;
 	//! The task queue for the batch copy to file
 	queue<unique_ptr<TASK>> task_queue;
 };

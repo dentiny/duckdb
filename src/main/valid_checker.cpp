@@ -7,7 +7,7 @@ ValidChecker::ValidChecker(DatabaseInstance &db) : is_invalidated(false), db(db)
 }
 
 void ValidChecker::Invalidate(string error) {
-	lock_guard<mutex> l(invalidate_lock);
+	annotated_lock_guard<annotated_mutex> l(invalidate_lock);
 	is_invalidated = true;
 	invalidated_msg = std::move(error);
 }
@@ -20,7 +20,7 @@ bool ValidChecker::IsInvalidated() {
 }
 
 string ValidChecker::InvalidatedMessage() {
-	lock_guard<mutex> l(invalidate_lock);
+	annotated_lock_guard<annotated_mutex> l(invalidate_lock);
 	return invalidated_msg;
 }
 

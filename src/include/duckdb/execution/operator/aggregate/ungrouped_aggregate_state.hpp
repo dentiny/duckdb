@@ -42,7 +42,7 @@ public:
 	    : client_allocator(client_allocator), allocator(client_allocator), state(aggregates) {
 	}
 
-	mutable mutex lock;
+	mutable annotated_mutex lock;
 	//! Client allocator
 	Allocator &client_allocator;
 	//! Global arena allocator

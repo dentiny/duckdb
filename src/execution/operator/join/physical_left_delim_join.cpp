@@ -46,10 +46,10 @@ public:
 	}
 
 	ColumnDataCollection lhs_data;
-	mutex lhs_lock;
+	annotated_mutex lhs_lock;
 
 	void Merge(ColumnDataCollection &input) {
-		lock_guard<mutex> guard(lhs_lock);
+		annotated_lock_guard<annotated_mutex> guard(lhs_lock);
 		lhs_data.Combine(input);
 	}
 };

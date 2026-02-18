@@ -15,7 +15,7 @@ FilterPropagateResult DynamicFilter::CheckStatistics(BaseStatistics &stats) cons
 	if (!filter_data) {
 		return FilterPropagateResult::NO_PRUNING_POSSIBLE;
 	}
-	lock_guard<mutex> l(filter_data->lock);
+	annotated_lock_guard<annotated_mutex> l(filter_data->lock);
 	if (!filter_data->initialized) {
 		return FilterPropagateResult::NO_PRUNING_POSSIBLE;
 	}
@@ -35,7 +35,7 @@ unique_ptr<Expression> DynamicFilter::ToExpression(const Expression &column) con
 		auto bound_constant = make_uniq<BoundConstantExpression>(Value(true));
 		return std::move(bound_constant);
 	}
-	lock_guard<mutex> l(filter_data->lock);
+	annotated_lock_guard<annotated_mutex> l(filter_data->lock);
 	return filter_data->filter->ToExpression(column);
 }
 
@@ -55,13 +55,13 @@ void DynamicFilterData::SetValue(Value val) {
 	if (val.IsNull()) {
 		return;
 	}
-	lock_guard<mutex> l(lock);
+	annotated_lock_guard<annotated_mutex> l(lock);
 	filter->Cast<ConstantFilter>().constant = std::move(val);
 	initialized = true;
 }
 
 void DynamicFilterData::Reset() {
-	lock_guard<mutex> l(lock);
+	annotated_lock_guard<annotated_mutex> l(lock);
 	initialized = false;
 }
 

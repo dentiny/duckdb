@@ -30,7 +30,7 @@ struct IndexEntry {
 
 	atomic<IndexBindState> bind_state;
 	//! lock that should be used if access to "index" and "deleted_rows_in_use" at the same time is necessary
-	mutex lock;
+	annotated_mutex lock;
 	unique_ptr<Index> index;
 	unique_ptr<BoundIndex> deleted_rows_in_use;
 	//! Data that was added to the index during the last checkpoint
@@ -83,12 +83,12 @@ public:
 	}
 	//! Returns the number of index entries.
 	idx_t Count() const {
-		lock_guard<mutex> lock(index_entries_lock);
+		annotated_lock_guard<annotated_mutex> lock(index_entries_lock);
 		return index_entries.size();
 	}
 	//! Returns true, if there are unbound indexes.
 	bool HasUnbound() const {
-		lock_guard<mutex> lock(index_entries_lock);
+		annotated_lock_guard<annotated_mutex> lock(index_entries_lock);
 		return unbound_count != 0;
 	}
 	//! Overwrite this list with the other list.
@@ -119,7 +119,7 @@ public:
 
 private:
 	//! A lock to prevent any concurrent changes to the index entries.
-	mutable mutex index_entries_lock;
+	mutable annotated_mutex index_entries_lock;
 	//! The index entries of the table.
 	vector<unique_ptr<IndexEntry>> index_entries;
 	//! Contains the number of unbound indexes.
@@ -129,10 +129,10 @@ private:
 template <class T>
 class TableIndexIterationHelper {
 public:
-	TableIndexIterationHelper(mutex &index_lock, const vector<unique_ptr<IndexEntry>> &index_entries);
+	TableIndexIterationHelper(annotated_mutex &index_lock, const vector<unique_ptr<IndexEntry>> &index_entries);
 
 private:
-	unique_lock<mutex> lock;
+	annotated_unique_lock<annotated_mutex> lock;
 	const vector<unique_ptr<IndexEntry>> &index_entries;
 
 private:

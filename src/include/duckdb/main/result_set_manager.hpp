@@ -47,7 +47,7 @@ public:
 	void Remove(ColumnDataAllocator &allocator);
 
 private:
-	mutex lock;
+	annotated_mutex lock;
 	weak_ptr<DatabaseInstance> db;
 	reference_map_t<ColumnDataAllocator, unique_ptr<vector<shared_ptr<BlockHandle>>>> open_results;
 };

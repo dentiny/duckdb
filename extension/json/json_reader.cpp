@@ -183,7 +183,7 @@ JSONReader::JSONReader(ClientContext &context, JSONReaderOptions options_p, Open
 }
 
 void JSONReader::OpenJSONFile() {
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	if (!IsOpen()) {
 		auto &fs = FileSystem::GetFileSystem(context);
 		FileOpenFlags flags = FileFlags::FILE_FLAGS_READ | options.compression;
@@ -195,7 +195,7 @@ void JSONReader::OpenJSONFile() {
 }
 
 void JSONReader::CloseHandle() {
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	if (IsOpen()) {
 		file_handle->Close();
 	}
@@ -256,19 +256,19 @@ JSONFileHandle &JSONReader::GetFileHandle() const {
 }
 
 void JSONReader::InsertBuffer(idx_t buffer_idx, unique_ptr<JSONBufferHandle> &&buffer) {
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	D_ASSERT(buffer_map.find(buffer_idx) == buffer_map.end());
 	buffer_map.insert(make_pair(buffer_idx, std::move(buffer)));
 }
 
 optional_ptr<JSONBufferHandle> JSONReader::GetBuffer(idx_t buffer_idx) {
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	auto it = buffer_map.find(buffer_idx);
 	return it == buffer_map.end() ? nullptr : it->second.get();
 }
 
 AllocatedData JSONReader::RemoveBuffer(JSONBufferHandle &handle) {
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	auto it = buffer_map.find(handle.buffer_index);
 	D_ASSERT(it != buffer_map.end());
 	D_ASSERT(RefersToSameObject(handle, *it->second));
@@ -283,7 +283,7 @@ idx_t JSONReader::GetBufferIndex() {
 }
 
 void JSONReader::SetBufferLineOrObjectCount(JSONBufferHandle &handle, idx_t count) {
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	D_ASSERT(buffer_map.find(handle.buffer_index) != buffer_map.end());
 	D_ASSERT(RefersToSameObject(handle, *buffer_map.find(handle.buffer_index)->second));
 	D_ASSERT(buffer_line_or_object_counts[handle.buffer_index] == -1);
@@ -297,7 +297,7 @@ void JSONReader::AddParseError(JSONReaderScanState &scan_state, idx_t line_or_ob
 	string unit = options.format == JSONFormat::NEWLINE_DELIMITED ? "line" : "record/value";
 	auto error_msg = StringUtil::Format("Malformed JSON in file \"%s\", at byte %llu in %s {line}: %s. %s",
 	                                    GetFileName(), err.pos + 1, unit, err.msg, extra);
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	AddError(scan_state.current_buffer_handle->buffer_index, line_or_object_in_buf + 1, error_msg);
 	ThrowErrorsIfPossible();
 	// if we could not throw immediately - finish processing this buffer
@@ -312,7 +312,7 @@ void JSONReader::AddTransformError(JSONReaderScanState &scan_state, idx_t object
 	string unit = options.format == JSONFormat::NEWLINE_DELIMITED ? "line" : "record/value";
 	auto error_msg =
 	    StringUtil::Format("JSON transform error in file \"%s\", in %s {line}: %s", GetFileName(), unit, error_message);
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	AddError(scan_state.current_buffer_handle->buffer_index, line_or_object_in_buffer, error_msg);
 	ThrowErrorsIfPossible();
 	// if we could not throw immediately - finish processing this buffer
@@ -367,12 +367,12 @@ bool JSONReader::HasThrown() {
 	if (context.GetExecutor().HasError()) {
 		return true;
 	}
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	return thrown;
 }
 
 double JSONReader::GetProgress() const {
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	if (!HasFileHandle()) {
 		return 0;
 	}
@@ -1050,7 +1050,7 @@ void JSONReader::ReadNextBufferSeek(JSONReaderScanState &scan_state) {
 	if (scan_state.read_size > 0) {
 		auto &file_handle = GetFileHandle();
 		{
-			lock_guard<mutex> reader_guard(lock);
+			annotated_lock_guard<annotated_mutex> reader_guard(lock);
 			auto &raw_handle = file_handle.GetHandle();
 			// For non-on-disk files, we create a handle per thread: this is faster for e.g. S3Filesystem where
 			// throttling per tcp connection can occur meaning that using multiple connections is faster.

@@ -244,7 +244,7 @@ void PartitionedTupleData::Combine(PartitionedTupleData &other) {
 	}
 
 	// Now combine the state's partitions into this
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	if (partitions.empty()) {
 		// This is the first merge, we just copy them over
 		partitions = std::move(other.partitions);

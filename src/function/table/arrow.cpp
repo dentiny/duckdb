@@ -115,7 +115,7 @@ idx_t ArrowTableFunction::ArrowScanMaxThreads(ClientContext &context, const Func
 
 bool ArrowTableFunction::ArrowScanParallelStateNext(ClientContext &context, const FunctionData *bind_data_p,
                                                     ArrowScanLocalState &state, ArrowScanGlobalState &parallel_state) {
-	lock_guard<mutex> parallel_lock(parallel_state.main_mutex);
+	annotated_lock_guard<annotated_mutex> parallel_lock(parallel_state.main_mutex);
 	if (parallel_state.done) {
 		return false;
 	}

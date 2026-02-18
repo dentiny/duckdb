@@ -120,7 +120,7 @@ struct TupleDataChunkState {
 	Vector heap_locations = Vector(LogicalType::POINTER);
 	Vector heap_sizes = Vector(LogicalType::UBIGINT);
 
-	optional_ptr<mutex> chunk_lock;
+	optional_ptr<annotated_mutex> chunk_lock;
 
 	SelectionVector utility = SelectionVector(STANDARD_VECTOR_SIZE);
 
@@ -151,7 +151,7 @@ struct TupleDataScanState {
 
 struct TupleDataParallelScanState {
 	TupleDataScanState scan_state;
-	mutex lock;
+	annotated_mutex lock;
 };
 
 using TupleDataLocalScanState = TupleDataScanState;

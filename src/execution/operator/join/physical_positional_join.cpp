@@ -25,7 +25,7 @@ public:
 
 	ColumnDataCollection rhs;
 	ColumnDataAppendState append_state;
-	mutex rhs_lock;
+	annotated_mutex rhs_lock;
 
 	bool initialized;
 	ColumnDataScanState scan_state;
@@ -47,7 +47,7 @@ unique_ptr<GlobalSinkState> PhysicalPositionalJoin::GetGlobalSinkState(ClientCon
 SinkResultType PhysicalPositionalJoin::Sink(ExecutionContext &context, DataChunk &chunk,
                                             OperatorSinkInput &input) const {
 	auto &sink = input.global_state.Cast<PositionalJoinGlobalState>();
-	lock_guard<mutex> client_guard(sink.rhs_lock);
+	annotated_lock_guard<annotated_mutex> client_guard(sink.rhs_lock);
 	sink.rhs.Append(sink.append_state, chunk);
 	return SinkResultType::NEED_MORE_INPUT;
 }
@@ -117,7 +117,7 @@ idx_t PositionalJoinGlobalState::CopyData(DataChunk &output, const idx_t count, 
 }
 
 void PositionalJoinGlobalState::Execute(DataChunk &input, DataChunk &output) {
-	lock_guard<mutex> client_guard(rhs_lock);
+	annotated_lock_guard<annotated_mutex> client_guard(rhs_lock);
 
 	// Reference the input and assume it will be full
 	const auto col_offset = input.ColumnCount();
@@ -145,7 +145,7 @@ OperatorResultType PhysicalPositionalJoin::Execute(ExecutionContext &context, Da
 // Source
 //===--------------------------------------------------------------------===//
 void PositionalJoinGlobalState::GetData(DataChunk &output) {
-	lock_guard<mutex> client_guard(rhs_lock);
+	annotated_lock_guard<annotated_mutex> client_guard(rhs_lock);
 
 	InitializeScan();
 	Refill();

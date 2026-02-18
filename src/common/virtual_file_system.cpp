@@ -277,13 +277,13 @@ unique_ptr<MultiFileList> VirtualFileSystem::GlobFilesExtended(const string &pat
 }
 
 void VirtualFileSystem::RegisterSubSystem(unique_ptr<FileSystem> fs) {
-	lock_guard<mutex> guard(registry_lock);
+	annotated_lock_guard<annotated_mutex> guard(registry_lock);
 	auto new_registry = file_system_registry->RegisterSubSystem(std::move(fs));
 	file_system_registry.atomic_store(new_registry);
 }
 
 void VirtualFileSystem::RegisterSubSystem(FileCompressionType compression_type, unique_ptr<FileSystem> fs) {
-	lock_guard<mutex> guard(registry_lock);
+	annotated_lock_guard<annotated_mutex> guard(registry_lock);
 	auto new_registry = file_system_registry->RegisterSubSystem(compression_type, std::move(fs));
 	file_system_registry.atomic_store(new_registry);
 }
@@ -291,17 +291,17 @@ void VirtualFileSystem::RegisterSubSystem(FileCompressionType compression_type, 
 void VirtualFileSystem::UnregisterSubSystem(const string &name) {
 	auto sub_system = ExtractSubSystem(name);
 
-	lock_guard<mutex> guard(registry_lock);
+	annotated_lock_guard<annotated_mutex> guard(registry_lock);
 	unregistered_file_systems.push_back(std::move(sub_system));
 }
 
 void VirtualFileSystem::SetDisabledFileSystems(const vector<string> &names) {
-	lock_guard<mutex> guard(registry_lock);
+	annotated_lock_guard<annotated_mutex> guard(registry_lock);
 	auto new_registry = file_system_registry->SetDisabledFileSystems(names);
 	file_system_registry.atomic_store(new_registry);
 }
 unique_ptr<FileSystem> VirtualFileSystem::ExtractSubSystem(const string &name) {
-	lock_guard<mutex> guard(registry_lock);
+	annotated_lock_guard<annotated_mutex> guard(registry_lock);
 	unique_ptr<FileSystem> result;
 	auto new_registry = file_system_registry->ExtractSubSystem(name, result);
 	if (new_registry) {

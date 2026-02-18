@@ -161,7 +161,7 @@ public:
 		}
 	}
 
-	mutex nj_lock;
+	annotated_mutex nj_lock;
 	//! Materialized data of the RHS
 	ColumnDataCollection right_payload_data;
 	//! Materialized join condition of the RHS
@@ -231,7 +231,7 @@ SinkResultType PhysicalNestedLoopJoin::Sink(ExecutionContext &context, DataChunk
 	}
 
 	// append the payload data and the conditions
-	lock_guard<mutex> nj_guard(gstate.nj_lock);
+	annotated_lock_guard<annotated_mutex> nj_guard(gstate.nj_lock);
 	gstate.right_payload_data.Append(chunk);
 	gstate.right_condition_data.Append(lstate.right_condition);
 	return SinkResultType::NEED_MORE_INPUT;

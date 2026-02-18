@@ -137,7 +137,7 @@ void CompressionFunctionSet::LoadCompressionFunctions(PhysicalType physical_type
 		return;
 	}
 	// not loaded - try to load it
-	lock_guard<mutex> guard(lock);
+	annotated_lock_guard<annotated_mutex> guard(lock);
 	// verify nobody loaded it in the mean-time
 	if (is_loaded[index]) {
 		return;

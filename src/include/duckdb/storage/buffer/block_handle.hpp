@@ -27,7 +27,7 @@ class BufferManager;
 class DatabaseInstance;
 class BlockHandle;
 
-using BlockLock = unique_lock<mutex>;
+using BlockLock = annotated_unique_lock<annotated_mutex>;
 
 class BlockMemory : public enable_shared_from_this<BlockMemory> {
 public:
@@ -200,7 +200,7 @@ private:
 	//! The block id of the block.
 	const block_id_t block_id;
 	//! The block-level lock.
-	mutex lock;
+	annotated_mutex lock;
 	//! Whether the block is loaded or unloaded.
 	atomic<BlockState> state;
 	//! The number of concurrent readers.

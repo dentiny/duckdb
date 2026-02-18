@@ -22,7 +22,7 @@ SinkCombineResultType PhysicalBatchCollector::Combine(ExecutionContext &context,
 	auto &gstate = input.global_state.Cast<BatchCollectorGlobalState>();
 	auto &state = input.local_state.Cast<BatchCollectorLocalState>();
 
-	lock_guard<mutex> lock(gstate.glock);
+	annotated_lock_guard<annotated_mutex> lock(gstate.glock);
 	gstate.data.Merge(state.data);
 
 	return SinkCombineResultType::FINISHED;

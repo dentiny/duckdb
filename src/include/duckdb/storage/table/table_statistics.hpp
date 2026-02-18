@@ -21,10 +21,10 @@ class Deserializer;
 
 class TableStatisticsLock {
 public:
-	explicit TableStatisticsLock(mutex &l) : guard(l) {
+	explicit TableStatisticsLock(annotated_mutex &l) : guard(l) {
 	}
 
-	lock_guard<mutex> guard;
+	annotated_lock_guard<annotated_mutex> guard;
 };
 
 class TableStatistics {
@@ -67,7 +67,7 @@ public:
 
 private:
 	//! The statistics lock
-	shared_ptr<mutex> stats_lock;
+	shared_ptr<annotated_mutex> stats_lock;
 	//! Column statistics
 	vector<shared_ptr<ColumnStatistics>> column_stats;
 	//! The table sample

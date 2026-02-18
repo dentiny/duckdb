@@ -197,7 +197,7 @@ void Pipeline::ResetSink() {
 		if (!sink->IsSink()) {
 			throw InternalException("Sink of pipeline does not have IsSink set");
 		}
-		lock_guard<mutex> guard(sink->lock);
+		annotated_lock_guard<annotated_mutex> guard(sink->lock);
 		if (!sink->sink_state) {
 			sink->sink_state = sink->GetGlobalSinkState(GetClientContext());
 		}
@@ -209,7 +209,7 @@ void Pipeline::PrepareFinalize() {
 		if (!sink->IsSink()) {
 			throw InternalException("Sink of pipeline does not have IsSink set");
 		}
-		lock_guard<mutex> guard(sink->lock);
+		annotated_lock_guard<annotated_mutex> guard(sink->lock);
 		if (!sink->sink_state) {
 			throw InternalException("Sink of pipeline does not have sink state");
 		}
@@ -221,7 +221,7 @@ void Pipeline::Reset() {
 	ResetSink();
 	for (auto &op_ref : operators) {
 		auto &op = op_ref.get();
-		lock_guard<mutex> guard(op.lock);
+		annotated_lock_guard<annotated_mutex> guard(op.lock);
 		if (!op.op_state) {
 			op.op_state = op.GetGlobalOperatorState(GetClientContext());
 		}
@@ -310,14 +310,14 @@ void Pipeline::ClearSource() {
 }
 
 idx_t Pipeline::RegisterNewBatchIndex() {
-	lock_guard<mutex> l(batch_lock);
+	annotated_lock_guard<annotated_mutex> l(batch_lock);
 	idx_t minimum = batch_indexes.empty() ? base_batch_index : *batch_indexes.begin();
 	batch_indexes.insert(minimum);
 	return minimum;
 }
 
 idx_t Pipeline::UpdateBatchIndex(idx_t old_index, idx_t new_index) {
-	lock_guard<mutex> l(batch_lock);
+	annotated_lock_guard<annotated_mutex> l(batch_lock);
 	if (new_index < *batch_indexes.begin()) {
 		throw InternalException("Processing batch index %llu, but previous min batch index was %llu", new_index,
 		                        *batch_indexes.begin());

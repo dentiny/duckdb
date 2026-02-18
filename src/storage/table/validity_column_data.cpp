@@ -38,7 +38,7 @@ void ValidityColumnData::UpdateWithBase(TransactionData transaction, DataTable &
 
 void ValidityColumnData::AppendData(BaseStatistics &stats, ColumnAppendState &state, UnifiedVectorFormat &vdata,
                                     idx_t count) {
-	lock_guard<mutex> l(stats_lock);
+	annotated_lock_guard<annotated_mutex> l(stats_lock);
 	ColumnData::AppendData(stats, state, vdata, count);
 }
 

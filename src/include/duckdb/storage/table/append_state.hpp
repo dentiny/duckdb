@@ -55,7 +55,7 @@ struct RowGroupAppendState {
 };
 
 struct IndexLock {
-	unique_lock<mutex> index_lock;
+	annotated_unique_lock<annotated_mutex> index_lock;
 };
 
 struct TableAppendState {
@@ -63,7 +63,7 @@ struct TableAppendState {
 	~TableAppendState();
 
 	RowGroupAppendState row_group_append_state;
-	unique_lock<mutex> append_lock;
+	annotated_unique_lock<annotated_mutex> append_lock;
 	shared_ptr<CheckpointLock> table_lock;
 	row_t row_start;
 	row_t current_row;

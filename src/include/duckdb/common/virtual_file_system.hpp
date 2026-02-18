@@ -97,7 +97,7 @@ private:
 	optional_ptr<FileSystem> FindFileSystemInternal(FileSystemRegistry &registry, const string &path);
 
 private:
-	mutex registry_lock;
+	annotated_mutex registry_lock;
 	shared_ptr<FileSystemRegistry> file_system_registry;
 	vector<unique_ptr<FileSystem>> unregistered_file_systems;
 };

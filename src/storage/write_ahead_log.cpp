@@ -46,7 +46,7 @@ BufferedFileWriter &WriteAheadLog::Initialize() {
 	if (Initialized()) {
 		return *writer;
 	}
-	lock_guard<mutex> lock(wal_lock);
+	annotated_lock_guard<annotated_mutex> lock(wal_lock);
 	if (!writer) {
 		writer =
 		    make_uniq<BufferedFileWriter>(FileSystem::Get(GetDatabase()), wal_path,

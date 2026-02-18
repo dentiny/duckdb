@@ -36,7 +36,7 @@ Executor &Executor::Get(ClientContext &context) {
 }
 
 void Executor::AddEvent(shared_ptr<Event> event) {
-	lock_guard<mutex> elock(executor_lock);
+	annotated_lock_guard<annotated_mutex> elock(executor_lock);
 	if (cancelled) {
 		return;
 	}
@@ -382,7 +382,7 @@ void Executor::Initialize(PhysicalOperator &plan) {
 void Executor::InitializeInternal(PhysicalOperator &plan) {
 	auto &scheduler = TaskScheduler::GetScheduler(context);
 	{
-		lock_guard<mutex> elock(executor_lock);
+		annotated_lock_guard<annotated_mutex> elock(executor_lock);
 		physical_plan = &plan;
 
 		this->profiler = ClientData::Get(context).profiler;
@@ -424,7 +424,7 @@ void Executor::InitializeInternal(PhysicalOperator &plan) {
 void Executor::CancelTasks() {
 	task.reset();
 	{
-		lock_guard<mutex> elock(executor_lock);
+		annotated_lock_guard<annotated_mutex> elock(executor_lock);
 		// mark the query as cancelled so tasks will early-out
 		cancelled = true;
 		// destroy all pipelines, events and states
@@ -456,7 +456,7 @@ void Executor::WorkOnTasks() {
 	}
 }
 
-void Executor::SignalTaskRescheduled(lock_guard<mutex> &) {
+void Executor::SignalTaskRescheduled(annotated_lock_guard<annotated_mutex> &) {
 	task_reschedule.notify_one();
 }
 
@@ -464,7 +464,7 @@ void Executor::WaitForTask() {
 #ifndef DUCKDB_NO_THREADS
 	static constexpr std::chrono::microseconds WAIT_TIME_MS = std::chrono::microseconds(WAIT_TIME * 1000);
 	auto begin = std::chrono::high_resolution_clock::now();
-	unique_lock<mutex> l(executor_lock);
+	annotated_unique_lock<annotated_mutex> l(executor_lock);
 	auto end = std::chrono::high_resolution_clock::now();
 	auto dur = end - begin;
 	auto ms = NumericCast<idx_t>(std::chrono::duration_cast<std::chrono::microseconds>(dur).count());
@@ -486,7 +486,7 @@ void Executor::WaitForTask() {
 void Executor::RescheduleTask(shared_ptr<Task> &task_p) {
 	// This function will spin lock until the task provided is added to the to_be_rescheduled_tasks
 	while (true) {
-		lock_guard<mutex> l(executor_lock);
+		annotated_lock_guard<annotated_mutex> l(executor_lock);
 		if (cancelled) {
 			return;
 		}
@@ -526,7 +526,7 @@ bool Executor::ResultCollectorIsBlocked() {
 }
 
 void Executor::AddToBeRescheduled(shared_ptr<Task> &task_p) {
-	lock_guard<mutex> l(executor_lock);
+	annotated_lock_guard<annotated_mutex> l(executor_lock);
 	if (cancelled) {
 		return;
 	}
@@ -563,7 +563,7 @@ PendingExecutionResult Executor::ExecuteTask(bool dry_run) {
 
 		if (!current_task && !HasError()) {
 			// there are no tasks to be scheduled and there are tasks blocked
-			lock_guard<mutex> l(executor_lock);
+			annotated_lock_guard<annotated_mutex> l(executor_lock);
 			if (to_be_rescheduled_tasks.empty()) {
 				return PendingExecutionResult::NO_TASKS_AVAILABLE;
 			}
@@ -610,7 +610,7 @@ PendingExecutionResult Executor::ExecuteTask(bool dry_run) {
 	}
 	D_ASSERT(!task);
 
-	lock_guard<mutex> elock(executor_lock);
+	annotated_lock_guard<annotated_mutex> elock(executor_lock);
 	pipelines.clear();
 	NextExecutor();
 	if (HasError()) { // LCOV_EXCL_START
@@ -623,7 +623,7 @@ PendingExecutionResult Executor::ExecuteTask(bool dry_run) {
 }
 
 void Executor::Reset() {
-	lock_guard<mutex> elock(executor_lock);
+	annotated_lock_guard<annotated_mutex> elock(executor_lock);
 	physical_plan = nullptr;
 	cancelled = false;
 	root_executor.reset();
@@ -693,7 +693,7 @@ void Executor::Flush(ThreadContext &thread_context) {
 }
 
 idx_t Executor::GetPipelinesProgress(ProgressData &progress) { // LCOV_EXCL_START
-	lock_guard<mutex> elock(executor_lock);
+	annotated_lock_guard<annotated_mutex> elock(executor_lock);
 
 	progress.done = 0;
 	progress.total = 0;

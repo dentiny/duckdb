@@ -334,7 +334,7 @@ struct ParallelCollectionScanState {
 	idx_t max_row;
 	idx_t batch_index;
 	atomic<idx_t> processed_rows;
-	mutex lock;
+	annotated_mutex lock;
 
 	//! Optional state for custom row group ordering
 	unique_ptr<RowGroupReorderer> reorderer;
@@ -361,7 +361,7 @@ class CreateIndexScanState : public TableScanState {
 public:
 	shared_ptr<RowGroupSegmentTree> row_groups;
 	vector<unique_ptr<StorageLockKey>> locks;
-	unique_lock<mutex> append_lock;
+	annotated_unique_lock<annotated_mutex> append_lock;
 	SegmentLock segment_lock;
 };
 

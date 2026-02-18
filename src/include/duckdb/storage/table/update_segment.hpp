@@ -59,7 +59,7 @@ private:
 	//! Update statistics
 	SegmentStatistics stats;
 	//! Stats lock
-	mutex stats_lock;
+	annotated_mutex stats_lock;
 	//! Internal type size
 	idx_t type_size;
 	//! String heap, only used for strings

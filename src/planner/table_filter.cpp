@@ -32,12 +32,12 @@ string TableFilter::DebugToString() const {
 }
 
 void DynamicTableFilterSet::ClearFilters(const PhysicalOperator &op) {
-	lock_guard<mutex> l(lock);
+	annotated_lock_guard<annotated_mutex> l(lock);
 	filters.erase(op);
 }
 
 void DynamicTableFilterSet::PushFilter(const PhysicalOperator &op, idx_t column_index, unique_ptr<TableFilter> filter) {
-	lock_guard<mutex> l(lock);
+	annotated_lock_guard<annotated_mutex> l(lock);
 	auto entry = filters.find(op);
 	optional_ptr<TableFilterSet> filter_ptr;
 	if (entry == filters.end()) {
@@ -51,14 +51,14 @@ void DynamicTableFilterSet::PushFilter(const PhysicalOperator &op, idx_t column_
 }
 
 bool DynamicTableFilterSet::HasFilters() const {
-	lock_guard<mutex> l(lock);
+	annotated_lock_guard<annotated_mutex> l(lock);
 	return !filters.empty();
 }
 
 unique_ptr<TableFilterSet>
 DynamicTableFilterSet::GetFinalTableFilters(const PhysicalTableScan &scan,
                                             optional_ptr<TableFilterSet> existing_filters) const {
-	lock_guard<mutex> l(lock);
+	annotated_lock_guard<annotated_mutex> l(lock);
 	D_ASSERT(!filters.empty());
 	auto result = make_uniq<TableFilterSet>();
 	if (existing_filters) {

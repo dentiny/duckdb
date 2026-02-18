@@ -53,7 +53,7 @@ optional_ptr<AttachedDatabase> DatabaseManager::GetDatabase(ClientContext &conte
 		// we do! return it
 		return database;
 	}
-	lock_guard<mutex> guard(databases_lock);
+	annotated_lock_guard<annotated_mutex> guard(databases_lock);
 	shared_ptr<AttachedDatabase> db;
 	if (StringUtil::Lower(name) == TEMP_CATALOG) {
 		db = context.client_data->temporary_objects;
@@ -67,11 +67,11 @@ optional_ptr<AttachedDatabase> DatabaseManager::GetDatabase(ClientContext &conte
 }
 
 shared_ptr<AttachedDatabase> DatabaseManager::GetDatabase(const string &name) {
-	lock_guard<mutex> guard(databases_lock);
+	annotated_lock_guard<annotated_mutex> guard(databases_lock);
 	return GetDatabaseInternal(guard, name);
 }
 
-shared_ptr<AttachedDatabase> DatabaseManager::GetDatabaseInternal(const lock_guard<mutex> &, const string &name) {
+shared_ptr<AttachedDatabase> DatabaseManager::GetDatabaseInternal(const annotated_lock_guard<annotated_mutex> &, const string &name) {
 	if (StringUtil::Lower(name) == SYSTEM_CATALOG) {
 		return system;
 	}
@@ -159,7 +159,7 @@ shared_ptr<AttachedDatabase> DatabaseManager::AttachDatabase(ClientContext &cont
 
 			// ... but it might not be done attaching yet!
 			// verify the database has actually finished attaching prior to returning
-			lock_guard<mutex> guard(databases_lock);
+			annotated_lock_guard<annotated_mutex> guard(databases_lock);
 			auto entry = databases.find(info.name);
 			if (entry != databases.end()) {
 				// The database ACTUALLY exists, so we return it.
@@ -214,7 +214,7 @@ optional_ptr<AttachedDatabase> DatabaseManager::FinalizeAttach(ClientContext &co
 	}
 	shared_ptr<AttachedDatabase> detached_db;
 	{
-		lock_guard<mutex> guard(databases_lock);
+		annotated_lock_guard<annotated_mutex> guard(databases_lock);
 		auto entry = databases.emplace(name, attached_db);
 		if (!entry.second) {
 			if (info.on_conflict == OnCreateConflict::REPLACE_ON_CONFLICT) {
@@ -282,7 +282,7 @@ void DatabaseManager::RenameDatabase(ClientContext &context, const string &old_n
 
 	shared_ptr<AttachedDatabase> attached_db;
 	{
-		lock_guard<mutex> guard(databases_lock);
+		annotated_lock_guard<annotated_mutex> guard(databases_lock);
 		auto old_entry = databases.find(old_name);
 		if (old_entry == databases.end()) {
 			if (if_not_found == OnEntryNotFound::THROW_EXCEPTION) {
@@ -311,7 +311,7 @@ void DatabaseManager::RenameDatabase(ClientContext &context, const string &old_n
 shared_ptr<AttachedDatabase> DatabaseManager::DetachInternal(const string &name) {
 	shared_ptr<AttachedDatabase> attached_db;
 	{
-		lock_guard<mutex> guard(databases_lock);
+		annotated_lock_guard<annotated_mutex> guard(databases_lock);
 		auto entry = databases.find(name);
 		if (entry == databases.end()) {
 			return nullptr;
@@ -332,7 +332,7 @@ InsertDatabasePathResult DatabaseManager::InsertDatabasePath(const AttachInfo &i
 
 vector<string> DatabaseManager::GetAttachedDatabasePaths() {
 	vector<string> result;
-	lock_guard<mutex> guard(databases_lock);
+	annotated_lock_guard<annotated_mutex> guard(databases_lock);
 	for (auto &entry : databases) {
 		auto &db_ref = *entry.second;
 		auto &catalog = db_ref.GetCatalog();
@@ -414,7 +414,7 @@ vector<shared_ptr<AttachedDatabase>> DatabaseManager::GetDatabases(ClientContext
                                                                    const optional_idx max_db_count) {
 	vector<shared_ptr<AttachedDatabase>> result;
 
-	lock_guard<mutex> guard(databases_lock);
+	annotated_lock_guard<annotated_mutex> guard(databases_lock);
 	idx_t count = 2;
 	for (auto &entry : databases) {
 		if (max_db_count.IsValid() && count >= max_db_count.GetIndex()) {
@@ -436,7 +436,7 @@ vector<shared_ptr<AttachedDatabase>> DatabaseManager::GetDatabases(ClientContext
 vector<shared_ptr<AttachedDatabase>> DatabaseManager::GetDatabases() {
 	vector<shared_ptr<AttachedDatabase>> result;
 
-	lock_guard<mutex> guard(databases_lock);
+	annotated_lock_guard<annotated_mutex> guard(databases_lock);
 	for (auto &entry : databases) {
 		result.push_back(entry.second);
 	}

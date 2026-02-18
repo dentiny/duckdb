@@ -20,19 +20,19 @@ TemporaryMemoryState::~TemporaryMemoryState() {
 }
 
 void TemporaryMemoryState::SetRemainingSize(idx_t new_remaining_size) {
-	const lock_guard<mutex> guard {temporary_memory_manager.lock};
+	const annotated_lock_guard<annotated_mutex> guard {temporary_memory_manager.lock};
 	temporary_memory_manager.SetRemainingSize(*this, new_remaining_size);
 }
 
 void TemporaryMemoryState::SetRemainingSizeAndUpdateReservation(ClientContext &context, idx_t new_remaining_size) {
 	D_ASSERT(new_remaining_size != 0); // Use SetZero instead
-	const lock_guard<mutex> guard {temporary_memory_manager.lock};
+	const annotated_lock_guard<annotated_mutex> guard {temporary_memory_manager.lock};
 	temporary_memory_manager.SetRemainingSize(*this, new_remaining_size);
 	temporary_memory_manager.UpdateState(context, *this);
 }
 
 void TemporaryMemoryState::SetZero() {
-	const lock_guard<mutex> guard {temporary_memory_manager.lock};
+	const annotated_lock_guard<annotated_mutex> guard {temporary_memory_manager.lock};
 	temporary_memory_manager.SetRemainingSize(*this, 0);
 	temporary_memory_manager.SetReservation(*this, 0);
 }
@@ -50,7 +50,7 @@ idx_t TemporaryMemoryState::GetMinimumReservation() const {
 }
 
 void TemporaryMemoryState::UpdateReservation(ClientContext &context) {
-	const lock_guard<mutex> guard {temporary_memory_manager.lock};
+	const annotated_lock_guard<annotated_mutex> guard {temporary_memory_manager.lock};
 	temporary_memory_manager.UpdateState(context, *this);
 }
 
@@ -59,7 +59,7 @@ idx_t TemporaryMemoryState::GetReservation() const {
 }
 
 void TemporaryMemoryState::SetMaterializationPenalty(idx_t new_materialization_penalty) {
-	const lock_guard<mutex> guard {temporary_memory_manager.lock};
+	const annotated_lock_guard<annotated_mutex> guard {temporary_memory_manager.lock};
 	materialization_penalty = new_materialization_penalty;
 }
 
@@ -76,7 +76,7 @@ idx_t TemporaryMemoryManager::DefaultMinimumReservation() const {
 }
 
 void TemporaryMemoryManager::Unregister(TemporaryMemoryState &temporary_memory_state) {
-	const lock_guard<mutex> guard {lock};
+	const annotated_lock_guard<annotated_mutex> guard {lock};
 
 	SetReservation(temporary_memory_state, 0);
 	SetRemainingSize(temporary_memory_state, 0);
@@ -102,7 +102,7 @@ TemporaryMemoryManager &TemporaryMemoryManager::Get(ClientContext &context) {
 }
 
 unique_ptr<TemporaryMemoryState> TemporaryMemoryManager::Register(ClientContext &context) {
-	const lock_guard<mutex> guard {lock};
+	const annotated_lock_guard<annotated_mutex> guard {lock};
 	UpdateConfiguration(context);
 
 	auto result = unique_ptr<TemporaryMemoryState>(new TemporaryMemoryState(*this, DefaultMinimumReservation()));

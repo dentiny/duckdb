@@ -102,7 +102,7 @@ public:
 	}
 	void SetWrittenAnything(bool val) {
 		if (shared) {
-			lock_guard<mutex> guard(lock);
+			annotated_lock_guard<annotated_mutex> guard(lock);
 			written_anything = val;
 		} else {
 			written_anything = val;
@@ -129,7 +129,7 @@ protected:
 
 	bool should_initialize;
 
-	mutex lock;
+	annotated_mutex lock;
 	bool shared;
 
 	unique_ptr<CSVWriterState> global_write_state;

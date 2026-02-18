@@ -66,7 +66,7 @@ public:
 	}
 
 	shared_ptr<ObjectCacheEntry> GetObject(const string &key) {
-		const lock_guard<mutex> lock(lock_mutex);
+		const annotated_lock_guard<annotated_mutex> lock(lock_mutex);
 		auto non_evictable_it = non_evictable_entries.find(key);
 		if (non_evictable_it != non_evictable_entries.end()) {
 			return non_evictable_it->second;
@@ -85,7 +85,7 @@ public:
 
 	template <class T, class... ARGS>
 	shared_ptr<T> GetOrCreate(const string &key, ARGS &&... args) {
-		const lock_guard<mutex> lock(lock_mutex);
+		const annotated_lock_guard<annotated_mutex> lock(lock_mutex);
 
 		// Check non-evictable entries first
 		auto non_evictable_it = non_evictable_entries.find(key);
@@ -126,7 +126,7 @@ public:
 			return;
 		}
 
-		const lock_guard<mutex> lock(lock_mutex);
+		const annotated_lock_guard<annotated_mutex> lock(lock_mutex);
 		const auto estimated_memory = value->GetEstimatedCacheMemory();
 		const bool is_evictable = estimated_memory.IsValid();
 		if (!is_evictable) {
@@ -140,7 +140,7 @@ public:
 	}
 
 	void Delete(const string &key) {
-		const lock_guard<mutex> lock(lock_mutex);
+		const annotated_lock_guard<annotated_mutex> lock(lock_mutex);
 		auto iter = non_evictable_entries.find(key);
 		if (iter != non_evictable_entries.end()) {
 			non_evictable_entries.erase(iter);
@@ -152,29 +152,29 @@ public:
 	DUCKDB_API static ObjectCache &GetObjectCache(ClientContext &context);
 
 	idx_t GetMaxMemory() const {
-		const lock_guard<mutex> lock(lock_mutex);
+		const annotated_lock_guard<annotated_mutex> lock(lock_mutex);
 		return lru_cache.Capacity();
 	}
 	idx_t GetCurrentMemory() const {
-		const lock_guard<mutex> lock(lock_mutex);
+		const annotated_lock_guard<annotated_mutex> lock(lock_mutex);
 		return lru_cache.CurrentTotalWeight();
 	}
 	size_t GetEntryCount() const {
-		const lock_guard<mutex> lock(lock_mutex);
+		const annotated_lock_guard<annotated_mutex> lock(lock_mutex);
 		return lru_cache.Size() + non_evictable_entries.size();
 	}
 	bool IsEmpty() const {
-		const lock_guard<mutex> lock(lock_mutex);
+		const annotated_lock_guard<annotated_mutex> lock(lock_mutex);
 		return lru_cache.IsEmpty() && non_evictable_entries.empty();
 	}
 
 	idx_t EvictToReduceMemory(idx_t target_bytes) {
-		const lock_guard<mutex> lock(lock_mutex);
+		const annotated_lock_guard<annotated_mutex> lock(lock_mutex);
 		return lru_cache.EvictToReduceAtLeast(target_bytes);
 	}
 
 private:
-	mutable mutex lock_mutex;
+	mutable annotated_mutex lock_mutex;
 	//! LRU cache for evictable entries
 
 	SharedLruCache<string, ObjectCacheEntry, duckdb::BufferPoolPayload> lru_cache;

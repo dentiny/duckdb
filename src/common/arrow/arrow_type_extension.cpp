@@ -185,7 +185,7 @@ void ArrowTypeExtension::PopulateArrowSchema(DuckDBArrowSchemaHolder &root_holde
 }
 
 void DBConfig::RegisterArrowExtension(const ArrowTypeExtension &extension) const {
-	lock_guard<mutex> l(arrow_extensions->lock);
+	annotated_lock_guard<annotated_mutex> l(arrow_extensions->lock);
 	auto extension_info = extension.GetInfo();
 	if (arrow_extensions->type_extensions.find(extension_info) != arrow_extensions->type_extensions.end()) {
 		throw NotImplementedException("Arrow Extension with configuration %s is already registered",
@@ -216,12 +216,12 @@ ArrowTypeExtension GetArrowExtensionInternal(
 	return type_extensions[info];
 }
 ArrowTypeExtension DBConfig::GetArrowExtension(ArrowExtensionMetadata info) const {
-	lock_guard<mutex> l(arrow_extensions->lock);
+	annotated_lock_guard<annotated_mutex> l(arrow_extensions->lock);
 	return GetArrowExtensionInternal(arrow_extensions->type_extensions, std::move(info));
 }
 
 ArrowTypeExtension DBConfig::GetArrowExtension(const LogicalType &type) const {
-	lock_guard<mutex> l(arrow_extensions->lock);
+	annotated_lock_guard<annotated_mutex> l(arrow_extensions->lock);
 	TypeInfo type_info(type);
 	if (!arrow_extensions->type_to_info[type_info].empty()) {
 		return GetArrowExtensionInternal(arrow_extensions->type_extensions,
@@ -233,7 +233,7 @@ ArrowTypeExtension DBConfig::GetArrowExtension(const LogicalType &type) const {
 }
 
 bool DBConfig::HasArrowExtension(const LogicalType &type) const {
-	lock_guard<mutex> l(arrow_extensions->lock);
+	annotated_lock_guard<annotated_mutex> l(arrow_extensions->lock);
 	TypeInfo type_info(type);
 	if (!arrow_extensions->type_to_info[type_info].empty()) {
 		return true;
@@ -243,7 +243,7 @@ bool DBConfig::HasArrowExtension(const LogicalType &type) const {
 }
 
 bool DBConfig::HasArrowExtension(ArrowExtensionMetadata info) const {
-	lock_guard<mutex> l(arrow_extensions->lock);
+	annotated_lock_guard<annotated_mutex> l(arrow_extensions->lock);
 	auto type_extensions = arrow_extensions->type_extensions;
 
 	if (type_extensions.find(info) != type_extensions.end()) {

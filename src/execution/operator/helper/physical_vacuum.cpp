@@ -48,7 +48,7 @@ public:
 		}
 	};
 
-	mutex stats_lock;
+	annotated_mutex stats_lock;
 	vector<unique_ptr<DistinctStatistics>> column_distinct_stats;
 };
 
@@ -74,7 +74,7 @@ SinkCombineResultType PhysicalVacuum::Combine(ExecutionContext &context, Operato
 	auto &g_state = input.global_state.Cast<VacuumGlobalSinkState>();
 	auto &l_state = input.local_state.Cast<VacuumLocalSinkState>();
 
-	lock_guard<mutex> lock(g_state.stats_lock);
+	annotated_lock_guard<annotated_mutex> lock(g_state.stats_lock);
 	D_ASSERT(g_state.column_distinct_stats.size() == l_state.column_distinct_stats.size());
 
 	for (idx_t col_idx = 0; col_idx < g_state.column_distinct_stats.size(); col_idx++) {

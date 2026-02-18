@@ -115,7 +115,7 @@ MutableLogger::MutableLogger(LogConfig &config_p, RegisteredLoggingContext conte
 }
 
 void MutableLogger::UpdateConfig(LogConfig &new_config) {
-	unique_lock<mutex> lck(lock);
+	annotated_unique_lock<annotated_mutex> lck(lock);
 	config = new_config;
 
 	// Update atomics for lock-free access
@@ -144,7 +144,7 @@ bool MutableLogger::ShouldLog(const char *log_type, LogLevel log_level) {
 
 	// FIXME: ENABLE_SELECTED and DISABLE_SELECTED are expensive and need full global lock
 	{
-		unique_lock<mutex> lck(lock);
+		annotated_unique_lock<annotated_mutex> lck(lock);
 		if (config.mode == LogMode::ENABLE_SELECTED) {
 			return config.enabled_log_types.find(log_type) != config.enabled_log_types.end();
 		}

@@ -107,17 +107,17 @@ private:
 	//! Lock that prevents vacuums from starting
 	unique_ptr<StorageLockKey> vacuum_lock;
 	//! Lock for accessing sequence_usage
-	mutex sequence_lock;
+	annotated_mutex sequence_lock;
 	//! Map of all sequences that were used during the transaction and the value they had in this transaction
 	reference_map_t<SequenceCatalogEntry, reference<SequenceValue>> sequence_usage;
 	//! Lock for modified_tables
-	mutex modified_tables_lock;
+	annotated_mutex modified_tables_lock;
 	//! Tables that are modified by this transaction
 	reference_map_t<DataTable, shared_ptr<DataTable>> modified_tables;
 	//! Lock for the active_locks map
-	mutex active_locks_lock;
+	annotated_mutex active_locks_lock;
 	struct ActiveTableLock {
-		mutex checkpoint_lock_mutex; // protects access to the checkpoint_lock field in this class
+		annotated_mutex checkpoint_lock_mutex; // protects access to the checkpoint_lock field in this class
 		weak_ptr<CheckpointLock> checkpoint_lock;
 	};
 	//! Active locks on tables

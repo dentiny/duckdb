@@ -32,12 +32,12 @@ public:
 
 public:
 	//! Set the remaining size needed for this state (NOTE: does not update the reservation!)
-	void SetRemainingSize(idx_t new_remaining_size) DUCKDB_NO_THREAD_SAFETY_ANALYSIS;
+	void SetRemainingSize(idx_t new_remaining_size);
 	//! Set the remaining size needed for this state and update the reservation
 	void SetRemainingSizeAndUpdateReservation(ClientContext &context,
-	                                          idx_t new_remaining_size) DUCKDB_NO_THREAD_SAFETY_ANALYSIS;
+	                                          idx_t new_remaining_size);
 	//! Set the remaining size to 0 (NOTE: updates the reservation to 0 as well)
-	void SetZero() DUCKDB_NO_THREAD_SAFETY_ANALYSIS;
+	void SetZero();
 	//! Get the remaining size that was set for this state
 	idx_t GetRemainingSize() const;
 	//! Set the minimum reservation for this state
@@ -45,11 +45,11 @@ public:
 	//! Get the minimum reservation for this state
 	idx_t GetMinimumReservation() const;
 	//! Updates the reservation based on current remaining size
-	void UpdateReservation(ClientContext &context) DUCKDB_NO_THREAD_SAFETY_ANALYSIS;
+	void UpdateReservation(ClientContext &context);
 	//! Get the reservation of this state
 	idx_t GetReservation() const;
 	//! Set the materialization penalty for this state
-	void SetMaterializationPenalty(idx_t new_materialization_penalty) DUCKDB_NO_THREAD_SAFETY_ANALYSIS;
+	void SetMaterializationPenalty(idx_t new_materialization_penalty);
 	//! Get the materialization penalty for this state
 	idx_t GetMaterializationPenalty() const;
 
@@ -120,7 +120,7 @@ private:
 
 private:
 	//! Lock because TemporaryMemoryManager is used concurrently
-	mutex lock;
+	annotated_mutex lock;
 
 	//! Memory limit of the buffer pool
 	idx_t memory_limit = DConstants::INVALID_INDEX;
