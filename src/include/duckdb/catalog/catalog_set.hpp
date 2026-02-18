@@ -89,15 +89,15 @@ public:
 
 	//! Returns the entry with the specified name
 	DUCKDB_API EntryLookup GetEntryDetailed(CatalogTransaction transaction, const string &name)
-	    DUCKDB_EXCLUDES(catalog_lock);
+	   ;
 	DUCKDB_API optional_ptr<CatalogEntry> GetEntry(CatalogTransaction transaction, const string &name)
-	    DUCKDB_EXCLUDES(catalog_lock);
+	   ;
 	DUCKDB_API optional_ptr<CatalogEntry> GetEntry(ClientContext &context, const string &name)
-	    DUCKDB_EXCLUDES(catalog_lock);
+	   ;
 
 	//! Gets the entry that is most similar to the given name (i.e. smallest levenshtein distance), or empty string if
 	//! none is found. The returned pair consists of the entry name and the distance (smaller means closer).
-	SimilarCatalogEntry SimilarEntry(CatalogTransaction transaction, const string &name) DUCKDB_EXCLUDES(catalog_lock);
+	SimilarCatalogEntry SimilarEntry(CatalogTransaction transaction, const string &name);
 
 	//! Rollback <entry> to be the currently valid entry for a certain catalog
 	//! entry
