@@ -457,18 +457,6 @@ jobs:
       run: |
         python3 scripts/run_tests_one_by_one.py build/release/test/unittest --test-config test/configs/prefetch_all_storage.json
 
-    - name: Test PEG parser on fallback mode
-      if: (success() || failure()) && steps.build.conclusion == 'success'
-      shell: bash
-      run: |
-        python3 scripts/run_tests_one_by_one.py build/release/test/unittest --test-config test/configs/peg_parser.json
-
-    - name: Test PEG parser on strict when supported mode
-      if: (success() || failure()) && steps.build.conclusion == 'success'
-      shell: bash
-      run: |
-        python3 scripts/run_tests_one_by_one.py build/release/test/unittest --test-config test/configs/peg_parser_strict.json
-
     - name: Forwards compatibility tests
       if: (success() || failure()) && steps.build.conclusion == 'success'
       shell: bash
@@ -500,3 +488,15 @@ jobs:
       shell: bash
       run: |
         python3 scripts/run_tests_one_by_one.py build/release/test/unittest --test-config test/configs/encryption.json
+
+    - name: Test PEG parser on fallback mode
+      if: (success() || failure()) && steps.build.conclusion == 'success'
+      shell: bash
+      run: |
+        ./build/release/test/unittest --test-config test/configs/peg_parser.json
+
+    - name: Test PEG parser on strict when supported mode
+      if: (success() || failure()) && steps.build.conclusion == 'success'
+      shell: bash
+      run: |
+        ./build/release/test/unittest --test-config test/configs/peg_parser_strict.json
