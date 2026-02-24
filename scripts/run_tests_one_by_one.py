@@ -265,7 +265,7 @@ def run_test_task(task, config):
     # Print the command being executed for easier debugging
     cmd_str = ' '.join(test_cmd)
     print(f"[Worker {worker_id}] Executing command: {cmd_str}", flush=True)
-    
+
     start = time.time()
     try:
         res = subprocess.run(
