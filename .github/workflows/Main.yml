@@ -108,6 +108,10 @@ jobs:
           sudo apt-get install -y -qq ninja-build
         fi
 
+        ls -lh /usr/bin/gcc* /usr/bin/g++*
+        gcc --version
+        g++ --version
+
     - uses: ./.github/actions/ccache-action
 
     - name: Build
