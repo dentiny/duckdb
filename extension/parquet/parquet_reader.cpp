@@ -25,6 +25,7 @@
 #include "duckdb/optimizer/statistics_propagator.hpp"
 #include "duckdb/planner/table_filter_state.hpp"
 #include "duckdb/common/multi_file/multi_file_reader.hpp"
+#include "duckdb/common/types/geometry_crs.hpp"
 
 namespace duckdb {
 
@@ -476,7 +477,8 @@ unique_ptr<ColumnReader> ParquetReader::CreateReader(ClientContext &context) {
 	return ret;
 }
 
-static bool IsGeometryType(const SchemaElement &s_ele, const ParquetFileMetadataCache &metadata, idx_t depth) {
+static bool IsGeometryType(const SchemaElement &s_ele, const ParquetFileMetadataCache &metadata, idx_t depth,
+                           string &crs) {
 	const auto is_blob = s_ele.__isset.type && s_ele.type == Type::BYTE_ARRAY;
 	if (!is_blob) {
 		return false;
@@ -484,8 +486,18 @@ static bool IsGeometryType(const SchemaElement &s_ele, const ParquetFileMetadata
 
 	// TODO: Handle CRS in the future
 	const auto is_native_geom = s_ele.__isset.logicalType && s_ele.logicalType.__isset.GEOMETRY;
+	if (is_native_geom) {
+		if (s_ele.logicalType.GEOMETRY.__isset.crs) {
+			crs = s_ele.logicalType.GEOMETRY.crs;
+		}
+		return true;
+	}
+
 	const auto is_native_geog = s_ele.__isset.logicalType && s_ele.logicalType.__isset.GEOGRAPHY;
-	if (is_native_geom || is_native_geog) {
+	if (is_native_geog) {
+		if (s_ele.logicalType.GEOGRAPHY.__isset.crs) {
+			crs = s_ele.logicalType.GEOGRAPHY.crs;
+		}
 		return true;
 	}
 
@@ -497,6 +509,10 @@ static bool IsGeometryType(const SchemaElement &s_ele, const ParquetFileMetadata
 	const auto is_geoparquet_geom = is_at_root && is_in_gpq_metadata && is_leaf;
 
 	if (is_geoparquet_geom) {
+		auto meta_ptr = metadata.geo_metadata->GetColumnMeta(s_ele.name);
+		if (meta_ptr) {
+			crs = meta_ptr->projjson;
+		}
 		return true;
 	}
 
@@ -527,7 +543,8 @@ ParquetColumnSchema ParquetReader::ParseSchemaRecursive(idx_t depth, idx_t max_d
 	}
 
 	// Check for geometry type
-	if (IsGeometryType(s_ele, *metadata, depth)) {
+	string crs;
+	if (IsGeometryType(s_ele, *metadata, depth, crs)) {
 		// Geometries in both GeoParquet and native parquet are stored as a WKB-encoded BLOB.
 		// Because we don't just want to validate that the WKB encoding is correct, but also transform it into
 		// little-endian if necessary, we cant just make use of the StringColumnReader without heavily modifying it.
@@ -536,13 +553,23 @@ ParquetColumnSchema ParquetReader::ParseSchemaRecursive(idx_t depth, idx_t max_d
 		// which performs the WKB validation/transformation using the `ST_GeomFromWKB` function of DuckDB.
 		// This enables us to also support other geometry encodings (such as GeoArrow geometries) easier in the future.
 
+		// Try to parse the CRS
+		LogicalType target_type;
+
+		auto lookup = CoordinateReferenceSystem::TryIdentify(context, crs);
+		if (lookup) {
+			target_type = LogicalType::GEOMETRY(*lookup);
+		} else {
+			target_type = LogicalType::GEOMETRY();
+		}
+
 		// Inner BLOB schema
 		vector<ParquetColumnSchema> geometry_child;
 		geometry_child.emplace_back(ParseColumnSchema(s_ele, max_define, max_repeat, this_idx, next_file_idx));
 
 		// Wrap in geometry schema
-		return ParquetColumnSchema::FromChildSchemas(s_ele.name, LogicalType::GEOMETRY(), max_define, max_repeat,
-		                                             this_idx, next_file_idx++, std::move(geometry_child),
+		return ParquetColumnSchema::FromChildSchemas(s_ele.name, target_type, max_define, max_repeat, this_idx,
+		                                             next_file_idx++, std::move(geometry_child),
 		                                             ParquetColumnSchemaType::GEOMETRY);
 	}
 
@@ -770,7 +797,7 @@ ParquetColumnDefinition ParquetColumnDefinition::FromSchemaValue(ClientContext &
 
 	const auto children = StructValue::GetChildren(column_def);
 	result.name = StringValue::Get(children[0]);
-	result.type = TransformStringToLogicalType(StringValue::Get(children[1]));
+	result.type = TransformStringToLogicalType(StringValue::Get(children[1]), context);
 	string error_message;
 	if (!children[2].TryCastAs(context, result.type, result.default_value, &error_message)) {
 		throw BinderException("Unable to cast Parquet schema default_value \"%s\" to %s", children[2].ToString(),
@@ -805,13 +832,11 @@ ParquetReader::ParquetReader(ClientContext &context_p, OpenFileInfo file_p, Parq
 			footer_size = UBigIntValue::Get(footer_entry->second);
 		}
 	}
-	// set pointer to factory method for AES state
-	auto &config = DBConfig::GetConfig(context_p);
-	if (config.encryption_util && parquet_options.debug_use_openssl) {
-		encryption_util = config.encryption_util;
-	} else {
-		encryption_util = make_shared_ptr<duckdb_mbedtls::MbedTlsWrapper::AESStateMBEDTLSFactory>();
-	}
+
+	// Get the encryption util
+	// The parquet reader only reads data, so we set util to true
+	encryption_util = context_p.db->GetEncryptionUtil(true);
+
 	// If metadata cached is disabled
 	// or if this file has cached metadata
 	// or if the cached version already expired
