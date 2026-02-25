@@ -100,12 +100,17 @@ jobs:
     - id: describe_step
       run: echo "git_describe=$(git describe --tags --long)" >> "$GITHUB_OUTPUT"
 
-    - name: Install ninja-build if missing
+    - name: Install tools
       shell: bash
       run: |
         if ! command -v ninja >/dev/null 2>&1; then
           sudo apt-get update -y -qq
           sudo apt-get install -y -qq ninja-build
+        fi
+
+        if ! command -v g++-10 >/dev/null 2>&1; then
+          sudo apt-get update -y -qq
+          sudo apt-get install -y -qq g++-10
         fi
 
         ls -lh /usr/bin/gcc* /usr/bin/g++*
