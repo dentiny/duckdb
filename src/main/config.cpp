@@ -839,16 +839,16 @@ vector<string> DBConfig::GetPossibleSanitizedPaths(const string &input_path, opt
 	return result;
 }
 
-bool DBConfig::CanAccessFile(const string &input_path, FileType type, optional_ptr<FileOpener> opener) {
+string DBConfig::FindAllowedPath(const string &input_path, FileType type, optional_ptr<FileOpener> opener) {
 	if (Settings::Get<EnableExternalAccessSetting>(*this)) {
 		// all external access is allowed
-		return true;
+		return input_path;
 	}
 
 	auto possible_paths = GetPossibleSanitizedPaths(input_path, opener);
 	for (auto &path : possible_paths) {
 		if (options.allowed_paths.count(path) > 0) {
-			return true;
+			return path;
 		}
 		if (options.allowed_directories.empty()) {
 			continue;
@@ -863,11 +863,12 @@ bool DBConfig::CanAccessFile(const string &input_path, FileType type, optional_p
 		for (const auto &allowed_directory : options.allowed_directories) {
 			if (StringUtil::StartsWith(path, allowed_directory)) {
 				D_ASSERT(StringUtil::EndsWith(allowed_directory, "/"));
-				return true;
+				return path;
 			}
 		}
 	}
-	return false;
+	throw PermissionException("Cannot access %s \"%s\" - file system operations are disabled by configuration",
+		                          type == FileType::FILE_TYPE_DIR ? "directory" : "file", path);
 }
 
 SerializationOptions::SerializationOptions(AttachedDatabase &db) {

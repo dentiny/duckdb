@@ -301,7 +301,9 @@ public:
 	//! Returns the default value of an option
 	static SettingLookupResult TryGetDefaultValue(optional_ptr<const ConfigurationOption> option, Value &result);
 
-	bool CanAccessFile(const string &path, FileType type, optional_ptr<FileOpener> opener = nullptr);
+	//! Return the first allowed for the given [path].
+	//! If there's no allowed path, throw PermissionException.
+	string VerifyAndFindAllowedPath(const string &path, FileType type, optional_ptr<FileOpener> opener);
 	void AddAllowedDirectory(const string &path);
 	void AddAllowedPath(const string &path);
 	string SanitizeAllowedPath(const string &path) const;
