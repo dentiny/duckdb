@@ -301,7 +301,7 @@ public:
 	//! Returns the default value of an option
 	static SettingLookupResult TryGetDefaultValue(optional_ptr<const ConfigurationOption> option, Value &result);
 
-	bool CanAccessFile(const string &path, FileType type);
+	bool CanAccessFile(const string &path, FileType type, optional_ptr<FileOpener> opener = nullptr);
 	void AddAllowedDirectory(const string &path);
 	void AddAllowedPath(const string &path);
 	string SanitizeAllowedPath(const string &path) const;
@@ -309,6 +309,10 @@ public:
 	const ExtensionCallbackManager &GetCallbackManager() const;
 
 private:
+	// Get all possible sanitized path for the given [input_path], in the order of current directory and file search paths.
+	// If [opener] provided, it's used to extract the local-scoped file search path.
+	vector<string> GetPossibleSanitizedPaths(const string &input_path, optional_ptr<FileOpener> opener = nullptr);
+
 	mutable mutex config_lock;
 	unique_ptr<CompressionFunctionSet> compression_functions;
 	unique_ptr<EncodingFunctionSet> encoding_functions;
