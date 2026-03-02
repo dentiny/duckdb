@@ -129,6 +129,9 @@ jobs:
       shell: bash
       run:  make relassert
 
+    - name: Smoke tests
+      run: make smoke
+
     - name: Output version info
       shell: bash
       run: ./build/relassert/duckdb -c "PRAGMA version;"
