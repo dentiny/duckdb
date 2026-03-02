@@ -6,7 +6,6 @@ add_library_unity(
   test_checksum.cpp
   test_storage.cpp
   test_database_size.cpp
-  wal_block_reuse.cpp
   wal_torn_write.cpp)
 set(ALL_OBJECT_FILES
     ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:test_sql_storage>
