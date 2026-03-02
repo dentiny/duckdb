@@ -1,0 +1,56 @@
+# name: test/sql/storage/wal/wal_block_reuse_after_drop.test
+# description: Verify blocks freed by DROP TABLE are not reused before WAL truncation
+# group: [wal]
+
+load __TEST_DIR__/wal_block_reuse.db
+
+statement ok
+PRAGMA disable_checkpoint_on_shutdown
+
+statement ok
+PRAGMA wal_autocheckpoint='1TB'
+
+# Force row groups to flush immediately so WAL stores block pointers
+statement ok
+SET write_buffer_row_group_count=1
+
+# Create table with PRIMARY KEY (forces block reads during WAL replay)
+statement ok
+CREATE TABLE t (a BIGINT PRIMARY KEY, b VARCHAR, c VARCHAR, d VARCHAR)
+
+# Insert data - allocates blocks, WAL records block pointers
+statement ok
+INSERT INTO t SELECT i, 
+  'row_' || i || repeat('x', 20), 
+  'data_' || i || repeat('y', 30), 
+  'col_' || i || repeat('z', 25) 
+FROM generate_series(0, 99999) t(i)
+
+# Drop table - frees blocks
+statement ok
+DROP TABLE t
+
+# Create new table with different schema (DOUBLE vs VARCHAR)
+statement ok
+CREATE TABLE t2 (a DOUBLE, b DOUBLE, c DOUBLE, d DOUBLE)
+
+# Insert into new table - would reuse freed blocks if bug exists
+statement ok
+INSERT INTO t2 SELECT 
+  i * 3.14159, i * 2.71828, i * 1.41421, i * 1.73205 
+FROM generate_series(0, 499999) t(i)
+
+# Restart triggers WAL replay
+# WAL contains: CREATE t, INSERT t, DROP t, CREATE t2, INSERT t2
+# If blocks were prematurely reused, replaying INSERT t reads corrupted data
+restart
+
+query I
+SELECT COUNT(*) FROM t2
+----
+500000
+
+query R
+SELECT a FROM t2 WHERE rowid = 0
+----
+0.000000
