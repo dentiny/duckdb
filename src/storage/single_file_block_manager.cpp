@@ -918,9 +918,8 @@ void SingleFileBlockManager::MarkBlockAsModified(block_id_t block_id) {
 	}
 	auto newly_used_entry = newly_used_blocks.find(block_id);
 	if (newly_used_entry != newly_used_blocks.end()) {
-		// this block was newly used - remove it from the newly_used set
-		// it cannot go directly to the free list because the WAL may still
-		// reference it via block pointers - defer reuse until the next checkpoint
+		// this block was newly used - and now we are labeling it as no longer being required we can directly
+		// add it back to the free list
 		newly_used_blocks.erase(newly_used_entry);
 	}
 	modified_blocks.insert(block_id);
