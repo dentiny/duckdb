@@ -16,9 +16,6 @@ TEST_CASE("WAL replay block reuse after drop", "[storage]") {
 	config.options.checkpoint_wal_size = idx_t(-1);
 	config.SetOptionByName("debug_skip_checkpoint_on_commit", true);
 	// Force row groups to be flushed to disk immediately during INSERT.
-	// This makes the WAL store block pointers (via WriteRowGroupData) instead of inline data (WriteInsert).
-	// Without this, the INSERT data stays in transient in-memory segments, the WAL stores inline chunks,
-	// and WAL replay never reads from the overwritten blocks — so the corruption would be invisible.
 	config.SetOptionByName("write_buffer_row_group_count", duckdb::Value::UBIGINT(1));
 
 	std::string file_path = TestCreatePath("wal_block_reuse.db");
@@ -51,14 +48,20 @@ TEST_CASE("WAL replay block reuse after drop", "[storage]") {
 			duckdb::Connection con_a(db);
 
 			auto res = con_a.Query("CREATE TABLE t (a BIGINT PRIMARY KEY, b VARCHAR, c VARCHAR, d VARCHAR)");
-			if (res->HasError()) { thread_a_ok = false; return; }
+			if (res->HasError()) {
+				thread_a_ok = false;
+				return;
+			}
 
 			res = con_a.Query("INSERT INTO t SELECT i, "
 			                  "'row_' || i || repeat('x', 20), "
 			                  "'data_' || i || repeat('y', 30), "
 			                  "'col_' || i || repeat('z', 25) "
 			                  "FROM generate_series(0, 249999) t(i)");
-			if (res->HasError()) { thread_a_ok = false; return; }
+			if (res->HasError()) {
+				thread_a_ok = false;
+				return;
+			}
 
 			advance_phase(1);
 			wait_for_phase(2);
@@ -70,15 +73,27 @@ TEST_CASE("WAL replay block reuse after drop", "[storage]") {
 			wait_for_phase(1);
 
 			auto res = con_b.Query("DROP TABLE t");
-			if (res->HasError()) { thread_b_ok = false; advance_phase(2); return; }
+			if (res->HasError()) {
+				thread_b_ok = false;
+				advance_phase(2);
+				return;
+			}
 
 			res = con_b.Query("CREATE TABLE t2 (a DOUBLE, b DOUBLE, c DOUBLE, d DOUBLE)");
-			if (res->HasError()) { thread_b_ok = false; advance_phase(2); return; }
+			if (res->HasError()) {
+				thread_b_ok = false;
+				advance_phase(2);
+				return;
+			}
 
 			res = con_b.Query("INSERT INTO t2 SELECT "
 			                  "i * 3.14159, i * 2.71828, i * 1.41421, i * 1.73205 "
 			                  "FROM generate_series(0, 999999) t(i)");
-			if (res->HasError()) { thread_b_ok = false; advance_phase(2); return; }
+			if (res->HasError()) {
+				thread_b_ok = false;
+				advance_phase(2);
+				return;
+			}
 
 			advance_phase(2);
 		});
@@ -90,9 +105,7 @@ TEST_CASE("WAL replay block reuse after drop", "[storage]") {
 		REQUIRE(thread_b_ok);
 	}
 
-	// Reopen triggers WAL replay. The WAL contains:
-	//   CREATE TABLE t (with PRIMARY KEY) → INSERT t → DROP t → CREATE t2 → INSERT t2
-	// If blocks were prematurely reused, replaying t's INSERT reads corrupted data.
+	// Reopen triggers WAL replay.
 	{
 		duckdb::DuckDB db(file_path, &config);
 		duckdb::Connection con(db);
