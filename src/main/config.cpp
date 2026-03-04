@@ -1,6 +1,7 @@
 #include "duckdb/main/config.hpp"
 
 #include "duckdb/common/cgroups.hpp"
+#include "duckdb/common/file_opener.hpp"
 #include "duckdb/common/file_system.hpp"
 #include "duckdb/common/operator/cast_operators.hpp"
 #include "duckdb/common/operator/multiply.hpp"
@@ -812,43 +813,62 @@ void DBConfig::AddAllowedPath(const string &path) {
 	options.allowed_paths.insert(allowed_path);
 }
 
-bool DBConfig::CanAccessFile(const string &input_path, FileType type) {
+vector<string> DBConfig::GetPossibleSanitizedPaths(const string &input_path, optional_ptr<FileOpener> opener) {
+	vector<string> result;
+	if (file_system->IsPathAbsolute(input_path)) {
+		result.push_back(SanitizeAllowedPath(input_path));
+		return result;
+	}
+
+	// First check current directory.
+	auto cwd_joined = file_system->JoinPath(FileSystem::GetWorkingDirectory(), input_path);
+	result.push_back(SanitizeAllowedPath(cwd_joined));
+
+	// Also check file search path if opener provided and set.
+	Value value;
+	const bool found = opener ? FileOpener::TryGetCurrentSetting(opener, "file_search_path", value)
+	                     : TryGetCurrentSetting("file_search_path", value);
+	if (found && !value.ToString().empty()) {
+		auto search_paths_str = value.ToString();
+		auto search_paths = StringUtil::Split(search_paths_str, ',');
+		for (const auto &search_path : search_paths) {
+			const auto joined_path = file_system->JoinPath(search_path, input_path);
+			result.push_back(SanitizeAllowedPath(joined_path));
+		}
+	}
+	return result;
+}
+
+string DBConfig::FindAllowedPath(const string &input_path, FileType type, optional_ptr<FileOpener> opener) {
 	if (Settings::Get<EnableExternalAccessSetting>(*this)) {
 		// all external access is allowed
-		return true;
-	}
-	string path = SanitizeAllowedPath(input_path);
-
-	if (options.allowed_paths.count(path) > 0) {
-		// path is explicitly allowed
-		return true;
+		return input_path;
 	}
 
-	if (options.allowed_directories.empty()) {
-		// no prefix directories specified
-		return false;
-	}
-	if (type == FileType::FILE_TYPE_DIR) {
-		// make sure directories end with a /
-		if (!StringUtil::EndsWith(path, "/")) {
-			path += "/";
+	auto possible_paths = GetPossibleSanitizedPaths(input_path, opener);
+	for (auto &path : possible_paths) {
+		if (options.allowed_paths.count(path) > 0) {
+			return path;
+		}
+		if (options.allowed_directories.empty()) {
+			continue;
+		}
+		if (type == FileType::FILE_TYPE_DIR) {
+			// make sure directories end with a /
+			if (!StringUtil::EndsWith(path, "/")) {
+				path += "/";
+			}
+		}
+
+		for (const auto &allowed_directory : options.allowed_directories) {
+			if (StringUtil::StartsWith(path, allowed_directory)) {
+				D_ASSERT(StringUtil::EndsWith(allowed_directory, "/"));
+				return path;
+			}
 		}
 	}
-
-	string prefix;
-	for (const auto &allowed_directory : options.allowed_directories) {
-		if (StringUtil::StartsWith(path, allowed_directory)) {
-			prefix = allowed_directory;
-			break;
-		}
-	}
-
-	if (prefix.empty()) {
-		// no common prefix found - path is not inside an allowed directory
-		return false;
-	}
-	D_ASSERT(StringUtil::EndsWith(prefix, "/"));
-	return true;
+	throw PermissionException("Cannot access %s \"%s\" - file system operations are disabled by configuration",
+		                          type == FileType::FILE_TYPE_DIR ? "directory" : "file", path);
 }
 
 SerializationOptions::SerializationOptions(AttachedDatabase &db) {

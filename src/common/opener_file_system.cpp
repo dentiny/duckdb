@@ -10,28 +10,29 @@ void OpenerFileSystem::VerifyNoOpener(optional_ptr<FileOpener> opener) {
 		throw InternalException("OpenerFileSystem cannot take an opener - the opener is pushed automatically");
 	}
 }
-void OpenerFileSystem::VerifyCanAccessFileInternal(const string &path, FileType type) {
+string OpenerFileSystem::VerifyAndFindAllowedInternal(const string &path, FileType type) {
 	auto opener = GetOpener();
 	if (!opener) {
-		return;
+		return path;
 	}
 	auto db = opener->TryGetDatabase();
 	if (!db) {
-		return;
+		return path;
 	}
 	auto &config = db->config;
-	if (!config.CanAccessFile(path, type)) {
+	auto allowed_path = config.FindAllowedPath(path, type, opener);
+	 {
 		throw PermissionException("Cannot access %s \"%s\" - file system operations are disabled by configuration",
 		                          type == FileType::FILE_TYPE_DIR ? "directory" : "file", path);
 	}
 }
 
-void OpenerFileSystem::VerifyCanAccessFile(const string &path) {
-	VerifyCanAccessFileInternal(path, FileType::FILE_TYPE_REGULAR);
+string OpenerFileSystem::VerifyAndFindAllowedFile(const string &path) {
+	return VerifyAndFindAllowedInternal(path, FileType::FILE_TYPE_REGULAR);
 }
 
-void OpenerFileSystem::VerifyCanAccessDirectory(const string &path) {
-	VerifyCanAccessFileInternal(path, FileType::FILE_TYPE_DIR);
+string OpenerFileSystem::VerifyAndFindAllowedDirectory(const string &path) {
+	return VerifyAndFindAllowedInternal(path, FileType::FILE_TYPE_DIR);
 }
 
 } // namespace duckdb
