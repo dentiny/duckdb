@@ -88,9 +88,6 @@ DatabaseInstance::~DatabaseInstance() {
 	scheduler.reset();
 	db_manager.reset();
 
-	// stop the log manager, after this point Logger calls are unsafe.
-	log_manager.reset();
-
 	external_file_cache.reset();
 	result_set_manager.reset();
 
@@ -99,8 +96,12 @@ DatabaseInstance::~DatabaseInstance() {
 	// flush allocations and disable the background thread
 	config.block_allocator->FlushAll();
 	Allocator::SetBackgroundThreads(false);
+
 	// after all destruction is complete clear the cache entry
 	config.db_cache_entry.reset();
+
+	// stop the log manager last, so the logging is still possible during destruction.
+	log_manager.reset();
 }
 
 DatabaseInstance &DatabaseInstance::GetDatabase(ClientContext &context) {
