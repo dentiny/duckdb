@@ -814,7 +814,7 @@ void DBConfig::AddAllowedPath(const string &path) {
 	options.allowed_paths.insert(allowed_path);
 }
 
-bool DBConfig::CanAccessFile(const string &input_path, FileType type) {
+bool DBConfig::CanAccessFile(const string &input_path, FileType type) const {
 	if (Settings::Get<EnableExternalAccessSetting>(*this)) {
 		// all external access is allowed
 		return true;
