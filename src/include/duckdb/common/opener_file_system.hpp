@@ -20,8 +20,8 @@ public:
 	virtual optional_ptr<FileOpener> GetOpener() const = 0;
 
 	void VerifyNoOpener(optional_ptr<FileOpener> opener);
-	void VerifyCanAccessDirectory(const string &path);
-	void VerifyCanAccessFile(const string &path);
+	string VerifyAndFindAllowedDirectory(const string &path);
+	string VerifyAndFindAllowedFile(const string &path);
 	void VerifyCanAccessExtension(const string &path, const FileOpenFlags &flags) {
 		if (flags.OpenForWriting() && !flags.EnableExtensionInstall()) {
 			throw PermissionException(
@@ -77,33 +77,33 @@ public:
 
 	bool DirectoryExists(const string &directory, optional_ptr<FileOpener> opener) override {
 		VerifyNoOpener(opener);
-		VerifyCanAccessDirectory(directory);
-		return GetFileSystem().DirectoryExists(directory, GetOpener());
+		auto allowed_dir = VerifyAndFindAllowedDirectory(directory);
+		return GetFileSystem().DirectoryExists(allowed_dir, GetOpener());
 	}
 	void CreateDirectory(const string &directory, optional_ptr<FileOpener> opener) override {
 		VerifyNoOpener(opener);
-		VerifyCanAccessDirectory(directory);
-		return GetFileSystem().CreateDirectory(directory, GetOpener());
+		auto allowed_dir = VerifyAndFindAllowedDirectory(directory);
+		return GetFileSystem().CreateDirectory(allowed_dir, GetOpener());
 	}
 
 	void RemoveDirectory(const string &directory, optional_ptr<FileOpener> opener) override {
 		VerifyNoOpener(opener);
-		VerifyCanAccessDirectory(directory);
+		auto allowed_dir = VerifyAndFindAllowedDirectory(directory);
 		return GetFileSystem().RemoveDirectory(directory, GetOpener());
 	}
 
 	void MoveFile(const string &source, const string &target, optional_ptr<FileOpener> opener) override {
 		VerifyNoOpener(opener);
-		VerifyCanAccessFile(source);
-		VerifyCanAccessFile(target);
-		if (IsDuckDBExtensionName(target) && !IsDuckDBExtensionName(source)) {
+		auto allowed_source = VerifyAndFindAllowedFile(source);
+		auto allowed_target = VerifyAndFindAllowedFile(target);
+		if (IsDuckDBExtensionName(allowed_target) && !IsDuckDBExtensionName(allowed_source)) {
 			throw PermissionException(
 			    "File '%s' cannot be moved to '%s', files ending with '.duckdb_extension' are reserved for DuckDB "
 			    "extensions, and these can only be installed through the INSTALL command, or moved if both are "
 			    "extensions'",
-			    source, target);
+			    allowed_source, allowed_target);
 		}
-		GetFileSystem().MoveFile(source, target, GetOpener());
+		GetFileSystem().MoveFile(allowed_source, allowed_target, GetOpener());
 	}
 
 	string GetHomeDirectory() override {
@@ -116,8 +116,8 @@ public:
 
 	bool FileExists(const string &filename, optional_ptr<FileOpener> opener) override {
 		VerifyNoOpener(opener);
-		VerifyCanAccessFile(filename);
-		return GetFileSystem().FileExists(filename, GetOpener());
+		auto allowed_file = VerifyAndFindAllowedFile(filename);
+		return GetFileSystem().FileExists(allowed_file, GetOpener());
 	}
 
 	bool IsPipe(const string &filename, optional_ptr<FileOpener> opener) override {
@@ -126,20 +126,23 @@ public:
 	}
 	void RemoveFile(const string &filename, optional_ptr<FileOpener> opener) override {
 		VerifyNoOpener(opener);
-		VerifyCanAccessFile(filename);
-		GetFileSystem().RemoveFile(filename, GetOpener());
+		auto allowed_file = VerifyAndFindAllowedFile(filename);
+		GetFileSystem().RemoveFile(allowed_file, GetOpener());
 	}
 
 	bool TryRemoveFile(const string &filename, optional_ptr<FileOpener> opener) override {
 		VerifyNoOpener(opener);
-		VerifyCanAccessFile(filename);
-		return GetFileSystem().TryRemoveFile(filename, GetOpener());
+		auto allowed_file = VerifyAndFindAllowedFile(filename);
+		return GetFileSystem().TryRemoveFile(allowed_file, GetOpener());
 	}
 
 	void RemoveFiles(const vector<string> &filenames, optional_ptr<FileOpener> opener) override {
 		VerifyNoOpener(opener);
+		vector<string> allowed_filepaths;
+		allowed_filepaths.reserve(filenames.size());
 		for (const auto &filename : filenames) {
-			VerifyCanAccessFile(filename);
+			auto allowed_file = VerifyAndFindAllowedFile(filename);
+			allowed_filepaths.emplace_back(std::move(allowed_file));
 		}
 		GetFileSystem().RemoveFiles(filenames, GetOpener());
 	}
@@ -150,8 +153,8 @@ public:
 
 	vector<OpenFileInfo> Glob(const string &path, FileOpener *opener = nullptr) override {
 		VerifyNoOpener(opener);
-		VerifyCanAccessFile(path);
-		return GetFileSystem().Glob(path, GetOpener().get());
+		auto allowed_file = VerifyAndFindAllowedFile(path);
+		return GetFileSystem().Glob(allowed_file, GetOpener().get());
 	}
 
 	std::string GetName() const override {
@@ -194,10 +197,13 @@ protected:
 	unique_ptr<FileHandle> OpenFileExtended(const OpenFileInfo &file, FileOpenFlags flags,
 	                                        optional_ptr<FileOpener> opener = nullptr) override {
 		VerifyNoOpener(opener);
-		VerifyCanAccessFile(file.path);
-		if (IsDuckDBExtensionName(file.path)) {
-			VerifyCanAccessExtension(file.path, flags);
+		auto allowed_file = VerifyAndFindAllowedFile(file.path);
+		if (IsDuckDBExtensionName(allowed_file)) {
+			VerifyCanAccessExtension(allowed_file, flags);
 		}
+		OpenFileInfo sanitized_open_file_info;
+		sanitized_open_file_info.path = std::move(allowed_file);
+		sanitized_open_file_info.extended_info = file.extended_info;
 		return GetFileSystem().OpenFile(file, flags, GetOpener());
 	}
 
@@ -208,8 +214,8 @@ protected:
 	bool ListFilesExtended(const string &directory, const std::function<void(OpenFileInfo &info)> &callback,
 	                       optional_ptr<FileOpener> opener) override {
 		VerifyNoOpener(opener);
-		VerifyCanAccessDirectory(directory);
-		return GetFileSystem().ListFiles(directory, callback, GetOpener().get());
+		auto allowed_dir = VerifyAndFindAllowedDirectory(directory);
+		return GetFileSystem().ListFiles(allowed_dir, callback, GetOpener().get());
 	}
 
 	bool SupportsListFilesExtended() const override {
@@ -219,8 +225,8 @@ protected:
 	unique_ptr<MultiFileList> GlobFilesExtended(const string &path, const FileGlobInput &input,
 	                                            optional_ptr<FileOpener> opener) override {
 		VerifyNoOpener(opener);
-		VerifyCanAccessFile(path);
-		return GetFileSystem().Glob(path, input, GetOpener());
+		auto allowed_file = VerifyAndFindAllowedFile(path);
+		return GetFileSystem().Glob(allowed_file, input, GetOpener());
 	}
 
 	bool SupportsGlobExtended() const override {
@@ -233,7 +239,7 @@ protected:
 	}
 
 private:
-	void VerifyCanAccessFileInternal(const string &path, FileType type);
+	string VerifyAndFindAllowedInternal(const string &path, FileType type);
 };
 
 } // namespace duckdb
