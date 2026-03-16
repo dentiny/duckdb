@@ -19,26 +19,26 @@ namespace duckdb {
 namespace roaring {
 
 //! Used for compressed runs/arrays
-static constexpr uint16_t COMPRESSED_SEGMENT_SIZE = 256;
+inline constexpr uint16_t COMPRESSED_SEGMENT_SIZE = 256;
 //! compresed segment size is 256, instead of division we can make use of shifting
-static constexpr uint16_t COMPRESSED_SEGMENT_SHIFT_AMOUNT = 8;
+inline constexpr uint16_t COMPRESSED_SEGMENT_SHIFT_AMOUNT = 8;
 //! The amount of values that are encoded per container
-static constexpr idx_t ROARING_CONTAINER_SIZE = 2048;
-static constexpr bool NULLS = true;
-static constexpr bool NON_NULLS = false;
-static constexpr uint16_t UNCOMPRESSED_SIZE = (ROARING_CONTAINER_SIZE / sizeof(validity_t));
-static constexpr uint16_t COMPRESSED_SEGMENT_COUNT = (ROARING_CONTAINER_SIZE / COMPRESSED_SEGMENT_SIZE);
+inline constexpr idx_t ROARING_CONTAINER_SIZE = 2048;
+inline constexpr bool NULLS = true;
+inline constexpr bool NON_NULLS = false;
+inline constexpr uint16_t UNCOMPRESSED_SIZE = (ROARING_CONTAINER_SIZE / sizeof(validity_t));
+inline constexpr uint16_t COMPRESSED_SEGMENT_COUNT = (ROARING_CONTAINER_SIZE / COMPRESSED_SEGMENT_SIZE);
 
-static constexpr uint16_t MAX_RUN_IDX = (UNCOMPRESSED_SIZE - COMPRESSED_SEGMENT_COUNT) / (sizeof(uint8_t) * 2);
-static constexpr uint16_t MAX_ARRAY_IDX = (UNCOMPRESSED_SIZE - COMPRESSED_SEGMENT_COUNT) / (sizeof(uint8_t) * 1);
+inline constexpr uint16_t MAX_RUN_IDX = (UNCOMPRESSED_SIZE - COMPRESSED_SEGMENT_COUNT) / (sizeof(uint8_t) * 2);
+inline constexpr uint16_t MAX_ARRAY_IDX = (UNCOMPRESSED_SIZE - COMPRESSED_SEGMENT_COUNT) / (sizeof(uint8_t) * 1);
 //! The value used to indicate that a container is a bitset container
-static constexpr uint16_t BITSET_CONTAINER_SENTINEL_VALUE = MAX_ARRAY_IDX + 1;
-static constexpr uint16_t COMPRESSED_ARRAY_THRESHOLD = 8;
-static constexpr uint16_t COMPRESSED_RUN_THRESHOLD = 4;
+inline constexpr uint16_t BITSET_CONTAINER_SENTINEL_VALUE = MAX_ARRAY_IDX + 1;
+inline constexpr uint16_t COMPRESSED_ARRAY_THRESHOLD = 8;
+inline constexpr uint16_t COMPRESSED_RUN_THRESHOLD = 4;
 
-static constexpr uint16_t CONTAINER_TYPE_BITWIDTH = 2;
-static constexpr uint16_t RUN_CONTAINER_SIZE_BITWIDTH = 7;
-static constexpr uint16_t ARRAY_CONTAINER_SIZE_BITWIDTH = 8;
+inline constexpr uint16_t CONTAINER_TYPE_BITWIDTH = 2;
+inline constexpr uint16_t RUN_CONTAINER_SIZE_BITWIDTH = 7;
+inline constexpr uint16_t ARRAY_CONTAINER_SIZE_BITWIDTH = 8;
 
 //! This can be increased, but requires additional changes beyond just changing the constant
 static_assert(MAX_RUN_IDX < NumericLimits<uint8_t>::Maximum(), "The run size is encoded in a maximum of 8 bits");

@@ -26,7 +26,7 @@ class TemporaryFileManager;
 //===--------------------------------------------------------------------===//
 // TemporaryBufferSize
 //===--------------------------------------------------------------------===//
-static constexpr uint64_t TEMPORARY_BUFFER_SIZE_GRANULARITY = 32ULL * 1024ULL;
+inline constexpr uint64_t TEMPORARY_BUFFER_SIZE_GRANULARITY = 32ULL * 1024ULL;
 
 enum class TemporaryBufferSize : uint64_t {
 	INVALID = 0,

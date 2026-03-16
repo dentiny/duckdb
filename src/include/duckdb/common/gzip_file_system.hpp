@@ -36,21 +36,21 @@ public:
 	idx_t OutBufferSize() override;
 };
 
-static constexpr const uint8_t GZIP_COMPRESSION_DEFLATE = 0x08;
+inline constexpr const uint8_t GZIP_COMPRESSION_DEFLATE = 0x08;
 
-static constexpr const uint8_t GZIP_FLAG_ASCII = 0x1;
-static constexpr const uint8_t GZIP_FLAG_MULTIPART = 0x2;
-static constexpr const uint8_t GZIP_FLAG_EXTRA = 0x4;
-static constexpr const uint8_t GZIP_FLAG_NAME = 0x8;
-static constexpr const uint8_t GZIP_FLAG_COMMENT = 0x10;
-static constexpr const uint8_t GZIP_FLAG_ENCRYPT = 0x20;
+inline constexpr const uint8_t GZIP_FLAG_ASCII = 0x1;
+inline constexpr const uint8_t GZIP_FLAG_MULTIPART = 0x2;
+inline constexpr const uint8_t GZIP_FLAG_EXTRA = 0x4;
+inline constexpr const uint8_t GZIP_FLAG_NAME = 0x8;
+inline constexpr const uint8_t GZIP_FLAG_COMMENT = 0x10;
+inline constexpr const uint8_t GZIP_FLAG_ENCRYPT = 0x20;
 
-static constexpr const uint8_t GZIP_HEADER_MINSIZE = 10;
+inline constexpr const uint8_t GZIP_HEADER_MINSIZE = 10;
 // MAXSIZE should be the same as input buffer size
-static constexpr const idx_t GZIP_HEADER_MAXSIZE = 1u << 15;
-static constexpr const uint8_t GZIP_FOOTER_SIZE = 8;
+inline constexpr const idx_t GZIP_HEADER_MAXSIZE = 1u << 15;
+inline constexpr const uint8_t GZIP_FOOTER_SIZE = 8;
 
-static constexpr const unsigned char GZIP_FLAG_UNSUPPORTED =
+inline constexpr const unsigned char GZIP_FLAG_UNSUPPORTED =
     GZIP_FLAG_ASCII | GZIP_FLAG_MULTIPART | GZIP_FLAG_COMMENT | GZIP_FLAG_ENCRYPT;
 
 } // namespace duckdb

@@ -33,6 +33,6 @@ enum class MemoryTag : uint8_t {
 	UNKNOWN = 16,
 };
 
-static constexpr const idx_t MEMORY_TAG_COUNT = static_cast<idx_t>(MemoryTag::UNKNOWN);
+inline constexpr const idx_t MEMORY_TAG_COUNT = static_cast<idx_t>(MemoryTag::UNKNOWN);
 
 } // namespace duckdb

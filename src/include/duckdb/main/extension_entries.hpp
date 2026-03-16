@@ -39,7 +39,7 @@ struct ExtensionFunctionOverloadEntry {
 	char signature[96];
 };
 
-static constexpr ExtensionFunctionEntry EXTENSION_FUNCTIONS[] = {
+inline constexpr ExtensionFunctionEntry EXTENSION_FUNCTIONS[] = {
     {"!__postfix", "core_functions", CatalogType::SCALAR_FUNCTION_ENTRY},
     {"&", "core_functions", CatalogType::SCALAR_FUNCTION_ENTRY},
     {"**", "core_functions", CatalogType::SCALAR_FUNCTION_ENTRY},
@@ -820,7 +820,7 @@ static constexpr ExtensionFunctionEntry EXTENSION_FUNCTIONS[] = {
     {"~", "core_functions", CatalogType::SCALAR_FUNCTION_ENTRY},
 }; // END_OF_EXTENSION_FUNCTIONS
 
-static constexpr ExtensionFunctionOverloadEntry EXTENSION_FUNCTION_OVERLOADS[] = {
+inline constexpr ExtensionFunctionOverloadEntry EXTENSION_FUNCTION_OVERLOADS[] = {
     {"age", "core_functions", CatalogType::SCALAR_FUNCTION_ENTRY, "[TIMESTAMP]>INTERVAL"},
     {"age", "core_functions", CatalogType::SCALAR_FUNCTION_ENTRY, "[TIMESTAMP,TIMESTAMP]>INTERVAL"},
     {"age", "icu", CatalogType::SCALAR_FUNCTION_ENTRY, "[TIMESTAMPTZ]>INTERVAL"},
@@ -1038,7 +1038,7 @@ static constexpr ExtensionFunctionOverloadEntry EXTENSION_FUNCTION_OVERLOADS[] =
     {"yearweek", "icu", CatalogType::SCALAR_FUNCTION_ENTRY, "[TIMESTAMPTZ]>BIGINT"},
 }; // END_OF_EXTENSION_FUNCTION_OVERLOADS
 
-static constexpr ExtensionEntry EXTENSION_SETTINGS[] = {
+inline constexpr ExtensionEntry EXTENSION_SETTINGS[] = {
     {"allow_asterisks_in_http_paths", "httpfs"},
     {"auto_fallback_to_full_download", "httpfs"},
     {"azure_account_name", "azure"},
@@ -1125,7 +1125,7 @@ static constexpr ExtensionEntry EXTENSION_SETTINGS[] = {
     {"unsafe_enable_version_guessing", "iceberg"},
 }; // END_OF_EXTENSION_SETTINGS
 
-static constexpr ExtensionEntry EXTENSION_SECRET_TYPES[] = {
+inline constexpr ExtensionEntry EXTENSION_SECRET_TYPES[] = {
     {"aws", "httpfs"},         {"azure", "azure"},     {"ducklake", "ducklake"},   {"gcs", "httpfs"},
     {"huggingface", "httpfs"}, {"iceberg", "iceberg"}, {"mysql", "mysql_scanner"}, {"postgres", "postgres_scanner"},
     {"r2", "httpfs"},          {"s3", "httpfs"},
@@ -1133,19 +1133,19 @@ static constexpr ExtensionEntry EXTENSION_SECRET_TYPES[] = {
 
 // Note: these are currently hardcoded in scripts/generate_extensions_function.py
 // TODO: automate by passing though to script via duckdb
-static constexpr ExtensionEntry EXTENSION_COPY_FUNCTIONS[] = {
+inline constexpr ExtensionEntry EXTENSION_COPY_FUNCTIONS[] = {
     {"parquet", "parquet"}, {"json", "json"}, {"avro", "avro"}}; // END_OF_EXTENSION_COPY_FUNCTIONS
 
 // Note: these are currently hardcoded in scripts/generate_extensions_function.py
 // TODO: automate by passing though to script via duckdb
-static constexpr ExtensionEntry EXTENSION_TYPES[] = {
+inline constexpr ExtensionEntry EXTENSION_TYPES[] = {
     {"json", "json"},
     {"inet", "inet"},
 }; // END_OF_EXTENSION_TYPES
 
 // Note: these are currently hardcoded in scripts/generate_extensions_function.py
 // TODO: automate by passing though to script via duckdb
-static constexpr ExtensionEntry EXTENSION_COLLATIONS[] = {
+inline constexpr ExtensionEntry EXTENSION_COLLATIONS[] = {
     {"af", "icu"},    {"am", "icu"},    {"ar", "icu"},     {"ar_sa", "icu"}, {"as", "icu"},    {"az", "icu"},
     {"be", "icu"},    {"bg", "icu"},    {"bn", "icu"},     {"bo", "icu"},    {"br", "icu"},    {"bs", "icu"},
     {"ca", "icu"},    {"ceb", "icu"},   {"chr", "icu"},    {"cs", "icu"},    {"cy", "icu"},    {"da", "icu"},
@@ -1171,28 +1171,28 @@ static constexpr ExtensionEntry EXTENSION_COLLATIONS[] = {
 
 // Note: these are currently hardcoded in scripts/generate_extensions_function.py
 // TODO: automate by passing though to script via duckdb
-static constexpr ExtensionEntry EXTENSION_FILE_PREFIXES[] = {
+inline constexpr ExtensionEntry EXTENSION_FILE_PREFIXES[] = {
     {"http://", "httpfs"}, {"https://", "httpfs"}, {"s3://", "httpfs"}, {"s3a://", "httpfs"},  {"s3n://", "httpfs"},
     {"gcs://", "httpfs"},  {"gs://", "httpfs"},    {"r2://", "httpfs"}, {"azure://", "azure"}, {"az://", "azure"},
     {"abfss://", "azure"}, {"hf://", "httpfs"}}; // END_OF_EXTENSION_FILE_PREFIXES
 
 // Note: these are currently hardcoded in scripts/generate_extensions_function.py
 // TODO: automate by passing though to script via duckdb
-static constexpr ExtensionEntry EXTENSION_FILE_POSTFIXES[] = {
+inline constexpr ExtensionEntry EXTENSION_FILE_POSTFIXES[] = {
     {".parquet", "parquet"}, {".json", "json"},   {".jsonl", "json"}, {".ndjson", "json"}, {".shp", "spatial"},
     {".gpkg", "spatial"},    {".fgb", "spatial"}, {".xlsx", "excel"}, {".avro", "avro"},
 }; // END_OF_EXTENSION_FILE_POSTFIXES
 
 // Note: these are currently hardcoded in scripts/generate_extensions_function.py
 // TODO: automate by passing though to script via duckdb
-static constexpr ExtensionEntry EXTENSION_FILE_CONTAINS[] = {{".parquet?", "parquet"},
+inline constexpr ExtensionEntry EXTENSION_FILE_CONTAINS[] = {{".parquet?", "parquet"},
                                                              {".json?", "json"},
                                                              {".ndjson?", ".jsonl?"},
                                                              {".jsonl?", ".ndjson?"}}; // EXTENSION_FILE_CONTAINS
 
 // Note: these are currently hardcoded in scripts/generate_extensions_function.py
 // TODO: automate by passing though to script via duckdb
-static constexpr ExtensionEntry EXTENSION_SECRET_PROVIDERS[] = {
+inline constexpr ExtensionEntry EXTENSION_SECRET_PROVIDERS[] = {
     {"s3/config", "httpfs"},
     {"gcs/config", "httpfs"},
     {"r2/config", "httpfs"},
@@ -1210,7 +1210,7 @@ static constexpr ExtensionEntry EXTENSION_SECRET_PROVIDERS[] = {
     {"mysql/config", "mysql_scanner"},
     {"postgres/config", "postgres_scanner"}}; // EXTENSION_SECRET_PROVIDERS
 
-static constexpr const char *AUTOLOADABLE_EXTENSIONS[] = {"avro",
+inline constexpr const char *AUTOLOADABLE_EXTENSIONS[] = {"avro",
                                                           "aws",
                                                           "azure",
                                                           "autocomplete",
