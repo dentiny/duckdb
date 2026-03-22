@@ -41,6 +41,15 @@ void CachingFileHandleWrapper::Close() {
 	}
 }
 
+BufferHandle CachingFileHandleWrapper::TryReadPinned(QueryContext query_context, idx_t location, idx_t nr_bytes,
+                                                     data_ptr_t &out_ptr) {
+	if (!caching_handle) {
+		out_ptr = nullptr;
+		return BufferHandle();
+	}
+	return caching_handle->Read(query_context, out_ptr, nr_bytes, location);
+}
+
 //===----------------------------------------------------------------------===//
 // CachingFileSystemWrapper implementation
 //===----------------------------------------------------------------------===//

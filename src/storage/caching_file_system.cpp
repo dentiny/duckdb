@@ -115,11 +115,16 @@ FileHandle &CachingFileHandle::GetFileHandle() {
 }
 
 BufferHandle CachingFileHandle::Read(data_ptr_t &buffer, const idx_t nr_bytes, const idx_t location) {
+	return Read(context, buffer, nr_bytes, location);
+}
+
+BufferHandle CachingFileHandle::Read(QueryContext read_context, data_ptr_t &buffer, const idx_t nr_bytes,
+                                     const idx_t location) {
 	BufferHandle result;
 	if (!external_file_cache.IsEnabled()) {
 		result = external_file_cache.GetBufferManager().Allocate(MemoryTag::EXTERNAL_FILE_CACHE, nr_bytes);
 		buffer = result.Ptr();
-		GetFileHandle().Read(context, buffer, nr_bytes, location);
+		GetFileHandle().Read(read_context, buffer, nr_bytes, location);
 		return result;
 	}
 
@@ -149,14 +154,16 @@ BufferHandle CachingFileHandle::Read(data_ptr_t &buffer, const idx_t nr_bytes, c
 	// Interleave reading and copying from cached buffers
 	if (OnDiskFile()) {
 		// On-disk file: prefer interleaving reading and copying from cached buffers
-		ReadAndCopyInterleaved(overlapping_ranges, new_file_range, buffer, new_nr_bytes, location, true);
+		ReadAndCopyInterleaved(read_context, overlapping_ranges, new_file_range, buffer, new_nr_bytes, location, true);
 	} else {
 		// Remote file: prefer interleaving reading and copying from cached buffers only if reduces number of real
 		// reads
-		if (ReadAndCopyInterleaved(overlapping_ranges, new_file_range, buffer, new_nr_bytes, location, false) <= 1) {
-			ReadAndCopyInterleaved(overlapping_ranges, new_file_range, buffer, new_nr_bytes, location, true);
+		if (ReadAndCopyInterleaved(read_context, overlapping_ranges, new_file_range, buffer, new_nr_bytes, location,
+		                           false) <= 1) {
+			ReadAndCopyInterleaved(read_context, overlapping_ranges, new_file_range, buffer, new_nr_bytes, location,
+			                       true);
 		} else {
-			GetFileHandle().Read(context, buffer, new_nr_bytes, location);
+			GetFileHandle().Read(read_context, buffer, new_nr_bytes, location);
 		}
 	}
 
@@ -404,7 +411,8 @@ BufferHandle CachingFileHandle::TryInsertFileRange(BufferHandle &pin, data_ptr_t
 	return std::move(pin);
 }
 
-idx_t CachingFileHandle::ReadAndCopyInterleaved(const vector<shared_ptr<CachedFileRange>> &overlapping_ranges,
+idx_t CachingFileHandle::ReadAndCopyInterleaved(QueryContext read_context,
+                                                const vector<shared_ptr<CachedFileRange>> &overlapping_ranges,
                                                 const shared_ptr<CachedFileRange> &new_file_range, data_ptr_t buffer,
                                                 const idx_t nr_bytes, const idx_t location, const bool actually_read) {
 	idx_t non_cached_read_count = 0;
@@ -424,7 +432,7 @@ idx_t CachingFileHandle::ReadAndCopyInterleaved(const vector<shared_ptr<CachedFi
 			const auto bytes_to_read = overlapping_range->location - current_location;
 			D_ASSERT(bytes_to_read < remaining_bytes);
 			if (actually_read) {
-				GetFileHandle().Read(context, buffer + buffer_offset, bytes_to_read, current_location);
+				GetFileHandle().Read(read_context, buffer + buffer_offset, bytes_to_read, current_location);
 			}
 			current_location += bytes_to_read;
 			remaining_bytes -= bytes_to_read;
@@ -458,7 +466,7 @@ idx_t CachingFileHandle::ReadAndCopyInterleaved(const vector<shared_ptr<CachedFi
 	if (remaining_bytes != 0) {
 		const auto buffer_offset = nr_bytes - remaining_bytes;
 		if (actually_read) {
-			GetFileHandle().Read(context, buffer + buffer_offset, remaining_bytes, current_location);
+			GetFileHandle().Read(read_context, buffer + buffer_offset, remaining_bytes, current_location);
 		}
 		non_cached_read_count++;
 	}

@@ -357,13 +357,22 @@ void ColumnReader::PreparePageV2(PageHeader &page_hdr) {
 	auto compressed_bytes = page_hdr.compressed_page_size - uncompressed_bytes;
 
 	if (compressed_bytes > 0) {
-		ResizeableBuffer compressed_buffer;
-		compressed_buffer.resize(GetAllocator(), compressed_bytes);
-
-		ReadData(compressed_buffer.ptr, compressed_bytes, page_hdr.type);
-
-		DecompressInternal(chunk->meta_data.codec, compressed_buffer.ptr, compressed_bytes,
-		                   block->ptr + uncompressed_bytes, page_hdr.uncompressed_page_size - uncompressed_bytes);
+		auto &trans = reinterpret_cast<ThriftFileTransport &>(*protocol->getTransport());
+		const idx_t compressed_start = trans.GetLocation();
+		data_ptr_t compressed_ptr = nullptr;
+		BufferHandle compressed_pin =
+		    trans.GetCachingFileHandle().Read(QueryContext(), compressed_ptr, compressed_bytes, compressed_start);
+		if (compressed_pin.IsValid()) {
+			trans.Skip(compressed_bytes);
+			DecompressInternal(chunk->meta_data.codec, compressed_ptr, compressed_bytes,
+			                   block->ptr + uncompressed_bytes, page_hdr.uncompressed_page_size - uncompressed_bytes);
+		} else {
+			ResizeableBuffer compressed_buffer;
+			compressed_buffer.resize(GetAllocator(), compressed_bytes);
+			ReadData(compressed_buffer.ptr, compressed_bytes, page_hdr.type);
+			DecompressInternal(chunk->meta_data.codec, compressed_buffer.ptr, compressed_bytes,
+			                   block->ptr + uncompressed_bytes, page_hdr.uncompressed_page_size - uncompressed_bytes);
+		}
 	}
 }
 
@@ -398,12 +407,22 @@ void ColumnReader::PreparePage(PageHeader &page_hdr) {
 		return;
 	}
 
-	ResizeableBuffer compressed_buffer;
-	compressed_buffer.resize(GetAllocator(), compressed_page_size + 1);
-	ReadData(compressed_buffer.ptr, compressed_page_size, page_hdr.type);
-
-	DecompressInternal(chunk->meta_data.codec, compressed_buffer.ptr, compressed_page_size, block->ptr,
-	                   page_hdr.uncompressed_page_size);
+	auto &trans = reinterpret_cast<ThriftFileTransport &>(*protocol->getTransport());
+	const idx_t compressed_start = trans.GetLocation();
+	data_ptr_t compressed_ptr = nullptr;
+	BufferHandle compressed_pin =
+	    trans.GetCachingFileHandle().Read(QueryContext(), compressed_ptr, compressed_page_size, compressed_start);
+	if (compressed_pin.IsValid()) {
+		trans.Skip(compressed_page_size);
+		DecompressInternal(chunk->meta_data.codec, compressed_ptr, compressed_page_size, block->ptr,
+		                   page_hdr.uncompressed_page_size);
+	} else {
+		ResizeableBuffer compressed_buffer;
+		compressed_buffer.resize(GetAllocator(), compressed_page_size + 1);
+		ReadData(compressed_buffer.ptr, compressed_page_size, page_hdr.type);
+		DecompressInternal(chunk->meta_data.codec, compressed_buffer.ptr, compressed_page_size, block->ptr,
+		                   page_hdr.uncompressed_page_size);
+	}
 }
 
 void ColumnReader::DecompressInternal(CompressionCodec::type codec, const_data_ptr_t src, idx_t src_size,

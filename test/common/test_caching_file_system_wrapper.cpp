@@ -134,6 +134,58 @@ TEST_CASE("CachingFileSystemWrapper write operations not allowed", "[file_system
 	    NotImplementedException);
 }
 
+TEST_CASE("FileHandle TryReadPinned through CachingFileSystemWrapper", "[file_system][caching]") {
+	DuckDB db(":memory:");
+	auto &db_instance = *db.instance;
+	auto tracking_fs = make_uniq<TrackingFileSystem>();
+	auto tracking_fs_ptr = tracking_fs.get();
+	auto caching_wrapper =
+	    make_shared_ptr<CachingFileSystemWrapper>(*tracking_fs, db_instance, CachingMode::ALWAYS_CACHE);
+
+	const string test_content = "Pinned read test payload for zero-copy path.";
+	TestFileGuard test_file("test_try_read_pinned.txt", test_content);
+
+	OpenFileInfo file_info(test_file.GetPath());
+	file_info.extended_info = make_shared_ptr<ExtendedOpenFileInfo>();
+	file_info.extended_info->options["validate_external_file_cache"] = Value::BOOLEAN(false);
+
+	tracking_fs_ptr->Clear();
+	auto handle = caching_wrapper->OpenFile(file_info, FileFlags::FILE_FLAGS_READ);
+
+	data_ptr_t pinned_ptr = nullptr;
+	auto pin = handle->TryReadPinned(QueryContext(), 0, test_content.size(), pinned_ptr);
+	REQUIRE(pin.IsValid());
+	REQUIRE(pinned_ptr != nullptr);
+	REQUIRE(string(const_char_ptr_cast(pinned_ptr), test_content.size()) == test_content);
+
+	// Second pinned read of the same range should be satisfied from cache (no extra underlying read).
+	auto read_count_after_first = tracking_fs_ptr->GetReadCount(test_file.GetPath(), 0, test_content.size());
+	data_ptr_t pinned_ptr2 = nullptr;
+	auto pin2 = handle->TryReadPinned(QueryContext(), 0, test_content.size(), pinned_ptr2);
+	REQUIRE(pin2.IsValid());
+	REQUIRE(pinned_ptr2 != nullptr);
+	REQUIRE(string(const_char_ptr_cast(pinned_ptr2), test_content.size()) == test_content);
+	auto read_count_after_second = tracking_fs_ptr->GetReadCount(test_file.GetPath(), 0, test_content.size());
+	REQUIRE(read_count_after_second == read_count_after_first);
+}
+
+TEST_CASE("FileHandle TryReadPinned unavailable when caching bypassed", "[file_system][caching]") {
+	DuckDB db(":memory:");
+	auto &db_instance = *db.instance;
+	auto tracking_fs = make_uniq<TrackingFileSystem>();
+	auto caching_wrapper =
+	    make_shared_ptr<CachingFileSystemWrapper>(*tracking_fs, db_instance, CachingMode::CACHE_REMOTE_ONLY);
+
+	const string test_content = "Local file should bypass cache wrapper.";
+	TestFileGuard test_file("test_try_read_pinned_bypass.txt", test_content);
+
+	auto handle = caching_wrapper->OpenFile(test_file.GetPath(), FileFlags::FILE_FLAGS_READ);
+	data_ptr_t pinned_ptr = nullptr;
+	auto pin = handle->TryReadPinned(QueryContext(), 0, test_content.size(), pinned_ptr);
+	REQUIRE_FALSE(pin.IsValid());
+	REQUIRE(pinned_ptr == nullptr);
+}
+
 TEST_CASE("CachingFileSystemWrapper caches reads", "[file_system][caching]") {
 	DuckDB db(":memory:");
 	auto &db_instance = *db.instance;

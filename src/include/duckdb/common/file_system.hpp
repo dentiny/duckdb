@@ -15,6 +15,7 @@
 #include "duckdb/common/error_data.hpp"
 #include "duckdb/common/file_buffer.hpp"
 #include "duckdb/common/file_open_flags.hpp"
+#include "duckdb/storage/buffer/buffer_handle.hpp"
 #include "duckdb/common/open_file_info.hpp"
 #include "duckdb/common/optional_idx.hpp"
 #include "duckdb/common/optional_ptr.hpp"
@@ -105,6 +106,12 @@ public:
 	DUCKDB_API FileMetadata Stats();
 
 	DUCKDB_API void TryAddLogger(FileOpener &opener);
+
+	//! If this handle can return a cache-backed pinned range without copying into a caller-supplied buffer, returns a
+	//! valid BufferHandle and sets out_ptr to the first byte; otherwise returns an invalid handle and sets out_ptr to
+	//! nullptr. The memory stays valid until the returned BufferHandle is destroyed or moved from.
+	DUCKDB_API virtual BufferHandle TryReadPinned(QueryContext context, idx_t location, idx_t nr_bytes,
+	                                              data_ptr_t &out_ptr);
 
 	//! Closes the file handle.
 	DUCKDB_API virtual void Close() = 0;

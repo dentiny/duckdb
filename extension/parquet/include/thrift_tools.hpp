@@ -210,6 +210,10 @@ public:
 		return size;
 	}
 
+	CachingFileHandle &GetCachingFileHandle() {
+		return file_handle;
+	}
+
 private:
 	QueryContext context;
 

@@ -35,6 +35,9 @@ public:
 
 	DUCKDB_API void Close() override;
 
+	DUCKDB_API BufferHandle TryReadPinned(QueryContext context, idx_t location, idx_t nr_bytes,
+	                                      data_ptr_t &out_ptr) override;
+
 private:
 	// CachingFileSystem is not kept within VFS as other filesystems, so sometimes it's necessary to pin it inside of
 	// file handle and ensure it's valid.
