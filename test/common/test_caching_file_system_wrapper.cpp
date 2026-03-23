@@ -201,6 +201,66 @@ TEST_CASE("CachingFileSystemWrapper write operations not allowed", "[file_system
 	    NotImplementedException);
 }
 
+TEST_CASE("FileHandle ReadBufferedGroup through CachingFileSystemWrapper", "[file_system][caching]") {
+	DuckDB db(":memory:");
+	auto &db_instance = *db.instance;
+	auto tracking_fs = make_uniq<TrackingFileSystem>();
+	auto caching_wrapper =
+	    make_shared_ptr<CachingFileSystemWrapper>(*tracking_fs, db_instance, CachingMode::ALWAYS_CACHE);
+
+	const string test_content = "ReadBufferedGroup test payload.";
+	TestFileGuard test_file("test_read_buffered_group.txt", test_content);
+
+	OpenFileInfo file_info(test_file.GetPath());
+	file_info.extended_info = make_shared_ptr<ExtendedOpenFileInfo>();
+	file_info.extended_info->options["validate_external_file_cache"] = Value::BOOLEAN(false);
+
+	auto handle = caching_wrapper->OpenFile(file_info, FileFlags::FILE_FLAGS_READ);
+	auto group = handle->ReadBufferedGroup(QueryContext(), 0, test_content.size());
+	REQUIRE_FALSE(group.GetHandles().empty());
+
+	string round_trip(test_content.size(), '\0');
+	group.CopyTo(data_ptr_cast(&round_trip[0]), test_content.size());
+	REQUIRE(round_trip == test_content);
+}
+
+#ifdef DUCKDB_EXTENSION_PARQUET_LINKED
+#include "zstd_file_system.hpp"
+#include "zstd.h"
+
+TEST_CASE("ZSTD CompressedFile over CachingFileSystemWrapper decompresses via ReadBufferedGroup path",
+          "[file_system][caching]") {
+	const string plaintext = "ZSTD caching wrapper read test payload.";
+	const size_t compress_bound = duckdb_zstd::ZSTD_compressBound(plaintext.size());
+	string compressed(compress_bound, '\0');
+	const size_t zstd_size = duckdb_zstd::ZSTD_compress(compressed.data(), compress_bound, plaintext.data(),
+	                                                    plaintext.size(), 1);
+	REQUIRE_FALSE(duckdb_zstd::ZSTD_isError(zstd_size));
+	compressed.resize(zstd_size);
+
+	DuckDB db(":memory:");
+	auto &db_instance = *db.instance;
+	auto tracking_fs = make_uniq<TrackingFileSystem>();
+	auto caching_wrapper =
+	    make_shared_ptr<CachingFileSystemWrapper>(*tracking_fs, db_instance, CachingMode::ALWAYS_CACHE);
+
+	TestFileGuard test_file("test_zstd_caching_wrapper.zst", compressed);
+	OpenFileInfo file_info(test_file.GetPath());
+	file_info.extended_info = make_shared_ptr<ExtendedOpenFileInfo>();
+	file_info.extended_info->options["validate_external_file_cache"] = Value::BOOLEAN(false);
+
+	auto child = caching_wrapper->OpenFile(file_info, FileFlags::FILE_FLAGS_READ);
+	ZStdFileSystem zstd_fs;
+	auto zst_handle = zstd_fs.OpenCompressedFile(QueryContext(), std::move(child), false);
+
+	string decoded(plaintext.size() * 4, '\0');
+	int64_t nr = zst_handle->Read(QueryContext(), decoded.data(), NumericCast<int64_t>(decoded.size()));
+	REQUIRE(nr == NumericCast<int64_t>(plaintext.size()));
+	decoded.resize(NumericCast<idx_t>(nr));
+	REQUIRE(decoded == plaintext);
+}
+#endif
+
 TEST_CASE("CachingFileSystemWrapper caches reads", "[file_system][caching]") {
 	DuckDB db(":memory:");
 	auto &db_instance = *db.instance;

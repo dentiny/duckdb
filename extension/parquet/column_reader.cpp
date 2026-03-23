@@ -28,10 +28,82 @@
 #include "duckdb/common/numeric_utils.hpp"
 #include "duckdb/common/types/bit.hpp"
 #include "duckdb/storage/table/column_segment.hpp"
+#include "duckdb/storage/external_file_cache/file_buffer_handle_group.hpp"
 
 #include "parquet_crypto.hpp"
 
 namespace duckdb {
+
+namespace {
+
+idx_t TotalFileGroupBytes(const FileBufferHandleGroup &group) {
+	idx_t total = 0;
+	for (const auto &mh : group.GetHandles()) {
+		total += mh.length;
+	}
+	return total;
+}
+
+void DecompressZstdFromFileGroup(const FileBufferHandleGroup &group, data_ptr_t dst, idx_t dst_size,
+                                 const string &file_name) {
+	struct ZSTDStreamGuard {
+		duckdb_zstd::ZSTD_DStream *s;
+		explicit ZSTDStreamGuard(duckdb_zstd::ZSTD_DStream *p) : s(p) {
+		}
+		~ZSTDStreamGuard() {
+			if (s) {
+				duckdb_zstd::ZSTD_freeDStream(s);
+			}
+		}
+	};
+
+	auto *dstream = duckdb_zstd::ZSTD_createDStream();
+	if (!dstream) {
+		throw InvalidInputException("Failed to read file \"%s\": ZSTD stream init failed", file_name);
+	}
+	ZSTDStreamGuard guard(dstream);
+	duckdb_zstd::ZSTD_initDStream(dstream);
+
+	duckdb_zstd::ZSTD_outBuffer out {};
+	out.dst = dst;
+	out.size = dst_size;
+	out.pos = 0;
+
+	for (const auto &mh : group.GetHandles()) {
+		duckdb_zstd::ZSTD_inBuffer in {};
+		in.src = mh.handle.Ptr() + mh.start_offset;
+		in.size = mh.length;
+		in.pos = 0;
+		while (in.pos < in.size) {
+			const size_t ret = duckdb_zstd::ZSTD_decompressStream(dstream, &out, &in);
+			if (duckdb_zstd::ZSTD_isError(ret)) {
+				throw InvalidInputException("Failed to read file \"%s\": ZSTD Decompression failure: %s", file_name,
+				                            duckdb_zstd::ZSTD_getErrorName(ret));
+			}
+		}
+	}
+
+	duckdb_zstd::ZSTD_inBuffer flush_in {};
+	flush_in.src = nullptr;
+	flush_in.size = 0;
+	flush_in.pos = 0;
+	while (true) {
+		const size_t ret = duckdb_zstd::ZSTD_decompressStream(dstream, &out, &flush_in);
+		if (duckdb_zstd::ZSTD_isError(ret)) {
+			throw InvalidInputException("Failed to read file \"%s\": ZSTD Decompression failure: %s", file_name,
+			                            duckdb_zstd::ZSTD_getErrorName(ret));
+		}
+		if (ret == 0) {
+			break;
+		}
+	}
+
+	if (out.pos != dst_size) {
+		throw InvalidInputException("Failed to read file \"%s\": ZSTD Decompression size mismatch", file_name);
+	}
+}
+
+} // namespace
 
 using duckdb_parquet::CompressionCodec;
 using duckdb_parquet::ConvertedType;
@@ -265,6 +337,49 @@ void ColumnReader::ReadData(const data_ptr_t buffer, const uint32_t buffer_size,
 	}
 }
 
+void ColumnReader::ReadAndDecompressCompressedPage(const idx_t compressed_page_size, const CompressionCodec::type codec,
+                                                   const data_ptr_t dst, const idx_t dst_size,
+                                                   const PageType::type page_type) {
+	if (reader.parquet_options.encryption_config) {
+		ResizeableBuffer compressed_buffer;
+		compressed_buffer.resize(GetAllocator(), compressed_page_size + 1);
+		ReadData(compressed_buffer.ptr, NumericCast<uint32_t>(compressed_page_size), page_type);
+		DecompressInternal(codec, compressed_buffer.ptr, compressed_page_size, dst, dst_size);
+		return;
+	}
+
+	auto &trans = reinterpret_cast<ThriftFileTransport &>(*protocol->getTransport());
+	const idx_t start = trans.GetLocation();
+	auto group = trans.GetCachingFileHandle().Read(compressed_page_size, start);
+	if (group.GetHandles().empty()) {
+		ResizeableBuffer compressed_buffer;
+		compressed_buffer.resize(GetAllocator(), compressed_page_size + 1);
+		ReadData(compressed_buffer.ptr, NumericCast<uint32_t>(compressed_page_size), page_type);
+		DecompressInternal(codec, compressed_buffer.ptr, compressed_page_size, dst, dst_size);
+		return;
+	}
+
+	const idx_t total_in = TotalFileGroupBytes(group);
+	if (total_in != compressed_page_size) {
+		throw InvalidInputException("Failed to read file \"%s\": compressed page size mismatch for cache group",
+		                            Reader().GetFileName());
+	}
+
+	trans.Skip(compressed_page_size);
+	const auto &handles = group.GetHandles();
+	if (handles.size() == 1) {
+		const auto &mh = handles[0];
+		DecompressInternal(codec, mh.handle.Ptr() + mh.start_offset, mh.length, dst, dst_size);
+	} else if (codec == CompressionCodec::ZSTD) {
+		DecompressZstdFromFileGroup(group, dst, dst_size, Reader().GetFileName());
+	} else {
+		ResizeableBuffer compressed_buffer;
+		compressed_buffer.resize(GetAllocator(), compressed_page_size + 1);
+		group.CopyTo(compressed_buffer.ptr, compressed_page_size);
+		DecompressInternal(codec, compressed_buffer.ptr, compressed_page_size, dst, dst_size);
+	}
+}
+
 void ColumnReader::PrepareRead(optional_ptr<const TableFilter> filter, optional_ptr<TableFilterState> filter_state) {
 	encoding = ColumnEncoding::INVALID;
 	defined_decoder.reset();
@@ -357,13 +472,9 @@ void ColumnReader::PreparePageV2(PageHeader &page_hdr) {
 	auto compressed_bytes = page_hdr.compressed_page_size - uncompressed_bytes;
 
 	if (compressed_bytes > 0) {
-		ResizeableBuffer compressed_buffer;
-		compressed_buffer.resize(GetAllocator(), compressed_bytes);
-
-		ReadData(compressed_buffer.ptr, compressed_bytes, page_hdr.type);
-
-		DecompressInternal(chunk->meta_data.codec, compressed_buffer.ptr, compressed_bytes,
-		                   block->ptr + uncompressed_bytes, page_hdr.uncompressed_page_size - uncompressed_bytes);
+		ReadAndDecompressCompressedPage(compressed_bytes, chunk->meta_data.codec,
+		                               block->ptr + uncompressed_bytes,
+		                               page_hdr.uncompressed_page_size - uncompressed_bytes, page_hdr.type);
 	}
 }
 
@@ -398,12 +509,8 @@ void ColumnReader::PreparePage(PageHeader &page_hdr) {
 		return;
 	}
 
-	ResizeableBuffer compressed_buffer;
-	compressed_buffer.resize(GetAllocator(), compressed_page_size + 1);
-	ReadData(compressed_buffer.ptr, compressed_page_size, page_hdr.type);
-
-	DecompressInternal(chunk->meta_data.codec, compressed_buffer.ptr, compressed_page_size, block->ptr,
-	                   page_hdr.uncompressed_page_size);
+	ReadAndDecompressCompressedPage(compressed_page_size, chunk->meta_data.codec, block->ptr,
+	                                page_hdr.uncompressed_page_size, page_hdr.type);
 }
 
 void ColumnReader::DecompressInternal(CompressionCodec::type codec, const_data_ptr_t src, idx_t src_size,

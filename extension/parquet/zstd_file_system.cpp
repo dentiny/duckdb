@@ -15,6 +15,9 @@ struct ZstdStreamWrapper : public StreamWrapper {
 public:
 	void Initialize(QueryContext context, CompressedFile &file, bool write) override;
 	bool Read(StreamData &stream_data) override;
+	bool SupportsBufferedGroupInput() const override {
+		return true;
+	}
 	void Write(CompressedFile &file, StreamData &stream_data, data_ptr_t buffer, int64_t nr_bytes) override;
 
 	void Close() override;

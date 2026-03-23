@@ -34,4 +34,12 @@ data_ptr_t FileBufferHandleGroup::Ptr() const {
 	return handles[0].handle.Ptr() + handles[0].start_offset;
 }
 
+idx_t FileBufferHandleGroup::TotalLength() const {
+	idx_t sum = 0;
+	for (const auto &mh : handles) {
+		sum += mh.length;
+	}
+	return sum;
+}
+
 } // namespace duckdb

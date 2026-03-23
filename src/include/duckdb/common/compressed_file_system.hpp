@@ -27,6 +27,16 @@ struct StreamData {
 
 	idx_t in_buf_size = 0;
 	idx_t out_buf_size = 0;
+
+	//! Pinned compressed input from child ReadBufferedGroup (ZSTD path); keeps cache pins alive.
+	FileBufferHandleGroup pinned_compressed_input;
+	idx_t pinned_segment_idx = 0;
+
+	DUCKDB_API void ClearPinnedInput();
+	DUCKDB_API bool HasPinnedInput() const;
+	DUCKDB_API void SetInputFromCurrentPinnedSegment();
+	//! If another segment exists in pinned_compressed_input, point in_buff_* at it. Else clear pins and return false.
+	DUCKDB_API bool TryAdvancePinnedSegment();
 };
 
 struct StreamWrapper {
@@ -37,6 +47,11 @@ struct StreamWrapper {
 	DUCKDB_API virtual void Write(CompressedFile &file, StreamData &stream_data, data_ptr_t buffer,
 	                              int64_t nr_bytes) = 0;
 	DUCKDB_API virtual void Close() = 0;
+
+	//! When true, CompressedFile may refill compressed input via child ReadBufferedGroup (segment-wise).
+	DUCKDB_API virtual bool SupportsBufferedGroupInput() const {
+		return false;
+	}
 };
 
 class CompressedFileSystem : public FileSystem {

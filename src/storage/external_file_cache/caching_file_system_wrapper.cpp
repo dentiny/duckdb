@@ -41,6 +41,15 @@ void CachingFileHandleWrapper::Close() {
 	}
 }
 
+FileBufferHandleGroup CachingFileHandleWrapper::ReadBufferedGroup(QueryContext context, idx_t location,
+                                                                idx_t nr_bytes) {
+	(void)context;
+	if (!caching_handle || nr_bytes == 0) {
+		return FileBufferHandleGroup();
+	}
+	return caching_handle->Read(nr_bytes, location);
+}
+
 //===----------------------------------------------------------------------===//
 // CachingFileSystemWrapper implementation
 //===----------------------------------------------------------------------===//

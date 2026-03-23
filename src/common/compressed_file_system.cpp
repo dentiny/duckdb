@@ -4,6 +4,44 @@
 
 namespace duckdb {
 
+void StreamData::ClearPinnedInput() {
+	pinned_compressed_input = FileBufferHandleGroup();
+	pinned_segment_idx = 0;
+	if (in_buff) {
+		in_buff_start = in_buff.get();
+		in_buff_end = in_buff_start;
+	} else {
+		in_buff_start = nullptr;
+		in_buff_end = nullptr;
+	}
+}
+
+bool StreamData::HasPinnedInput() const {
+	return !pinned_compressed_input.GetHandles().empty();
+}
+
+void StreamData::SetInputFromCurrentPinnedSegment() {
+	const auto &handles = pinned_compressed_input.GetHandles();
+	D_ASSERT(pinned_segment_idx < handles.size());
+	const auto &mh = handles[pinned_segment_idx];
+	in_buff_start = mh.handle.Ptr() + mh.start_offset;
+	in_buff_end = in_buff_start + mh.length;
+}
+
+bool StreamData::TryAdvancePinnedSegment() {
+	if (!HasPinnedInput()) {
+		return false;
+	}
+	const auto &handles = pinned_compressed_input.GetHandles();
+	pinned_segment_idx++;
+	if (pinned_segment_idx < handles.size()) {
+		SetInputFromCurrentPinnedSegment();
+		return true;
+	}
+	ClearPinnedInput();
+	return false;
+}
+
 StreamWrapper::~StreamWrapper() {
 }
 
@@ -82,10 +120,13 @@ int64_t CompressedFile::ReadData(void *buffer, int64_t remaining) {
 		stream_data.out_buff_start = stream_data.out_buff.get();
 		stream_data.out_buff_end = stream_data.out_buff.get();
 		D_ASSERT(stream_data.in_buff_start <= stream_data.in_buff_end);
-		D_ASSERT(stream_data.in_buff_end <= stream_data.in_buff_start + stream_data.in_buf_size);
+		if (!stream_data.HasPinnedInput()) {
+			D_ASSERT(stream_data.in_buff_end <= stream_data.in_buff_start + stream_data.in_buf_size);
+		}
 
 		// read more input when requested and still data in the input stream
-		if (stream_data.refresh && (stream_data.in_buff_end == stream_data.in_buff.get() + stream_data.in_buf_size)) {
+		if (stream_data.refresh && !stream_data.HasPinnedInput() &&
+		    (stream_data.in_buff_end == stream_data.in_buff.get() + stream_data.in_buf_size)) {
 			auto bufrem = stream_data.in_buff_end - stream_data.in_buff_start;
 			// buffer not empty, move remaining bytes to the beginning
 			memmove(stream_data.in_buff.get(), stream_data.in_buff_start, UnsafeNumericCast<size_t>(bufrem));
@@ -102,15 +143,47 @@ int64_t CompressedFile::ReadData(void *buffer, int64_t remaining) {
 
 		// read more input if none available
 		if (stream_data.in_buff_start == stream_data.in_buff_end) {
-			// empty input buffer: refill from the start
-			stream_data.in_buff_start = stream_data.in_buff.get();
-			stream_data.in_buff_end = stream_data.in_buff_start;
-			auto sz = child_handle->Read(QueryContext(), stream_data.in_buff.get(), stream_data.in_buf_size);
-			if (sz <= 0) {
-				stream_wrapper.reset();
-				break;
+			const bool zstd_group_path =
+			    stream_wrapper && stream_wrapper->SupportsBufferedGroupInput() && !stream_data.refresh;
+			if (zstd_group_path) {
+				if (!stream_data.TryAdvancePinnedSegment()) {
+					stream_data.ClearPinnedInput();
+					const idx_t pos = child_handle->SeekPosition();
+					const idx_t file_size = UnsafeNumericCast<idx_t>(child_handle->GetFileSize());
+					if (pos >= file_size) {
+						stream_wrapper.reset();
+						break;
+					}
+					const idx_t to_read = MinValue(stream_data.in_buf_size, file_size - pos);
+					auto group = child_handle->ReadBufferedGroup(QueryContext(), pos, to_read);
+					if (!group.GetHandles().empty()) {
+						stream_data.pinned_compressed_input = std::move(group);
+						stream_data.pinned_segment_idx = 0;
+						stream_data.SetInputFromCurrentPinnedSegment();
+						child_handle->Seek(pos + stream_data.pinned_compressed_input.TotalLength());
+					} else {
+						stream_data.in_buff_start = stream_data.in_buff.get();
+						stream_data.in_buff_end = stream_data.in_buff_start;
+						auto sz = child_handle->Read(QueryContext(), stream_data.in_buff.get(),
+						                             stream_data.in_buf_size);
+						if (sz <= 0) {
+							stream_wrapper.reset();
+							break;
+						}
+						stream_data.in_buff_end = stream_data.in_buff_start + sz;
+					}
+				}
+			} else {
+				stream_data.ClearPinnedInput();
+				stream_data.in_buff_start = stream_data.in_buff.get();
+				stream_data.in_buff_end = stream_data.in_buff_start;
+				auto sz = child_handle->Read(QueryContext(), stream_data.in_buff.get(), stream_data.in_buf_size);
+				if (sz <= 0) {
+					stream_wrapper.reset();
+					break;
+				}
+				stream_data.in_buff_end = stream_data.in_buff_start + sz;
 			}
-			stream_data.in_buff_end = stream_data.in_buff_start + sz;
 		}
 
 		auto finished = stream_wrapper->Read(stream_data);
@@ -131,6 +204,7 @@ void CompressedFile::Close() {
 		stream_wrapper->Close();
 		stream_wrapper.reset();
 	}
+	stream_data.ClearPinnedInput();
 	stream_data.in_buff.reset();
 	stream_data.out_buff.reset();
 	stream_data.out_buff_start = nullptr;

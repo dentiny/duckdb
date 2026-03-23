@@ -81,6 +81,7 @@ TEST_CASE("FileBufferHandleGroup copy partial across handles", "[file_buffer_han
 	mem_handles.push_back({std::move(h1), /*start_offset=*/H1_OFFSET, /*length=*/H1_LENGTH});
 	mem_handles.push_back({std::move(h2), /*start_offset=*/0, /*length=*/H2_LENGTH});
 	FileBufferHandleGroup group(std::move(mem_handles));
+	REQUIRE(group.TotalLength() == COPY_SIZE);
 
 	array<uint8_t, COPY_SIZE> dest {};
 	group.CopyTo(dest.data(), dest.size());
