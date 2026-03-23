@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 //                         DuckDB
 //
-// duckdb/storage/caching_file_system_wrapper.hpp
+// duckdb/storage/external_file_cache/caching_file_system_wrapper.hpp
 //
 //
 //===----------------------------------------------------------------------===//
@@ -13,7 +13,7 @@
 #include "duckdb/common/file_system.hpp"
 #include "duckdb/common/winapi.hpp"
 #include "duckdb/main/client_context.hpp"
-#include "duckdb/storage/caching_file_system.hpp"
+#include "duckdb/storage/external_file_cache/caching_file_system.hpp"
 #include "duckdb/storage/caching_mode.hpp"
 
 namespace duckdb {
@@ -34,6 +34,8 @@ public:
 	DUCKDB_API ~CachingFileHandleWrapper() override;
 
 	DUCKDB_API void Close() override;
+
+	DUCKDB_API FileBufferHandleGroup ReadBufferedGroup(QueryContext context, idx_t location, idx_t nr_bytes) override;
 
 private:
 	// CachingFileSystem is not kept within VFS as other filesystems, so sometimes it's necessary to pin it inside of

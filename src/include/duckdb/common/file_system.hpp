@@ -23,6 +23,7 @@
 #include "duckdb/common/path.hpp"
 #include "duckdb/common/unordered_map.hpp"
 #include "duckdb/common/vector.hpp"
+#include "duckdb/storage/external_file_cache/file_buffer_handle_group.hpp"
 
 #include <functional>
 
@@ -40,7 +41,6 @@ class Logger;
 class ClientContext;
 class QueryContext;
 class MultiFileList;
-
 enum class FileType {
 	//! Regular file
 	FILE_TYPE_REGULAR,
@@ -105,6 +105,10 @@ public:
 	DUCKDB_API FileMetadata Stats();
 
 	DUCKDB_API void TryAddLogger(FileOpener &opener);
+
+	//! Read [nr_bytes] at [location] as cache-backed buffer group (zero-copy while handles are alive).
+	//! Default returns an empty group; callers should use Read() instead.
+	DUCKDB_API virtual FileBufferHandleGroup ReadBufferedGroup(QueryContext context, idx_t location, idx_t nr_bytes);
 
 	//! Closes the file handle.
 	DUCKDB_API virtual void Close() = 0;

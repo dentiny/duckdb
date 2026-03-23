@@ -745,6 +745,13 @@ FileHandle::FileHandle(FileSystem &file_system, string path_p, FileOpenFlags fla
 FileHandle::~FileHandle() {
 }
 
+FileBufferHandleGroup FileHandle::ReadBufferedGroup(QueryContext context, idx_t location, idx_t nr_bytes) {
+	(void)context;
+	(void)location;
+	(void)nr_bytes;
+	return FileBufferHandleGroup();
+}
+
 int64_t FileHandle::Read(void *buffer, idx_t nr_bytes) {
 	return file_system.Read(*this, buffer, UnsafeNumericCast<int64_t>(nr_bytes));
 }
