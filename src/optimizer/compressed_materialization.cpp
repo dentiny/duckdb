@@ -211,9 +211,8 @@ void CompressedMaterialization::CreateCompressProjection(unique_ptr<LogicalOpera
 		}
 
 		if (it->first == replacement_binding.old_binding) {
-			auto binding_info_local = std::move(binding_info);
-			binding_map.erase(it);
-			binding_map.emplace(replacement_binding.new_binding, std::move(binding_info_local));
+			auto nh = binding_map.extract(it);
+			binding_map.emplace(replacement_binding.new_binding, std::move(nh.mapped()));
 		}
 	}
 

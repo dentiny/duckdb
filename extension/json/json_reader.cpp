@@ -269,11 +269,10 @@ optional_ptr<JSONBufferHandle> JSONReader::GetBuffer(idx_t buffer_idx) {
 
 AllocatedData JSONReader::RemoveBuffer(JSONBufferHandle &handle) {
 	lock_guard<mutex> guard(lock);
-	auto it = buffer_map.find(handle.buffer_index);
-	D_ASSERT(it != buffer_map.end());
-	D_ASSERT(RefersToSameObject(handle, *it->second));
-	auto result = std::move(it->second->buffer);
-	buffer_map.erase(it);
+	auto nh = buffer_map.extract(handle.buffer_index);
+	D_ASSERT(!nh.empty());
+	D_ASSERT(RefersToSameObject(handle, *nh.mapped()));
+	auto result = std::move(nh.mapped()->buffer);
 	return result;
 }
 

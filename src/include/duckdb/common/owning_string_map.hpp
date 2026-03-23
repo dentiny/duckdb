@@ -55,13 +55,11 @@ public:
 		return insert(std::move(entry));
 	}
 	size_type erase(const key_type &k) { // NOLINT: match std style
-		auto entry = map.find(k);
-		if (entry == map.end()) {
+		auto nh = map.extract(k);
+		if (nh.empty()) {
 			return 0;
 		}
-		string_t erase_string = entry->first;
-		map.erase(entry);
-		DestroyString(erase_string);
+		DestroyString(nh.key());
 		return 1;
 	}
 

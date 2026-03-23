@@ -18,9 +18,7 @@ void TableFunctionRelation::AddNamedParameter(const string &name, Value argument
 }
 
 void TableFunctionRelation::RemoveNamedParameterIfExists(const string &name) {
-	if (named_parameters.find(name) != named_parameters.end()) {
-		named_parameters.erase(name);
-	}
+	named_parameters.extract(name);
 }
 
 void TableFunctionRelation::SetNamedParameters(named_parameter_map_t &&options) {

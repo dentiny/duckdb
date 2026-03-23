@@ -138,9 +138,7 @@ void BindContext::RemoveUsingBinding(const string &column_name, UsingColumnSet &
 		throw InternalException("Attempting to remove using binding that is not there");
 	}
 	auto &bindings = entry->second;
-	if (bindings.find(set) != bindings.end()) {
-		bindings.erase(set);
-	}
+	bindings.extract(set);
 	if (bindings.empty()) {
 		using_columns.erase(column_name);
 	}
