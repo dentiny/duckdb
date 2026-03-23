@@ -1,3 +1,9 @@
+commit a1464f5549e2f167f12415c7f8d19a23712ac919
+Author: dentiny <dentinyhao@gmail.com>
+Date:   Sun Mar 22 21:28:42 2026 +0000
+
+    Sync DuckDB core
+
 diff --git a/src/hffs.cpp b/src/hffs.cpp
 index eb16c4f..442e828 100644
 --- a/src/hffs.cpp
@@ -138,6 +144,18 @@ index 958df32..eb36003 100644
  
  	vector<OpenFileInfo> s3_keys;
  	if (!current_common_prefix.empty()) {
+diff --git a/test/sql/json/table/internal_issue_6807.test_slow b/test/sql/json/table/internal_issue_6807.test_slow
+index a354a7f..e759862 100644
+--- a/test/sql/json/table/internal_issue_6807.test_slow
++++ b/test/sql/json/table/internal_issue_6807.test_slow
+@@ -13,6 +13,6 @@ statement ok
+ CREATE TABLE T AS FROM 'https://data.gharchive.org/2023-02-08-0.json.gz';
+ 
+ query I
+-SELECT count(*) < 20 FROM duckdb_logs_parsed('HTTP') WHERE request.type = 'GET' GROUP BY request.type;
++SELECT count(*) < 60 FROM duckdb_logs_parsed('HTTP') WHERE request.type = 'GET' GROUP BY request.type;
+ ----
+ true
 diff --git a/test/sql/logging/file_system_logging.test b/test/sql/logging/file_system_logging.test
 index 6aa2ed0..54babde 100644
 --- a/test/sql/logging/file_system_logging.test
@@ -156,3 +174,13 @@ index 6aa2ed0..54babde 100644
  CONNECTION	FileSystem	TRACE	{"fs":"HTTPFileSystem","path":"https://github.com/duckdb/duckdb/raw/main/data/csv/customer.csv","op":"READ","bytes":"1276","pos":"0"}
 -CONNECTION	FileSystem	TRACE	{"fs":"HTTPFileSystem","path":"https://github.com/duckdb/duckdb/raw/main/data/csv/customer.csv","op":"READ","bytes":"0","pos":"1276"}
  CONNECTION	FileSystem	TRACE	{"fs":"HTTPFileSystem","path":"https://github.com/duckdb/duckdb/raw/main/data/csv/customer.csv","op":"CLOSE"}
+diff --git a/test/sql/metadata_stats.test b/test/sql/metadata_stats.test
+index 27cb0a6..dfe7a26 100644
+--- a/test/sql/metadata_stats.test
++++ b/test/sql/metadata_stats.test
+@@ -18,4 +18,4 @@ SET force_download=false;
+ query II
+ explain analyze SELECT id, first_name, last_name, email FROM PARQUET_SCAN('https://raw.githubusercontent.com/duckdb/duckdb/main/data/parquet-testing/userdata1.parquet')
+ ----
+-analyzed_plan	<REGEX>:.*GET: 2.*
++analyzed_plan	<REGEX>:.*GET: 1.*

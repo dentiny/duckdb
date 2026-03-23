@@ -1,3 +1,9 @@
+commit 1a506c14870e232f5e214c5c3cb2a634222b2a03
+Author: dentiny <dentinyhao@gmail.com>
+Date:   Sun Mar 22 21:20:12 2026 +0000
+
+    Sync DuckDB core
+
 diff --git a/src/aws.cpp b/src/aws.cpp
 index 608c67af..9c6744a7 100644
 --- a/src/aws.cpp
@@ -11,6 +17,51 @@ index 608c67af..9c6744a7 100644
  	auto aws_headers = req->GetHeaders();
  	auto http_headers = HTTPHeaders();
  	for (auto &header : aws_headers) {
+diff --git a/src/deletes/deletion_vector.cpp b/src/deletes/deletion_vector.cpp
+index a3974c21..ac90ccab 100644
+--- a/src/deletes/deletion_vector.cpp
++++ b/src/deletes/deletion_vector.cpp
+@@ -1,8 +1,10 @@
+ #include "deletes/deletion_vector.hpp"
+ #include "iceberg_multi_file_list.hpp"
+ 
+-#include "duckdb/storage/caching_file_system.hpp"
++#include "duckdb/common/allocator.hpp"
+ #include "duckdb/common/bswap.hpp"
++#include "duckdb/common/file_system.hpp"
++#include "duckdb/common/vector_operations/unary_executor.hpp"
+ 
+ namespace duckdb {
+ 
+@@ -61,10 +63,9 @@ void IcebergMultiFileList::ScanPuffinFile(const IcebergDataFile &entry) const {
+ 	auto file_path = entry.file_path;
+ 	D_ASSERT(!entry.referenced_data_file.empty());
+ 
+-	auto caching_file_system = CachingFileSystem::Get(context);
+-
+-	auto caching_file_handle = caching_file_system.OpenFile(file_path, FileOpenFlags::FILE_FLAGS_READ);
+-	data_ptr_t data = nullptr;
++	FileOpenFlags flags = FileFlags::FILE_FLAGS_READ;
++	flags.SetCachingMode(CachingMode::CACHE_REMOTE_ONLY);
++	auto file_handle = fs.OpenFile(file_path, flags);
+ 
+ 	D_ASSERT(!entry.content_offset.IsNull());
+ 	D_ASSERT(!entry.content_size_in_bytes.IsNull());
+@@ -72,11 +73,10 @@ void IcebergMultiFileList::ScanPuffinFile(const IcebergDataFile &entry) const {
+ 	auto offset = entry.content_offset.GetValue<int64_t>();
+ 	auto length = entry.content_size_in_bytes.GetValue<int64_t>();
+ 
+-	auto buf_handle = caching_file_handle->Read(data, length, offset);
+-	auto buffer_data = buf_handle.Ptr();
++	auto local_buffer = Allocator::DefaultAllocator().Allocate(length);
++	fs.Read(*file_handle, local_buffer.get(), length, offset);
+ 
+-	positional_delete_data.emplace(entry.referenced_data_file,
+-	                               IcebergDeletionVectorData::FromBlob(buffer_data, length));
++	positional_delete_data.emplace(entry.referenced_data_file, IcebergDeletionVectorData::FromBlob(local_buffer.get(), length));
+ }
+ 
+ idx_t IcebergDeletionVector::Filter(row_t start_row_index, idx_t count, SelectionVector &result_sel) {
 diff --git a/src/iceberg_functions/iceberg_avro_multi_file_reader.cpp b/src/iceberg_functions/iceberg_avro_multi_file_reader.cpp
 index 0212aa3f..e1333d4f 100644
 --- a/src/iceberg_functions/iceberg_avro_multi_file_reader.cpp
@@ -198,10 +249,15 @@ index 02a3b3d3..3dbbc921 100644
  				           data_file.file_path);
  				//! Skip this file
 diff --git a/src/iceberg_manifest.cpp b/src/iceberg_manifest.cpp
-index 82c0aed8..905ca1cb 100644
+index 82c0aed8..0b9ca714 100644
 --- a/src/iceberg_manifest.cpp
 +++ b/src/iceberg_manifest.cpp
-@@ -5,6 +5,7 @@
+@@ -1,10 +1,11 @@
+ #include "metadata/iceberg_manifest.hpp"
+ #include "storage/catalog/iceberg_table_set.hpp"
+ 
+-#include "duckdb/storage/caching_file_system.hpp"
++#include "duckdb/storage/external_file_cache/caching_file_system.hpp"
  #include "catalog_utils.hpp"
  #include "iceberg_value.hpp"
  #include "storage/iceberg_table_information.hpp"
@@ -484,3 +540,15 @@ index 15350c54..4ab34c16 100644
  		get.AddColumnId(physical_index.index);
  		update.columns.push_back(physical_index);
  	}
+diff --git a/src/storage/table_update/iceberg_add_snapshot.cpp b/src/storage/table_update/iceberg_add_snapshot.cpp
+index a431d261..a0311fb2 100644
+--- a/src/storage/table_update/iceberg_add_snapshot.cpp
++++ b/src/storage/table_update/iceberg_add_snapshot.cpp
+@@ -7,7 +7,6 @@
+ #include "duckdb/parallel/thread_context.hpp"
+ #include "duckdb/main/extension_helper.hpp"
+ #include "duckdb/main/extension/extension_loader.hpp"
+-#include "duckdb/storage/caching_file_system.hpp"
+ 
+ namespace duckdb {
+ 
