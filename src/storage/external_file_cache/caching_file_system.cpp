@@ -23,11 +23,11 @@ class DatabaseInstance;
 class FetchBlockTask : public BaseExecutorTask {
 public:
 	FetchBlockTask(CachingFileHandle &caching_file_handle_p, TaskExecutor &executor, QueryContext context_p,
-	               BufferManager &buffer_manager_p, shared_ptr<CacheBlock> block_p, idx_t block_idx_p,
+	               BufferManager &buffer_manager_p, shared_ptr<CacheBlock> block_p, idx_t block_offset_p,
 	               idx_t block_size_p, BufferHandle &result_pin_p)
 	    : BaseExecutorTask(executor), caching_file_handle(caching_file_handle_p), context(context_p),
-	      buffer_manager(buffer_manager_p), block(std::move(block_p)), block_idx(block_idx_p), block_size(block_size_p),
-	      result_pin(result_pin_p) {
+	      buffer_manager(buffer_manager_p), block(std::move(block_p)), block_offset(block_offset_p),
+	      block_size(block_size_p), result_pin(result_pin_p) {
 	}
 
 	void ExecuteTask() override {
@@ -55,8 +55,7 @@ public:
 				try {
 					auto &file_handle = caching_file_handle.GetFileHandle();
 					const idx_t file_size = file_handle.GetFileSize();
-					const idx_t offset = block_idx * block_size;
-					if (offset >= file_size) {
+					if (block_offset >= file_size) {
 						lk.lock();
 						// If there're other workers waiting for this block, we need to reset the block to empty state
 						// for another attempt.
@@ -64,9 +63,9 @@ public:
 						block->cv.notify_all();
 						return;
 					}
-					const idx_t to_read = MinValue(block_size, file_size - offset);
+					const idx_t to_read = MinValue(block_size, file_size - block_offset);
 					auto buf = buffer_manager.Allocate(MemoryTag::EXTERNAL_FILE_CACHE, to_read);
-					file_handle.Read(context, buf.Ptr(), to_read, offset);
+					file_handle.Read(context, buf.Ptr(), to_read, block_offset);
 
 					lk.lock();
 					block->block_handle = buf.GetBlockHandle();
@@ -104,7 +103,7 @@ private:
 	QueryContext context;
 	BufferManager &buffer_manager;
 	shared_ptr<CacheBlock> block;
-	idx_t block_idx;
+	idx_t block_offset;
 	idx_t block_size;
 	BufferHandle &result_pin;
 };
@@ -221,8 +220,8 @@ FileBufferHandleGroup CachingFileHandle::Read(const idx_t nr_bytes, const idx_t 
 	{
 		annotated_lock_guard<annotated_mutex> guard(cached_file.map_lock);
 		for (idx_t idx = 0; idx < num_blocks; idx++) {
-			const idx_t block_idx = first_block + idx;
-			auto &entry = cached_file.blocks[block_idx];
+			const idx_t block_offset = (first_block + idx) * block_size;
+			auto &entry = cached_file.blocks[block_offset];
 			if (!entry) {
 				entry = make_shared_ptr<CacheBlock>();
 			}
@@ -238,7 +237,7 @@ FileBufferHandleGroup CachingFileHandle::Read(const idx_t nr_bytes, const idx_t 
 	for (idx_t idx = 0; idx < num_blocks; idx++) {
 		executor.ScheduleTask(make_uniq<FetchBlockTask>(*this, executor, context,
 		                                                external_file_cache.GetBufferManager(), blocks[idx],
-		                                                first_block + idx, block_size, pins[idx]));
+		                                                (first_block + idx) * block_size, block_size, pins[idx]));
 	}
 	executor.WorkOnTasks();
 

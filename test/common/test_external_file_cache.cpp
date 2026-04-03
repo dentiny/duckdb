@@ -4,6 +4,8 @@
 #include "duckdb/main/database.hpp"
 #include "duckdb/storage/external_file_cache/caching_file_system.hpp"
 
+#include <thread>
+
 namespace duckdb {
 
 namespace {
@@ -266,6 +268,74 @@ TEST_CASE("Lazy reindex: only touched file is reindexed", "[external_file_cache]
 	}
 	REQUIRE(blocks_a == 2); // reindexed: 8 x 4KiB → 2 x 16KiB
 	REQUIRE(blocks_b == 8); // untouched: still 8 x 4KiB
+}
+
+TEST_CASE("Concurrent block size changes and reads return correct data", "[external_file_cache]") {
+	DuckDB db(":memory:");
+	auto &db_instance = *db.instance;
+	auto tracking_fs = make_uniq<EFCTrackingFileSystem>();
+
+	const idx_t FILE_SIZE = 64 * 1024;
+	auto content = MakeTestContent(FILE_SIZE);
+	EFCTestFileGuard test_file("test_concurrent_reindex.bin", content);
+
+	Connection con(db);
+	con.Query("SET external_file_cache_local_block_size=4096");
+
+	CachingFileSystem cfs(*tracking_fs, db_instance);
+
+	// Prepopulate the cache by reading the full file.
+	{
+		auto handle = cfs.OpenFile(MakeTestOpenFileInfo(test_file.GetPath()), FileFlags::FILE_FLAGS_READ);
+		REQUIRE(ReadFull(*handle, FILE_SIZE) == content);
+	}
+	REQUIRE(TotalCachedBytes(db_instance.GetExternalFileCache()) == FILE_SIZE);
+
+	constexpr idx_t SETTER_THREADS = 4;
+	constexpr idx_t READER_THREADS = 8;
+	constexpr idx_t READS_PER_THREAD = 20;
+	const idx_t block_sizes[] = {4096, 8192, 16384, 32768};
+
+	mutex results_mutex;
+	vector<bool> reader_ok(READER_THREADS, true);
+
+	vector<std::thread> threads;
+
+	// Setter threads: cycle through different block sizes.
+	for (idx_t t = 0; t < SETTER_THREADS; t++) {
+		threads.emplace_back([&, t]() {
+			Connection thread_con(db);
+			for (idx_t i = 0; i < READS_PER_THREAD; i++) {
+				const idx_t bs = block_sizes[(t + i) % 4];
+				thread_con.Query("SET external_file_cache_local_block_size=" + to_string(bs));
+			}
+		});
+	}
+
+	// Reader threads: pread random ranges and verify correctness.
+	for (idx_t t = 0; t < READER_THREADS; t++) {
+		threads.emplace_back([&, t]() {
+			auto handle = cfs.OpenFile(MakeTestOpenFileInfo(test_file.GetPath()), FileFlags::FILE_FLAGS_READ);
+			for (idx_t i = 0; i < READS_PER_THREAD; i++) {
+				const idx_t offset = ((t * READS_PER_THREAD + i) * 1024) % FILE_SIZE;
+				const idx_t len = MinValue<idx_t>(4096, FILE_SIZE - offset);
+				string result = ReadFull(*handle, len, offset);
+				if (result != content.substr(offset, len)) {
+					const lock_guard<mutex> guard(results_mutex);
+					reader_ok[t] = false;
+					return;
+				}
+			}
+		});
+	}
+
+	for (auto &thd : threads) {
+		thd.join();
+	}
+
+	for (idx_t t = 0; t < READER_THREADS; t++) {
+		REQUIRE(reader_ok[t]);
+	}
 }
 
 } // namespace duckdb

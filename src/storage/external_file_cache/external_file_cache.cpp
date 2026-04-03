@@ -33,10 +33,15 @@ void ExternalFileCache::ReindexCachedFileImpl(CachedFile &cached_file, idx_t fil
 		return;
 	}
 
-	// Phase 1: Pin all LOADED old blocks, sorted by block index.
+	if (file_size == 0) {
+		cached_file.cached_block_size = new_block_size;
+		return;
+	}
+
+	// Phase 1: Pin all LOADED old blocks, sorted by offset (the map key).
 	map<idx_t, pair<BufferHandle, idx_t>> pinned;
 	for (auto &block_entry : cached_file.blocks) {
-		const idx_t old_idx = block_entry.first;
+		const idx_t old_offset = block_entry.first;
 		auto &block = *block_entry.second;
 		const annotated_lock_guard<annotated_mutex> block_guard(block.mtx);
 		if (block.state != CacheBlockState::LOADED || !block.block_handle) {
@@ -44,7 +49,7 @@ void ExternalFileCache::ReindexCachedFileImpl(CachedFile &cached_file, idx_t fil
 		}
 		auto pin = buffer_manager.Pin(block.block_handle);
 		if (pin.IsValid()) {
-			pinned.emplace(old_idx, make_pair(std::move(pin), block.nr_bytes));
+			pinned.emplace(old_offset, make_pair(std::move(pin), block.nr_bytes));
 		}
 	}
 
@@ -60,44 +65,42 @@ void ExternalFileCache::ReindexCachedFileImpl(CachedFile &cached_file, idx_t fil
 
 	auto it = pinned.begin();
 	while (it != pinned.end()) {
-		// Find a contiguous run of old blocks starting at current block.
-		const idx_t run_byte_start = it->first * old_block_size;
+		// Find a contiguous run of old blocks starting at the current offset.
+		const idx_t run_byte_start = it->first;
 		idx_t run_byte_end = run_byte_start;
-		idx_t expected_idx = it->first;
+		idx_t expected_offset = it->first;
 		auto run_end = it;
-		while (run_end != pinned.end() && run_end->first == expected_idx) {
-			run_byte_end = run_end->first * old_block_size + run_end->second.second;
-			expected_idx++;
+		while (run_end != pinned.end() && run_end->first == expected_offset) {
+			run_byte_end = run_end->first + run_end->second.second;
+			expected_offset += old_block_size;
 			++run_end;
 		}
 
 		// This contiguous run covers file bytes [run_byte_start, run_byte_end).
 		// Create all new blocks whose byte range fits entirely within this run.
-		const idx_t first_new = run_byte_start / new_block_size;
-		const idx_t last_new = (run_byte_end - 1) / new_block_size;
+		const idx_t first_new_offset = (run_byte_start / new_block_size) * new_block_size;
+		const idx_t last_new_offset = ((run_byte_end - 1) / new_block_size) * new_block_size;
 
-		for (idx_t new_idx = first_new; new_idx <= last_new; new_idx++) {
-			const idx_t new_start = new_idx * new_block_size;
-			const idx_t new_end = MinValue(new_start + new_block_size, file_size);
-			if (!(new_start < new_end && new_start >= run_byte_start && new_end <= run_byte_end)) {
+		for (idx_t new_offset = first_new_offset; new_offset <= last_new_offset; new_offset += new_block_size) {
+			const idx_t new_end = MinValue(new_offset + new_block_size, file_size);
+			if (!(new_offset < new_end && new_offset >= run_byte_start && new_end <= run_byte_end)) {
 				continue;
 			}
-			const idx_t new_size = new_end - new_start;
+			const idx_t new_size = new_end - new_offset;
 
 			auto buf = buffer_manager.Allocate(MemoryTag::EXTERNAL_FILE_CACHE, new_size);
 
 			// Copy from each contributing old block in the run.
-			const idx_t contrib_first = new_start / old_block_size;
-			const idx_t contrib_last = (new_end - 1) / old_block_size;
-			for (idx_t oi = contrib_first; oi <= contrib_last; oi++) {
-				auto &old_entry = pinned.at(oi);
-				const idx_t oi_file_start = oi * old_block_size;
-				const idx_t copy_start = MaxValue(new_start, oi_file_start);
-				const idx_t copy_end = MinValue(new_end, oi_file_start + old_entry.second);
+			const idx_t contrib_first = (new_offset / old_block_size) * old_block_size;
+			const idx_t contrib_last = ((new_end - 1) / old_block_size) * old_block_size;
+			for (idx_t oi_offset = contrib_first; oi_offset <= contrib_last; oi_offset += old_block_size) {
+				auto &old_entry = pinned.at(oi_offset);
+				const idx_t copy_start = MaxValue(new_offset, oi_offset);
+				const idx_t copy_end = MinValue(new_end, oi_offset + old_entry.second);
 				if (copy_start >= copy_end) {
 					continue;
 				}
-				memcpy(buf.Ptr() + (copy_start - new_start), old_entry.first.Ptr() + (copy_start - oi_file_start),
+				memcpy(buf.Ptr() + (copy_start - new_offset), old_entry.first.Ptr() + (copy_start - oi_offset),
 				       copy_end - copy_start);
 			}
 
@@ -111,7 +114,7 @@ void ExternalFileCache::ReindexCachedFileImpl(CachedFile &cached_file, idx_t fil
 				new_block->checksum = Checksum(buf.Ptr(), new_size);
 #endif
 			}
-			new_blocks[new_idx] = std::move(new_block);
+			new_blocks[new_offset] = std::move(new_block);
 		}
 
 		it = run_end;
@@ -135,17 +138,14 @@ void ExternalFileCache::MaybeReindexCachedFile(CachedFile &cached_file, idx_t cu
 		}
 	}
 
-	// Block size changed, need to reindex.
-	idx_t file_size = 0;
+	// Block size changed — need to reindex. Respect lock order: meta_lock before map_lock.
+	idx_t file_size;
 	{
 		annotated_lock_guard<annotated_mutex> meta_guard(cached_file.meta_lock);
 		file_size = cached_file.file_size;
 	}
-	if (file_size == 0) {
-		return;
-	}
 
-	idx_t old_block_size = 0;
+	idx_t old_block_size;
 	{
 		annotated_lock_guard<annotated_mutex> map_guard(cached_file.map_lock);
 		if (!cached_file.cached_block_size.IsValid() ||
@@ -220,17 +220,14 @@ vector<CachedFileInformation> ExternalFileCache::GetCachedFileInformation() cons
 	vector<CachedFileInformation> result;
 	for (const auto &file : cached_files) {
 		annotated_lock_guard<annotated_mutex> map_guard(file.second->map_lock);
-		const idx_t block_size = file.second->cached_block_size.IsValid() ? file.second->cached_block_size.GetIndex()
-		                                                                  : GetCacheBlockSize(file.first);
 		for (const auto &block_entry : file.second->blocks) {
-			const idx_t block_idx = block_entry.first;
+			const idx_t location = block_entry.first;
 			const auto &block = *block_entry.second;
 
 			annotated_lock_guard<annotated_mutex> block_guard(block.mtx);
 			if (block.state != CacheBlockState::LOADED || !block.block_handle) {
 				continue;
 			}
-			const idx_t location = block_idx * block_size;
 			const bool loaded = !block.block_handle->GetMemory().IsUnloaded();
 			result.push_back({file.first, block.nr_bytes, location, loaded});
 		}
