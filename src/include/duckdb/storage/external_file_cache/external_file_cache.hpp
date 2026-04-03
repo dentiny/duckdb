@@ -82,8 +82,7 @@ public:
 	                               const string &current_version_tag, timestamp_t current_last_modified);
 
 private:
-	//! Re-index blocks of a single cached file. Assumes map_lock is held by the caller.
-	void ReindexCachedFileCore(CachedFile &cached_file, idx_t file_size, idx_t old_block_size, idx_t new_block_size);
+	void ReindexCachedFileImpl(CachedFile &cached_file, idx_t file_size, idx_t old_block_size, idx_t new_block_size);
 
 	//! The BufferManager used to cache files
 	BufferManager &buffer_manager;

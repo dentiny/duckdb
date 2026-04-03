@@ -6,17 +6,19 @@
 
 namespace duckdb {
 
+namespace {
+
 using EFCTestFileGuard = CachingTestFileGuard;
 using EFCTrackingFileSystem = SimpleTrackingFileSystem;
 
-static OpenFileInfo MakeTestOpenFileInfo(const string &path) {
+OpenFileInfo MakeTestOpenFileInfo(const string &path) {
 	OpenFileInfo info(path);
 	info.extended_info = make_shared_ptr<ExtendedOpenFileInfo>();
 	info.extended_info->options["validate_external_file_cache"] = Value::BOOLEAN(false);
 	return info;
 }
 
-static string MakeTestContent(idx_t size) {
+string MakeTestContent(idx_t size) {
 	string content(size, '\0');
 	for (idx_t i = 0; i < size; i++) {
 		content[i] = static_cast<char>('A' + (i % 26));
@@ -24,24 +26,26 @@ static string MakeTestContent(idx_t size) {
 	return content;
 }
 
-static string ReadFull(CachingFileHandle &handle, idx_t size, idx_t offset = 0) {
+string ReadFull(CachingFileHandle &handle, idx_t size, idx_t offset = 0) {
 	auto group = handle.Read(size, offset);
 	string result(size, '\0');
 	group.CopyTo(reinterpret_cast<data_ptr_t>(&result[0]), size);
 	return result;
 }
 
-static idx_t CountCachedBlocks(ExternalFileCache &cache) {
+idx_t CountCachedBlocks(ExternalFileCache &cache) {
 	return cache.GetCachedFileInformation().size();
 }
 
-static idx_t TotalCachedBytes(ExternalFileCache &cache) {
+idx_t TotalCachedBytes(ExternalFileCache &cache) {
 	idx_t total = 0;
 	for (auto &info : cache.GetCachedFileInformation()) {
 		total += info.nr_bytes;
 	}
 	return total;
 }
+
+} // namespace
 
 //===----------------------------------------------------------------------===//
 // Lazy Reindex Tests
@@ -67,7 +71,7 @@ TEST_CASE("Lazy reindex splits large blocks on next read", "[external_file_cache
 	REQUIRE(CountCachedBlocks(cache) == 4);
 	REQUIRE(TotalCachedBytes(cache) == FILE_SIZE);
 
-	// Change block size — no eager reindex.
+	// Change block size.
 	Connection con(db);
 	con.Query("SET external_file_cache_local_block_size=" + to_string(NEW_BLOCK_SIZE));
 
