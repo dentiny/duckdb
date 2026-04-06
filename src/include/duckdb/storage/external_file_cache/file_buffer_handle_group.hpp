@@ -42,6 +42,9 @@ public:
 	// Warning: this function requires exactly one handle for zero-copy access, otherwise it will throw an exception.
 	data_ptr_t Ptr() const;
 
+	// Sum of each MemoryHandle::length (total logical bytes covered by the group).
+	idx_t TotalLength() const;
+
 private:
 	// The list of MemoryHandles, could be empty.
 	vector<MemoryHandle> handles;

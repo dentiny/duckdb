@@ -197,6 +197,8 @@ protected:
 	void ReadDataEncrypted(const data_ptr_t buffer, const uint32_t buffer_size, PageType::type module);
 	void Read(PageHeader &page_hdr);
 	void ReadData(const data_ptr_t buffer, const uint32_t buffer_size, PageType::type page_type);
+	void ReadAndDecompressCompressedPage(idx_t compressed_page_size, CompressionCodec::type codec, data_ptr_t dst,
+	                                     idx_t dst_size, PageType::type page_type);
 
 private:
 	//! Check if a previous table filter has filtered out this page
