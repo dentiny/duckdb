@@ -148,7 +148,7 @@ void ArenaAllocator::Reset() {
 		head->current_position = 0;
 		head->prev = nullptr;
 	}
-	allocated_size = 0;
+	allocated_size = head ? head->maximum_size : 0;
 }
 
 void ArenaAllocator::Destroy() {
