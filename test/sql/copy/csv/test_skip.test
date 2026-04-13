@@ -1,4 +1,4 @@
-# name: test/sql/copy/csv/test_skip.test_slow
+# name: test/sql/copy/csv/test_skip.test
 # description: Test that the skip option works for csv files
 # group: [csv]
 

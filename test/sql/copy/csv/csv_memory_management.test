@@ -1,4 +1,4 @@
-# name: test/sql/copy/csv/csv_memory_management.test_slow
+# name: test/sql/copy/csv/csv_memory_management.test
 # description: Test the CSV Buffer Manager under strict memory limit conditions
 # group: [csv]
 

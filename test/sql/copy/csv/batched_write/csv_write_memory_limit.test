@@ -1,4 +1,4 @@
-# name: test/sql/copy/csv/batched_write/csv_write_memory_limit.test_slow
+# name: test/sql/copy/csv/batched_write/csv_write_memory_limit.test
 # description: Verify data is streamed and memory limit is not exceeded in CSV write
 # group: [batched_write]
 
