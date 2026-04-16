@@ -1,5 +1,6 @@
 #include "duckdb/storage/temporary_file_manager.hpp"
 
+#include "duckdb/common/checked_integer.hpp"
 #include "duckdb/common/enum_util.hpp"
 #include "duckdb/parallel/task_scheduler.hpp"
 #include "duckdb/storage/buffer/temporary_file_information.hpp"
@@ -632,11 +633,15 @@ By default, this setting utilizes the available disk space on the drive where th
 You can adjust this setting, by using (for example) PRAGMA max_temp_directory_size='10GiB')",
 		                           data_size, used, max);
 	}
-	size_on_disk += bytes;
+	u64_t current = size_on_disk.load();
+	current += u64_t(bytes);
+	size_on_disk.store(idx_t(current));
 }
 
 void TemporaryFileManager::DecreaseSizeOnDisk(idx_t bytes) {
-	size_on_disk -= bytes;
+	u64_t current = size_on_disk.load();
+	current -= u64_t(bytes);
+	size_on_disk.store(idx_t(current));
 }
 
 bool TemporaryFileManager::IsEncrypted() const {
