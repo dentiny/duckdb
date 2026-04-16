@@ -103,7 +103,212 @@ TEST_CASE("Checked integer comparisons", "[checked_integer]") {
 	REQUIRE(a != b);
 	REQUIRE_FALSE(a == b);
 
-	// comparison with raw T (use GetValue() for conversion to raw type)
-	REQUIRE(a.GetValue() < 150);
-	REQUIRE(a.GetValue() == 100);
+	REQUIRE(a < 150);
+	REQUIRE(a == 100);
+}
+
+TEST_CASE("CheckedInteger mixed type arithmetic", "[checked_integer]") {
+	// int8_t * double -> int8_t (as per user request)
+	i8_t a(10);
+	auto b = a * 2.5;  // Should cast 2.5 to int8_t (2) and multiply
+	REQUIRE(b.GetValue() == 20);
+
+	// int8_t + double
+	auto c = a + 1.7;  // Casts to 1
+	REQUIRE(c.GetValue() == 11);
+
+	// Compound assignment with different type
+	i16_t d(100);
+	d += 50.9;  // Casts to 50
+	REQUIRE(d.GetValue() == 150);
+
+	// int64_t - float
+	i64_t e(1000);
+	auto f = e - 123.9f;  // Casts to 123
+	REQUIRE(f.GetValue() == 877);
+
+	// uint32_t / int
+	u32_t g(100);
+	auto h = g / 3;  // Casts int(3) to uint32_t
+	REQUIRE(h.GetValue() == 33u);
+
+	// Compound assignment: int8_t *= double
+	i8_t i(5);
+	i *= 3.9;  // Casts to 3
+	REQUIRE(i.GetValue() == 15);
+}
+
+TEST_CASE("CheckedInteger unsigned cannot be negative", "[checked_integer]") {
+	// Cannot construct unsigned from negative
+	REQUIRE_THROWS_AS(u32_t(-1), InternalException);
+	REQUIRE_THROWS_AS(u64_t(-100), InternalException);
+	REQUIRE_THROWS_AS(u8_t(-1), InternalException);
+
+	// Can construct from positive
+	REQUIRE_NOTHROW(u32_t(100));
+	REQUIRE(u32_t(100).GetValue() == 100u);
+
+	// Cross-type: unsigned += negative is valid when result is non-negative
+	u16_t x(50);
+	x += -10;
+	REQUIRE(x.GetValue() == 40u);
+	REQUIRE_THROWS_AS(x -= 100, InternalException);  // underflow caught by checked sub
+
+	// Mixed: uint32_t * negative double truncates -2.5 to uint32_t, wraps → overflow
+	u32_t y(10);
+	REQUIRE_THROWS_AS(y *= -2.5, InternalException);
+
+	// Conforms to normal C++ arithmetic: uint16_t(9) -= -10 → 19
+	u16_t z(9);
+	z -= -10;
+	REQUIRE(z.GetValue() == 19u);
+}
+
+#define CHECK_MATCHES_NATIVE(checked_val, native_expr) \
+	REQUIRE(static_cast<decltype(native_expr)>((checked_val).GetValue()) == (native_expr))
+
+TEST_CASE("Cross-type binary arithmetic matches native behavior", "[checked_integer]") {
+	SECTION("unsigned + signed") {
+		u16_t a(100);
+		auto r = a + int8_t(-30);
+		CHECK_MATCHES_NATIVE(r, static_cast<uint16_t>(uint16_t(100) + int8_t(-30)));
+		REQUIRE(r.GetValue() == 70u);
+	}
+
+	SECTION("unsigned - negative signed") {
+		u32_t a(50);
+		auto r = a - int16_t(-25);
+		CHECK_MATCHES_NATIVE(r, static_cast<uint32_t>(uint32_t(50) - int16_t(-25)));
+		REQUIRE(r.GetValue() == 75u);
+	}
+
+	SECTION("signed + unsigned") {
+		i32_t a(-200);
+		auto r = a + uint16_t(300);
+		CHECK_MATCHES_NATIVE(r, static_cast<int32_t>(int32_t(-200) + uint16_t(300)));
+		REQUIRE(r.GetValue() == 100);
+	}
+
+	SECTION("signed - unsigned") {
+		i64_t a(10);
+		auto r = a - uint32_t(30);
+		CHECK_MATCHES_NATIVE(r, static_cast<int64_t>(int64_t(10) - uint32_t(30)));
+		REQUIRE(r.GetValue() == -20);
+	}
+
+	SECTION("small unsigned * large signed") {
+		u8_t a(10);
+		auto r = a * int32_t(20);
+		CHECK_MATCHES_NATIVE(r, static_cast<uint8_t>(uint8_t(10) * int32_t(20)));
+		REQUIRE(r.GetValue() == 200u);
+	}
+
+	SECTION("signed / unsigned") {
+		i32_t a(100);
+		auto r = a / uint16_t(7);
+		CHECK_MATCHES_NATIVE(r, static_cast<int32_t>(int32_t(100) / uint16_t(7)));
+		REQUIRE(r.GetValue() == 14);
+	}
+
+	SECTION("unsigned / signed") {
+		u64_t a(1000);
+		auto r = a / int32_t(3);
+		CHECK_MATCHES_NATIVE(r, static_cast<uint64_t>(uint64_t(1000) / int32_t(3)));
+		REQUIRE(r.GetValue() == 333u);
+	}
+
+	SECTION("narrower signed + wider unsigned") {
+		i16_t a(500);
+		auto r = a + uint32_t(100);
+		CHECK_MATCHES_NATIVE(r, static_cast<int16_t>(static_cast<uint32_t>(int16_t(500)) + uint32_t(100)));
+		REQUIRE(r.GetValue() == 600);
+	}
+}
+
+TEST_CASE("Cross-type compound assignment matches native behavior", "[checked_integer]") {
+	SECTION("unsigned += negative signed") {
+		u32_t a(100);
+		a += int8_t(-40);
+		REQUIRE(a.GetValue() == 60u);
+	}
+
+	SECTION("unsigned -= negative signed") {
+		u16_t a(50);
+		a -= int16_t(-50);
+		REQUIRE(a.GetValue() == 100u);
+	}
+
+	SECTION("signed += unsigned") {
+		i32_t a(-50);
+		a += uint16_t(200);
+		REQUIRE(a.GetValue() == 150);
+	}
+
+	SECTION("signed -= unsigned") {
+		i64_t a(100);
+		a -= uint32_t(250);
+		REQUIRE(a.GetValue() == -150);
+	}
+
+	SECTION("signed *= unsigned") {
+		i16_t a(-7);
+		a *= uint8_t(6);
+		REQUIRE(a.GetValue() == -42);
+	}
+
+	SECTION("unsigned *= signed positive") {
+		u32_t a(25);
+		a *= int16_t(4);
+		REQUIRE(a.GetValue() == 100u);
+	}
+
+	SECTION("signed /= unsigned") {
+		i32_t a(-100);
+		a /= uint8_t(10);
+		REQUIRE(a.GetValue() == -10);
+	}
+
+	SECTION("unsigned /= signed positive") {
+		u64_t a(999);
+		a /= int32_t(10);
+		REQUIRE(a.GetValue() == 99u);
+	}
+}
+
+TEST_CASE("Cross-type arithmetic overflow detection", "[checked_integer]") {
+	SECTION("unsigned + signed overflows T") {
+		u8_t a(250);
+		REQUIRE_THROWS_AS(a + int32_t(10), InternalException);
+	}
+
+	SECTION("unsigned - signed underflows T") {
+		u16_t a(5);
+		REQUIRE_THROWS_AS(a + int32_t(-10), InternalException);
+	}
+
+	SECTION("signed * unsigned overflows T") {
+		i16_t a(200);
+		REQUIRE_THROWS_AS(a * uint16_t(200), InternalException);
+	}
+
+	SECTION("compound: unsigned += signed overflows") {
+		u8_t a(200);
+		REQUIRE_THROWS_AS(a += int32_t(100), InternalException);
+	}
+
+	SECTION("compound: signed -= unsigned underflows") {
+		i16_t a(-30000);
+		REQUIRE_THROWS_AS(a -= uint16_t(5000), InternalException);
+	}
+
+	SECTION("compound: unsigned *= signed overflows") {
+		u16_t a(1000);
+		REQUIRE_THROWS_AS(a *= int32_t(100), InternalException);
+	}
+
+	SECTION("cross-type division by zero") {
+		u32_t a(100);
+		REQUIRE_THROWS_AS(a / int16_t(0), InternalException);
+		REQUIRE_THROWS_AS(a /= int8_t(0), InternalException);
+	}
 }

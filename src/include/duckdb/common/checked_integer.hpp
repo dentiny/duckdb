@@ -18,9 +18,7 @@
 
 namespace duckdb {
 
-//! CheckedInteger is a templated wrapper around integer types (signed or unsigned)
-//! that throws an InternalException on overflow or underflow for arithmetic operations
-//! (++, --, +=, -=, *=, /=, +, -, *, /) similar to Rust's integer overflow behavior in debug mode.
+//! CheckedInteger is a templated wrapper around integer types (signed or unsigned) that throws an InternalException on overflow or underflow for arithmetic operations.
 template <class T>
 class CheckedInteger {
 	static_assert(std::is_integral<T>::value, "CheckedInteger only supports integral types");
@@ -32,9 +30,11 @@ public:
 	using value_type = T;
 
 	CheckedInteger() : value(0) {}
-	CheckedInteger(T v) : value(v) {}  // implicit for seamless use as normal integer
+	CheckedInteger(T v) : value(v) {} // NOLINT
 
-	// explicit conversion to underlying type
+	template <class U, typename std::enable_if<std::is_arithmetic<U>::value, int>::type = 0>
+	CheckedInteger(U v) : value(ValidateAndCast<U>(v)) {} // NOLINT
+
 	explicit operator T() const {
 		return value;
 	}
@@ -43,7 +43,6 @@ public:
 		return value;
 	}
 
-	// increment / decrement
 	CheckedInteger &operator++() {
 		T result;
 		if (!TryAddOperator::Operation(value, T(1), result)) {
@@ -74,7 +73,6 @@ public:
 		return tmp;
 	}
 
-	// compound assignment
 	CheckedInteger &operator+=(CheckedInteger rhs) {
 		return operator+=(rhs.value);
 	}
@@ -85,6 +83,28 @@ public:
 		}
 		value = result;
 		return *this;
+	}
+	template <class U, typename std::enable_if<std::is_arithmetic<U>::value, int>::type = 0>
+	CheckedInteger &operator+=(U rhs) {
+		using Promoted = typename std::common_type<T, U>::type;
+		if constexpr (std::is_floating_point<U>::value) {
+			ValidateAssignment(rhs);
+			return operator+=(static_cast<T>(rhs));
+		} else if constexpr (std::is_same<Promoted, T>::value) {
+			if constexpr (std::is_unsigned<T>::value && std::is_signed<U>::value) {
+				if (rhs < 0) {
+					return operator-=(ToAbsoluteT(rhs));
+				}
+			}
+			return operator+=(static_cast<T>(rhs));
+		} else {
+			Promoted result = static_cast<Promoted>(value) + static_cast<Promoted>(rhs);
+			if (static_cast<Promoted>(static_cast<T>(result)) != result) {
+				throw InternalException("Overflow in addition for CheckedInteger");
+			}
+			value = static_cast<T>(result);
+			return *this;
+		}
 	}
 
 	CheckedInteger &operator-=(CheckedInteger rhs) {
@@ -98,6 +118,28 @@ public:
 		value = result;
 		return *this;
 	}
+	template <class U, typename std::enable_if<std::is_arithmetic<U>::value, int>::type = 0>
+	CheckedInteger &operator-=(U rhs) {
+		using Promoted = typename std::common_type<T, U>::type;
+		if constexpr (std::is_floating_point<U>::value) {
+			ValidateAssignment(rhs);
+			return operator-=(static_cast<T>(rhs));
+		} else if constexpr (std::is_same<Promoted, T>::value) {
+			if constexpr (std::is_unsigned<T>::value && std::is_signed<U>::value) {
+				if (rhs < 0) {
+					return operator+=(ToAbsoluteT(rhs));
+				}
+			}
+			return operator-=(static_cast<T>(rhs));
+		} else {
+			Promoted result = static_cast<Promoted>(value) - static_cast<Promoted>(rhs);
+			if (static_cast<Promoted>(static_cast<T>(result)) != result) {
+				throw InternalException("Underflow in subtraction for CheckedInteger");
+			}
+			value = static_cast<T>(result);
+			return *this;
+		}
+	}
 
 	CheckedInteger &operator*=(CheckedInteger rhs) {
 		return operator*=(rhs.value);
@@ -109,6 +151,28 @@ public:
 		}
 		value = result;
 		return *this;
+	}
+	template <class U, typename std::enable_if<std::is_arithmetic<U>::value, int>::type = 0>
+	CheckedInteger &operator*=(U rhs) {
+		using Promoted = typename std::common_type<T, U>::type;
+		if constexpr (std::is_floating_point<U>::value) {
+			ValidateAssignment(rhs);
+			return operator*=(static_cast<T>(rhs));
+		} else if constexpr (std::is_same<Promoted, T>::value) {
+			if constexpr (std::is_unsigned<T>::value && std::is_signed<U>::value) {
+				if (rhs < 0) {
+					throw InternalException("Cannot multiply unsigned CheckedInteger by negative value");
+				}
+			}
+			return operator*=(static_cast<T>(rhs));
+		} else {
+			Promoted result = static_cast<Promoted>(value) * static_cast<Promoted>(rhs);
+			if (static_cast<Promoted>(static_cast<T>(result)) != result) {
+				throw InternalException("Overflow in multiplication for CheckedInteger");
+			}
+			value = static_cast<T>(result);
+			return *this;
+		}
 	}
 
 	CheckedInteger &operator/=(CheckedInteger rhs) {
@@ -124,8 +188,32 @@ public:
 		value /= rhs;
 		return *this;
 	}
+	template <class U, typename std::enable_if<std::is_arithmetic<U>::value, int>::type = 0>
+	CheckedInteger &operator/=(U rhs) {
+		using Promoted = typename std::common_type<T, U>::type;
+		if constexpr (std::is_floating_point<U>::value) {
+			ValidateAssignment(rhs);
+			return operator/=(static_cast<T>(rhs));
+		} else if constexpr (std::is_same<Promoted, T>::value) {
+			if constexpr (std::is_unsigned<T>::value && std::is_signed<U>::value) {
+				if (rhs < 0) {
+					throw InternalException("Cannot divide unsigned CheckedInteger by negative value");
+				}
+			}
+			return operator/=(static_cast<T>(rhs));
+		} else {
+			if (rhs == 0) {
+				throw InternalException("Division by zero in CheckedInteger");
+			}
+			Promoted result = static_cast<Promoted>(value) / static_cast<Promoted>(rhs);
+			if (static_cast<Promoted>(static_cast<T>(result)) != result) {
+				throw InternalException("Overflow in division for CheckedInteger");
+			}
+			value = static_cast<T>(result);
+			return *this;
+		}
+	}
 
-	// binary arithmetic (return new CheckedInteger)
 	CheckedInteger operator+(CheckedInteger rhs) const {
 		return operator+(rhs.value);
 	}
@@ -135,6 +223,27 @@ public:
 			throw InternalException("Overflow in addition for CheckedInteger");
 		}
 		return CheckedInteger(result);
+	}
+	template <class U, typename std::enable_if<std::is_arithmetic<U>::value, int>::type = 0>
+	CheckedInteger operator+(U rhs) const {
+		using Promoted = typename std::common_type<T, U>::type;
+		if constexpr (std::is_floating_point<U>::value) {
+			ValidateAssignment(rhs);
+			return operator+(static_cast<T>(rhs));
+		} else if constexpr (std::is_same<Promoted, T>::value) {
+			if constexpr (std::is_unsigned<T>::value && std::is_signed<U>::value) {
+				if (rhs < 0) {
+					return operator-(ToAbsoluteT(rhs));
+				}
+			}
+			return operator+(static_cast<T>(rhs));
+		} else {
+			Promoted result = static_cast<Promoted>(value) + static_cast<Promoted>(rhs);
+			if (static_cast<Promoted>(static_cast<T>(result)) != result) {
+				throw InternalException("Overflow in addition for CheckedInteger");
+			}
+			return CheckedInteger(static_cast<T>(result));
+		}
 	}
 
 	CheckedInteger operator-(CheckedInteger rhs) const {
@@ -147,6 +256,27 @@ public:
 		}
 		return CheckedInteger(result);
 	}
+	template <class U, typename std::enable_if<std::is_arithmetic<U>::value, int>::type = 0>
+	CheckedInteger operator-(U rhs) const {
+		using Promoted = typename std::common_type<T, U>::type;
+		if constexpr (std::is_floating_point<U>::value) {
+			ValidateAssignment(rhs);
+			return operator-(static_cast<T>(rhs));
+		} else if constexpr (std::is_same<Promoted, T>::value) {
+			if constexpr (std::is_unsigned<T>::value && std::is_signed<U>::value) {
+				if (rhs < 0) {
+					return operator+(ToAbsoluteT(rhs));
+				}
+			}
+			return operator-(static_cast<T>(rhs));
+		} else {
+			Promoted result = static_cast<Promoted>(value) - static_cast<Promoted>(rhs);
+			if (static_cast<Promoted>(static_cast<T>(result)) != result) {
+				throw InternalException("Underflow in subtraction for CheckedInteger");
+			}
+			return CheckedInteger(static_cast<T>(result));
+		}
+	}
 
 	CheckedInteger operator*(CheckedInteger rhs) const {
 		return operator*(rhs.value);
@@ -157,6 +287,27 @@ public:
 			throw InternalException("Overflow in multiplication for CheckedInteger");
 		}
 		return CheckedInteger(result);
+	}
+	template <class U, typename std::enable_if<std::is_arithmetic<U>::value, int>::type = 0>
+	CheckedInteger operator*(U rhs) const {
+		using Promoted = typename std::common_type<T, U>::type;
+		if constexpr (std::is_floating_point<U>::value) {
+			ValidateAssignment(rhs);
+			return operator*(static_cast<T>(rhs));
+		} else if constexpr (std::is_same<Promoted, T>::value) {
+			if constexpr (std::is_unsigned<T>::value && std::is_signed<U>::value) {
+				if (rhs < 0) {
+					throw InternalException("Cannot multiply unsigned CheckedInteger by negative value");
+				}
+			}
+			return operator*(static_cast<T>(rhs));
+		} else {
+			Promoted result = static_cast<Promoted>(value) * static_cast<Promoted>(rhs);
+			if (static_cast<Promoted>(static_cast<T>(result)) != result) {
+				throw InternalException("Overflow in multiplication for CheckedInteger");
+			}
+			return CheckedInteger(static_cast<T>(result));
+		}
 	}
 
 	CheckedInteger operator/(CheckedInteger rhs) const {
@@ -171,8 +322,31 @@ public:
 		}
 		return CheckedInteger(value / rhs);
 	}
+	template <class U, typename std::enable_if<std::is_arithmetic<U>::value, int>::type = 0>
+	CheckedInteger operator/(U rhs) const {
+		using Promoted = typename std::common_type<T, U>::type;
+		if constexpr (std::is_floating_point<U>::value) {
+			ValidateAssignment(rhs);
+			return operator/(static_cast<T>(rhs));
+		} else if constexpr (std::is_same<Promoted, T>::value) {
+			if constexpr (std::is_unsigned<T>::value && std::is_signed<U>::value) {
+				if (rhs < 0) {
+					throw InternalException("Cannot divide unsigned CheckedInteger by negative value");
+				}
+			}
+			return operator/(static_cast<T>(rhs));
+		} else {
+			if (rhs == 0) {
+				throw InternalException("Division by zero in CheckedInteger");
+			}
+			Promoted result = static_cast<Promoted>(value) / static_cast<Promoted>(rhs);
+			if (static_cast<Promoted>(static_cast<T>(result)) != result) {
+				throw InternalException("Overflow in division for CheckedInteger");
+			}
+			return CheckedInteger(static_cast<T>(result));
+		}
+	}
 
-	// comparisons to support usage in conditions/loops
 	bool operator==(const CheckedInteger &other) const {
 		return value == other.value;
 	}
@@ -192,10 +366,34 @@ public:
 		return value >= other.value;
 	}
 
-	// for symmetry, also allow T op checked via these? but for now member covers checked op T
+private:
+	// Validate negative values cannot be assigned to unsigned types
+	template <class U>
+	static T ValidateAndCast(U v) {
+		if (std::is_unsigned<T>::value && std::is_signed<U>::value) {
+			if (v < 0) {
+				throw InternalException("Cannot assign negative value to unsigned CheckedInteger");
+			}
+		}
+		return static_cast<T>(v);
+	}
+
+	template <class U>
+	static void ValidateAssignment(U v) {
+		if (std::is_unsigned<T>::value && std::is_signed<U>::value && v < 0) {
+			throw InternalException("Cannot assign negative value to unsigned CheckedInteger");
+		}
+	}
+
+	//! Compute |rhs| as type T without signed-overflow UB.
+	//! Only valid when T is unsigned and sizeof(T) >= sizeof(U).
+	template <class U>
+	static T ToAbsoluteT(U rhs) {
+		using UnsignedU = typename std::make_unsigned<U>::type;
+		return static_cast<T>(static_cast<UnsignedU>(-static_cast<UnsignedU>(rhs)));
+	}
 };
 
-// non-member operators for symmetry (T op checked)
 template <class TL, class TR>
 CheckedInteger<TR> operator+(TL lhs, const CheckedInteger<TR> &rhs) {
 	return CheckedInteger<TR>(lhs) + rhs.GetValue();
@@ -216,7 +414,6 @@ CheckedInteger<TR> operator/(TL lhs, const CheckedInteger<TR> &rhs) {
 	return CheckedInteger<TR>(lhs) / rhs.GetValue();
 }
 
-// type aliases for templated versions (Rust-inspired short names)
 using i8_t = CheckedInteger<int8_t>;
 using i16_t = CheckedInteger<int16_t>;
 using i32_t = CheckedInteger<int32_t>;
