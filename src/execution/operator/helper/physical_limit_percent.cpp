@@ -1,6 +1,7 @@
 #include "duckdb/execution/operator/helper/physical_limit_percent.hpp"
 
 #include "duckdb/common/algorithm.hpp"
+#include "duckdb/common/checked_integer.hpp"
 #include "duckdb/common/types/column/column_data_collection.hpp"
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/execution/operator/helper/physical_limit.hpp"
@@ -134,7 +135,7 @@ SourceResultType PhysicalLimitPercent::GetDataInternal(ExecutionContext &context
 			D_ASSERT(gstate.data.Count() == 0);
 			return SourceResultType::FINISHED;
 		}
-		idx_t count = gstate.data.Count();
+		CheckedInteger<idx_t> count = gstate.data.Count();
 		if (count > 0) {
 			count += offset.GetIndex();
 		}
@@ -143,7 +144,7 @@ SourceResultType PhysicalLimitPercent::GetDataInternal(ExecutionContext &context
 		}
 		auto limit_percentage = idx_t(percent_limit / 100.0 * double(count));
 		if (limit_percentage > count) {
-			limit = count;
+			limit = optional_idx(count);
 		} else {
 			limit = idx_t(limit_percentage);
 		}

@@ -434,6 +434,7 @@ using utinyint_t = CheckedInteger<uint8_t>;
 using usmallint_t = CheckedInteger<uint16_t>;
 using uinteger_t = CheckedInteger<uint32_t>;
 using ubigint_t = CheckedInteger<uint64_t>;
+using checked_idx_t = CheckedInteger<idx_t, InvalidInputException>;
 
 } // namespace duckdb
 

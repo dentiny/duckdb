@@ -1,5 +1,6 @@
 #include "column_reader.hpp"
 
+#include "duckdb/common/checked_integer.hpp"
 #include "duckdb/common/vector/flat_vector.hpp"
 
 #include <algorithm>
@@ -387,26 +388,28 @@ void ColumnReader::ResetPage() {
 void ColumnReader::PreparePageV2(PageHeader &page_hdr) {
 	D_ASSERT(page_hdr.type == PageType::DATA_PAGE_V2);
 
-	AllocateBlock(page_hdr.uncompressed_page_size + 1);
+	checked_idx_t uncompressed_page_size = page_hdr.uncompressed_page_size;
+	checked_idx_t compressed_page_size = page_hdr.compressed_page_size;
+	AllocateBlock(uncompressed_page_size + 1);
 	bool uncompressed = false;
 	if (page_hdr.data_page_header_v2.__isset.is_compressed && !page_hdr.data_page_header_v2.is_compressed) {
 		uncompressed = true;
 	}
 	if (chunk->meta_data.codec == CompressionCodec::UNCOMPRESSED) {
-		if (page_hdr.compressed_page_size != page_hdr.uncompressed_page_size) {
+		if (compressed_page_size != uncompressed_page_size) {
 			throw InvalidInputException("Failed to read file \"%s\": Page size mismatch", Reader().GetFileName());
 		}
 		uncompressed = true;
 	}
 	if (uncompressed) {
-		ReadData(block->ptr, page_hdr.compressed_page_size, page_hdr.type);
+		ReadData(block->ptr, compressed_page_size, page_hdr.type);
 		return;
 	}
 
 	// copy repeats & defines as-is because FOR SOME REASON they are uncompressed
-	auto uncompressed_bytes = page_hdr.data_page_header_v2.repetition_levels_byte_length +
-	                          page_hdr.data_page_header_v2.definition_levels_byte_length;
-	if (uncompressed_bytes > page_hdr.uncompressed_page_size) {
+	auto uncompressed_bytes = (checked_idx_t(page_hdr.data_page_header_v2.repetition_levels_byte_length) +
+	                           page_hdr.data_page_header_v2.definition_levels_byte_length);
+	if (uncompressed_bytes > uncompressed_page_size) {
 		throw InvalidInputException(
 		    "Failed to read file \"%s\": header inconsistency, uncompressed_page_size needs to be larger than "
 		    "repetition_levels_byte_length + definition_levels_byte_length",
@@ -415,7 +418,7 @@ void ColumnReader::PreparePageV2(PageHeader &page_hdr) {
 
 	ReadData(block->ptr, uncompressed_bytes, page_hdr.type);
 
-	auto compressed_bytes = page_hdr.compressed_page_size - uncompressed_bytes;
+	auto compressed_bytes = compressed_page_size - uncompressed_bytes;
 
 	if (compressed_bytes > 0) {
 		ResizeableBuffer compressed_buffer;
@@ -424,7 +427,7 @@ void ColumnReader::PreparePageV2(PageHeader &page_hdr) {
 		ReadData(compressed_buffer.ptr, compressed_bytes, page_hdr.type);
 
 		DecompressInternal(chunk->meta_data.codec, compressed_buffer.ptr, compressed_bytes,
-		                   block->ptr + uncompressed_bytes, page_hdr.uncompressed_page_size - uncompressed_bytes);
+		                   block->ptr + uncompressed_bytes, uncompressed_page_size - uncompressed_bytes);
 	}
 }
 
@@ -437,8 +440,9 @@ void ColumnReader::AllocateBlock(idx_t size) {
 }
 
 void ColumnReader::PreparePage(PageHeader &page_hdr) {
-	AllocateBlock(page_hdr.uncompressed_page_size + 1);
-	uint32_t compressed_page_size = page_hdr.compressed_page_size;
+	checked_idx_t uncompressed_page_size = page_hdr.uncompressed_page_size;
+	auto compressed_page_size = checked_idx_t(page_hdr.compressed_page_size);
+	AllocateBlock(uncompressed_page_size + 1);
 
 	if (chunk->__isset.crypto_metadata) {
 		auto const file_aad = reader.GetUniqueFileIdentifier(reader.metadata->crypto_metadata->encryption_algorithm);
@@ -452,7 +456,7 @@ void ColumnReader::PreparePage(PageHeader &page_hdr) {
 	}
 
 	if (chunk->meta_data.codec == CompressionCodec::UNCOMPRESSED) {
-		if (compressed_page_size != NumericCast<uint32_t>(page_hdr.uncompressed_page_size)) {
+		if (compressed_page_size != uncompressed_page_size) {
 			throw std::runtime_error("Page size mismatch");
 		}
 		ReadData(block->ptr, compressed_page_size, page_hdr.type);
@@ -464,7 +468,7 @@ void ColumnReader::PreparePage(PageHeader &page_hdr) {
 	ReadData(compressed_buffer.ptr, compressed_page_size, page_hdr.type);
 
 	DecompressInternal(chunk->meta_data.codec, compressed_buffer.ptr, compressed_page_size, block->ptr,
-	                   page_hdr.uncompressed_page_size);
+	                   uncompressed_page_size);
 }
 
 void ColumnReader::DecompressInternal(CompressionCodec::type codec, const_data_ptr_t src, idx_t src_size,
