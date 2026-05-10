@@ -572,7 +572,7 @@ static void WritePrimitiveValueData(const UnifiedVariantVectorData &variant, idx
 			// DuckDB uses INT16 to store small decimals, but parquet only supports DECIMAL4 at minimum, so here we
 			// promote to INT32.
 			WritePrimitiveTypeHeader<VariantPrimitiveType::DECIMAL4>(value_data);
-			Store<int8_t>(decimal_data.scale, value_data);
+			Store<int8_t>(NumericCast<int8_t>(decimal_data.scale), value_data);
 			value_data++;
 			const int32_t promoted = Load<int16_t>(decimal_data.value_ptr);
 			Store<int32_t>(promoted, value_data);
