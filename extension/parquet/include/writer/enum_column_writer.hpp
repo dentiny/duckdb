@@ -12,6 +12,7 @@
 
 namespace duckdb {
 class EnumWriterPageState;
+class StringStatisticsState;
 
 class EnumColumnWriter : public PrimitiveColumnWriter {
 public:
@@ -43,7 +44,7 @@ public:
 private:
 	template <class T>
 	void WriteEnumInternal(WriteStream &temp_writer, Vector &input_column, idx_t chunk_start, idx_t chunk_end,
-	                       EnumWriterPageState &page_state);
+	                       EnumWriterPageState &page_state, StringStatisticsState &stats);
 };
 
 } // namespace duckdb
