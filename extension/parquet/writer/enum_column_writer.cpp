@@ -32,8 +32,7 @@ void EnumColumnWriter::WriteEnumInternal(WriteStream &temp_writer, Vector &input
                                          StringStatisticsState &stats) {
 	auto &mask = FlatVector::Validity(input_column);
 	auto *ptr = FlatVector::GetData<T>(input_column);
-	// stats are computed from the actual values that appear in the column,
-	// not from the full enum dictionary, so look up each row's string here
+	// Used to populate the statistics.
 	auto &enum_values = EnumType::GetValuesInsertOrder(Type());
 	auto string_values = FlatVector::GetData<string_t>(enum_values);
 	for (idx_t r = chunk_start; r < chunk_end; r++) {
