@@ -3,6 +3,10 @@
 #include "parquet_rle_bp_encoder.hpp"
 #include "parquet_writer.hpp"
 #include "duckdb/common/serializer/memory_stream.hpp"
+#include "duckdb/common/operator/comparison_operators.hpp"
+
+#include <algorithm>
+#include <numeric>
 
 namespace duckdb {
 using duckdb_parquet::Encoding;
@@ -20,6 +24,19 @@ EnumColumnWriter::EnumColumnWriter(ParquetWriter &writer, ParquetColumnSchema &&
                                    vector<string> schema_path_p)
     : PrimitiveColumnWriter(writer, std::move(column_schema), std::move(schema_path_p)) {
 	bit_width = RleBpDecoder::ComputeBitWidth(EnumType::GetSize(Type()));
+
+	// Precompute lex_rank.
+	auto enum_count = EnumType::GetSize(Type());
+	auto &enum_values = EnumType::GetValuesInsertOrder(Type());
+	auto string_values = FlatVector::GetData<string_t>(enum_values);
+	vector<uint32_t> order(enum_count);
+	std::iota(order.begin(), order.end(), 0);
+	std::sort(order.begin(), order.end(),
+	          [&](uint32_t a, uint32_t b) { return LessThan::Operation(string_values[a], string_values[b]); });
+	lex_rank.resize(enum_count);
+	for (uint32_t rank = 0; rank < enum_count; rank++) {
+		lex_rank[order[rank]] = rank;
+	}
 }
 
 unique_ptr<ColumnWriterStatistics> EnumColumnWriter::InitializeStatsState() {
@@ -32,10 +49,14 @@ void EnumColumnWriter::WriteEnumInternal(WriteStream &temp_writer, Vector &input
                                          StringStatisticsState &stats) {
 	auto &mask = FlatVector::Validity(input_column);
 	auto *ptr = FlatVector::GetData<T>(input_column);
-	// stats are computed from the actual values that appear in the column,
-	// not from the full enum dictionary, so look up each row's string here
-	auto &enum_values = EnumType::GetValuesInsertOrder(Type());
-	auto string_values = FlatVector::GetData<string_t>(enum_values);
+
+	// Track the lex min/max enum index seen in this chunk.
+	uint32_t best_min_idx = 0;
+	uint32_t best_max_idx = 0;
+	uint32_t best_min_rank = std::numeric_limits<uint32_t>::max();
+	uint32_t best_max_rank = 0;
+	bool any_seen = false;
+
 	for (idx_t r = chunk_start; r < chunk_end; r++) {
 		if (mask.RowIsValid(r)) {
 			if (!page_state.written_value) {
@@ -44,8 +65,27 @@ void EnumColumnWriter::WriteEnumInternal(WriteStream &temp_writer, Vector &input
 				page_state.encoder.BeginWrite();
 				page_state.written_value = true;
 			}
-			page_state.encoder.WriteValue(temp_writer, ptr[r]);
-			stats.Update(string_values[ptr[r]]);
+			auto idx = ptr[r];
+			page_state.encoder.WriteValue(temp_writer, idx);
+			auto rank = lex_rank[idx];
+			if (!any_seen || rank < best_min_rank) {
+				best_min_rank = rank;
+				best_min_idx = idx;
+			}
+			if (!any_seen || rank > best_max_rank) {
+				best_max_rank = rank;
+				best_max_idx = idx;
+			}
+			any_seen = true;
+		}
+	}
+
+	if (any_seen) {
+		auto &enum_values = EnumType::GetValuesInsertOrder(Type());
+		auto string_values = FlatVector::GetData<string_t>(enum_values);
+		stats.Update(string_values[best_min_idx]);
+		if (best_max_idx != best_min_idx) {
+			stats.Update(string_values[best_max_idx]);
 		}
 	}
 }
