@@ -80,11 +80,11 @@ set memory_limit='512KiB';
 statement ok
 set memory_limit='500mb';
 
-# loaded should now be "false" for the large buffer
-query II
-select round(nr_bytes / 1048576), loaded from duckdb_external_file_cache() where location = 4;
+# all cached buffers for the file were unloaded, so the file entry is removed
+query I
+select count(*) from duckdb_external_file_cache() where location = 4;
 ----
-47.0	0
+0
 
 # disabling the file cache should empty it
 statement ok

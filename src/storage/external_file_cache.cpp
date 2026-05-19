@@ -61,6 +61,18 @@ ExternalFileCache::CachedFile::CachedFile(string path_p)
     : path(std::move(path_p)), file_size(0), last_modified(0), can_seek(false), on_disk_file(false) {
 }
 
+ExternalFileCache::CachedFileRangeCleanup::CachedFileRangeCleanup(ExternalFileCache &cache_p, string path_p,
+                                                                  weak_ptr<CachedFile> cached_file_p)
+    : cache(cache_p), path(std::move(path_p)), cached_file(std::move(cached_file_p)), completed(false) {
+}
+
+void ExternalFileCache::CachedFileRangeCleanup::Run() {
+	if (completed.exchange(true)) {
+		return;
+	}
+	cache.ReleaseCachedFileRange(path, cached_file);
+}
+
 void ExternalFileCache::CachedFile::Verify(const unique_ptr<StorageLockKey> &guard) const {
 #ifdef DEBUG
 	for (const auto &range1 : ranges) {
@@ -160,6 +172,11 @@ vector<CachedFileInformation> ExternalFileCache::GetCachedFileInformation() cons
 	return result;
 }
 
+idx_t ExternalFileCache::GetCachedFileCount() const {
+	lock_guard<mutex> guard(lock);
+	return cached_files.size();
+}
+
 ExternalFileCache &ExternalFileCache::Get(DatabaseInstance &db) {
 	return db.GetExternalFileCache();
 }
@@ -172,13 +189,67 @@ BufferManager &ExternalFileCache::GetBufferManager() const {
 	return buffer_manager;
 }
 
-ExternalFileCache::CachedFile &ExternalFileCache::GetOrCreateCachedFile(const string &path) {
+shared_ptr<ExternalFileCache::CachedFile> ExternalFileCache::GetOrCreateCachedFile(const string &path) {
 	lock_guard<mutex> guard(lock);
 	auto &entry = cached_files[path];
 	if (!entry) {
-		entry = make_uniq<CachedFile>(path);
+		entry = make_shared_ptr<CachedFile>(path);
 	}
-	return *entry;
+	entry->active_handle_count++;
+	return entry;
+}
+
+void ExternalFileCache::ReleaseCachedFileHandle(const shared_ptr<CachedFile> &cached_file) {
+	lock_guard<mutex> guard(lock);
+	D_ASSERT(cached_file->active_handle_count > 0);
+	if (cached_file->active_handle_count > 0) {
+		cached_file->active_handle_count--;
+	}
+	TryEraseFileLocked(cached_file);
+}
+
+shared_ptr<ExternalFileCache::CachedFileRangeCleanup>
+ExternalFileCache::RegisterCachedFileRange(const shared_ptr<CachedFile> &cached_file,
+                                           const shared_ptr<BlockHandle> &block_handle) {
+	auto cleanup = make_shared_ptr<CachedFileRangeCleanup>(*this, cached_file->path, weak_ptr<CachedFile>(cached_file));
+	{
+		lock_guard<mutex> guard(lock);
+		cached_file->loaded_range_count++;
+	}
+	block_handle->GetMemory().SetUnloadCallback([cleanup]() { cleanup->Run(); });
+	return cleanup;
+}
+
+void ExternalFileCache::ReleaseCachedFileRange(const string &path, const weak_ptr<CachedFile> &cached_file) {
+	auto locked_file = cached_file.lock();
+	if (!locked_file) {
+		return;
+	}
+	lock_guard<mutex> guard(lock);
+	D_ASSERT(locked_file->loaded_range_count > 0);
+	if (locked_file->loaded_range_count > 0) {
+		locked_file->loaded_range_count--;
+	}
+	TryEraseFileLocked(locked_file);
+}
+
+void ExternalFileCache::TryEraseFile(const shared_ptr<CachedFile> &cached_file) {
+	lock_guard<mutex> guard(lock);
+	TryEraseFileLocked(cached_file);
+}
+
+void ExternalFileCache::TryEraseFileLocked(const shared_ptr<CachedFile> &cached_file) {
+	if (cached_file->active_handle_count != 0 || cached_file->loaded_range_count != 0) {
+		return;
+	}
+	auto entry = cached_files.find(cached_file->path);
+	if (entry == cached_files.end()) {
+		return;
+	}
+	if (entry->second.get() != cached_file.get()) {
+		return;
+	}
+	cached_files.erase(entry);
 }
 
 } // namespace duckdb

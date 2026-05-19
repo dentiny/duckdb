@@ -135,9 +135,16 @@ unique_ptr<FileBuffer> BlockMemory::UnloadAndTakeBlock(BlockLock &l) {
 		// Thus, we write to it to a temporary file.
 		buffer_manager.WriteTemporaryBuffer(GetMemoryTag(), BlockId(), *GetBuffer());
 	}
+	auto result = std::move(GetBuffer());
 	memory_charge.Resize(0);
 	SetState(BlockState::BLOCK_UNLOADED);
-	return std::move(GetBuffer());
+	auto callback = unload_callback;
+	if (callback) {
+		l.unlock();
+		callback();
+		l.lock();
+	}
+	return result;
 }
 
 void BlockMemory::Unload(BlockLock &l) {

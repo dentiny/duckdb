@@ -3,6 +3,7 @@ add_library_unity(
   OBJECT
   test_cast.cpp
   test_checksum.cpp
+  test_external_file_cache.cpp
   test_file_system.cpp
   test_caching_file_system_wrapper.cpp
   test_hyperlog.cpp

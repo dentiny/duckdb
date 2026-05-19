@@ -36,7 +36,8 @@ public:
 
 public:
 	DUCKDB_API CachingFileHandle(QueryContext context, CachingFileSystem &caching_file_system, const OpenFileInfo &path,
-	                             FileOpenFlags flags, optional_ptr<FileOpener> opener, CachedFile &cached_file);
+	                             FileOpenFlags flags, optional_ptr<FileOpener> opener,
+	                             shared_ptr<CachedFile> cached_file);
 	DUCKDB_API ~CachingFileHandle();
 
 public:
@@ -95,7 +96,7 @@ private:
 	//! Cache validation mode for this file
 	CacheValidationMode validate;
 	//! The associated CachedFile with cached ranges
-	CachedFile &cached_file;
+	shared_ptr<CachedFile> cached_file;
 
 	//! The underlying FileHandle (optional)
 	unique_ptr<FileHandle> file_handle;

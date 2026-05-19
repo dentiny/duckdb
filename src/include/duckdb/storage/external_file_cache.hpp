@@ -27,6 +27,8 @@ class BufferManager;
 class ExternalFileCache {
 public:
 	enum class CachedFileRangeOverlap { NONE, PARTIAL, FULL };
+	struct CachedFile;
+	struct CachedFileRangeCleanup;
 
 	//! Cached reads (immutable)
 	struct CachedFileRange {
@@ -45,6 +47,7 @@ public:
 
 	public:
 		shared_ptr<BlockHandle> block_handle;
+		shared_ptr<CachedFileRangeCleanup> cleanup;
 		const idx_t nr_bytes;
 		const idx_t location;
 		const string version_tag;
@@ -85,6 +88,23 @@ public:
 		string version_tag;
 		bool can_seek;
 		bool on_disk_file;
+
+	public:
+		idx_t active_handle_count = 0;
+		idx_t loaded_range_count = 0;
+	};
+
+	struct CachedFileRangeCleanup {
+	public:
+		CachedFileRangeCleanup(ExternalFileCache &cache, string path, weak_ptr<CachedFile> cached_file);
+
+		void Run();
+
+	private:
+		ExternalFileCache &cache;
+		const string path;
+		weak_ptr<CachedFile> cached_file;
+		atomic<bool> completed;
 	};
 
 public:
@@ -97,13 +117,22 @@ public:
 	bool IsEnabled() const;
 	void SetEnabled(bool enable);
 	vector<CachedFileInformation> GetCachedFileInformation() const;
+	idx_t GetCachedFileCount() const;
 
 	BufferManager &GetBufferManager() const;
 	//! Gets the cached file, or creates it if is not yet present
-	CachedFile &GetOrCreateCachedFile(const string &path);
+	shared_ptr<CachedFile> GetOrCreateCachedFile(const string &path);
+	void ReleaseCachedFileHandle(const shared_ptr<CachedFile> &cached_file);
+	shared_ptr<CachedFileRangeCleanup> RegisterCachedFileRange(const shared_ptr<CachedFile> &cached_file,
+	                                                           const shared_ptr<BlockHandle> &block_handle);
+	void ReleaseCachedFileRange(const string &path, const weak_ptr<CachedFile> &cached_file);
+	void TryEraseFile(const shared_ptr<CachedFile> &cached_file);
 
 	DUCKDB_API static bool IsValid(bool validate, const string &cached_version_tag, timestamp_t cached_last_modified,
 	                               const string &current_version_tag, timestamp_t current_last_modified);
+
+private:
+	void TryEraseFileLocked(const shared_ptr<CachedFile> &cached_file);
 
 private:
 	//! The BufferManager used to cache files
@@ -111,7 +140,7 @@ private:
 	//! Whether or not file caching is enabled
 	atomic<bool> enable;
 	//! Mapping from file path to cached file with cached ranges
-	unordered_map<string, unique_ptr<CachedFile>> cached_files;
+	unordered_map<string, shared_ptr<CachedFile>> cached_files;
 	//! Lock for accessing the cached files
 	mutable mutex lock;
 };
