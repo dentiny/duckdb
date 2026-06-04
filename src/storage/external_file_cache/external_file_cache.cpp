@@ -21,14 +21,23 @@ idx_t ExternalFileCache::GetCacheBlockSize(const string &path) const {
 	return Settings::Get<ExternalFileCacheLocalBlockSizeSetting>(db);
 }
 
-void ExternalFileCache::ReindexCachedFileCore(CachedFile &cached_file, idx_t file_size, idx_t old_block_size,
-                                              idx_t new_block_size) {
+void ExternalFileCache::ReindexCachedFileCore(const shared_ptr<CachedFile> &cached_file, idx_t file_size,
+                                              idx_t old_block_size, idx_t new_block_size) {
 	D_ASSERT(old_block_size > 0);
 	D_ASSERT(new_block_size > 0);
 
+	// Unregister old blocks before replacing the block map.
+	for (auto &block_entry : cached_file->blocks) {
+		auto &block = *block_entry.second;
+		const annotated_lock_guard<annotated_mutex> block_guard(block.mtx);
+		if (block.block_handle) {
+			UnregisterBlock(block.block_handle->GetMemory());
+		}
+	}
+
 	// Phase 1: Pin all LOADED old blocks, sorted by block index.
 	map<idx_t, pair<BufferHandle, idx_t>> pinned;
-	for (auto &block_entry : cached_file.blocks) {
+	for (auto &block_entry : cached_file->blocks) {
 		const idx_t old_idx = block_entry.first;
 		auto &block = *block_entry.second;
 		const annotated_lock_guard<annotated_mutex> block_guard(block.mtx);
@@ -42,7 +51,7 @@ void ExternalFileCache::ReindexCachedFileCore(CachedFile &cached_file, idx_t fil
 	}
 
 	if (pinned.empty()) {
-		cached_file.blocks.clear();
+		cached_file->blocks.clear();
 		return;
 	}
 
@@ -110,34 +119,44 @@ void ExternalFileCache::ReindexCachedFileCore(CachedFile &cached_file, idx_t fil
 	}
 
 	// Phase 3: Replace old blocks with new blocks.
-	cached_file.blocks = std::move(new_blocks);
+	cached_file->blocks = std::move(new_blocks);
+
+	for (auto &block_entry : cached_file->blocks) {
+		const idx_t block_idx = block_entry.first;
+		auto &block = *block_entry.second;
+		const annotated_lock_guard<annotated_mutex> block_guard(block.mtx);
+		if (block.state == CacheBlockState::LOADED && block.block_handle) {
+			RegisterBlock(block.block_handle, cached_file, block_idx);
+		}
+	}
 }
 
-vector<shared_ptr<CacheBlock>> ExternalFileCache::ReindexAndAcquireBlocks(CachedFile &cached_file,
+vector<shared_ptr<CacheBlock>> ExternalFileCache::ReindexAndAcquireBlocks(const shared_ptr<CachedFile> &cached_file,
                                                                           idx_t current_block_size, idx_t first_block,
                                                                           idx_t num_blocks) {
 	D_ASSERT(current_block_size > 0);
+	D_ASSERT(cached_file);
 
 	idx_t file_size = 0;
 	{
-		const annotated_lock_guard<annotated_mutex> meta_guard(cached_file.meta_lock);
-		file_size = cached_file.file_size;
+		const annotated_lock_guard<annotated_mutex> meta_guard(cached_file->meta_lock);
+		file_size = cached_file->file_size;
 	}
 
-	const annotated_lock_guard<annotated_mutex> map_guard(cached_file.map_lock);
+	const annotated_lock_guard<annotated_mutex> map_guard(cached_file->map_lock);
 
-	if (cached_file.cached_block_size.IsValid() && cached_file.cached_block_size.GetIndex() != current_block_size) {
-		const idx_t old_block_size = cached_file.cached_block_size.GetIndex();
+	if (cached_file->cached_block_size.IsValid() && cached_file->cached_block_size.GetIndex() != current_block_size) {
+		const idx_t old_block_size = cached_file->cached_block_size.GetIndex();
 		if (file_size > 0) {
 			ReindexCachedFileCore(cached_file, file_size, old_block_size, current_block_size);
 		}
 	}
-	cached_file.cached_block_size = current_block_size;
+	cached_file->cached_block_size = current_block_size;
 
 	vector<shared_ptr<CacheBlock>> blocks(num_blocks);
 	for (idx_t idx = 0; idx < num_blocks; idx++) {
 		const idx_t block_idx = first_block + idx;
-		auto &entry = cached_file.blocks[block_idx];
+		auto &entry = cached_file->blocks[block_idx];
 		if (!entry) {
 			entry = make_shared_ptr<CacheBlock>();
 		}
@@ -209,6 +228,10 @@ void ExternalFileCache::SetEnabled(bool enable_p) {
 	generation++;
 	if (!enable) {
 		cached_files.clear();
+		{
+			const lock_guard<mutex> keys_guard(block_keys_lock);
+			block_keys.clear();
+		}
 	}
 }
 
@@ -266,6 +289,70 @@ shared_ptr<ExternalFileCache::CachedFile> ExternalFileCache::GetOrCreateCachedFi
 		entry = make_shared_ptr<CachedFile>(path, generation);
 	}
 	return entry;
+}
+
+void ExternalFileCache::RegisterBlock(const shared_ptr<BlockHandle> &block_handle,
+                                      const shared_ptr<CachedFile> &cached_file, idx_t block_idx) {
+	if (!enable || !block_handle || !cached_file) {
+		return;
+	}
+	const lock_guard<mutex> guard(block_keys_lock);
+	block_keys[&block_handle->GetMemory()] = ExternalFileCacheBlockKey {cached_file, block_idx};
+}
+
+void ExternalFileCache::UnregisterBlock(BlockMemory &memory) {
+	const lock_guard<mutex> guard(block_keys_lock);
+	block_keys.erase(&memory);
+}
+
+void ExternalFileCache::Evict(BlockMemory &memory) {
+	if (!enable) {
+		return;
+	}
+
+	ExternalFileCacheBlockKey key;
+	{
+		const lock_guard<mutex> guard(block_keys_lock);
+		const auto it = block_keys.find(&memory);
+		if (it == block_keys.end()) {
+			return;
+		}
+		key = it->second;
+		block_keys.erase(it);
+	}
+
+	auto cached_file = std::move(key.cached_file);
+	if (!cached_file) {
+		return;
+	}
+
+	bool blocks_empty = false;
+	{
+		const annotated_lock_guard<annotated_mutex> map_guard(cached_file->map_lock);
+		const auto block_it = cached_file->blocks.find(key.block_idx);
+		if (block_it != cached_file->blocks.end()) {
+			auto &block = *block_it->second;
+			const annotated_lock_guard<annotated_mutex> block_guard(block.mtx);
+			if (block.block_handle && &block.block_handle->GetMemory() == &memory) {
+				block.state = CacheBlockState::EMPTY;
+				block.block_handle = nullptr;
+				block.nr_bytes = 0;
+#ifdef DEBUG
+				block.checksum = 0;
+#endif
+				cached_file->blocks.erase(block_it);
+			}
+		}
+		blocks_empty = cached_file->blocks.empty();
+	}
+
+	if (blocks_empty) {
+		const lock_guard<mutex> guard(lock);
+		const auto it = cached_files.find(cached_file->path);
+		if (it != cached_files.end() && it->second.get() == cached_file.get()) {
+			cached_files.erase(it);
+		}
+	}
 }
 
 } // namespace duckdb

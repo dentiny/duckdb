@@ -1,5 +1,6 @@
 #include "duckdb/storage/buffer/buffer_pool.hpp"
 #include "duckdb/storage/buffer_manager.hpp"
+#include "duckdb/common/enums/memory_tag.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/thread.hpp"
 #include "duckdb/common/typedefs.hpp"
@@ -7,10 +8,18 @@
 #include "duckdb/parallel/concurrentqueue.hpp"
 #include "duckdb/parallel/task_scheduler.hpp"
 #include "duckdb/storage/block_allocator.hpp"
+#include "duckdb/storage/external_file_cache/external_file_cache.hpp"
 #include "duckdb/storage/object_cache.hpp"
 #include "duckdb/storage/temporary_memory_manager.hpp"
 
 namespace duckdb {
+
+static void EvictExternalFileCacheBlock(BlockMemory &memory) {
+	if (memory.GetMemoryTag() != MemoryTag::EXTERNAL_FILE_CACHE) {
+		return;
+	}
+	ExternalFileCache::Get(memory.GetBufferManager().GetDatabase()).Evict(memory);
+}
 
 static idx_t FileBufferTypeToEvictionQueueTypeIdx(const FileBufferType &type) {
 	switch (type) {
@@ -422,12 +431,14 @@ BufferPool::EvictionResult BufferPool::EvictBlocksInternal(EvictionQueue &queue,
 		if (buffer && handle->GetBuffer(lock)->AllocSize() == extra_memory) {
 			// we can re-use the memory directly
 			*buffer = handle->UnloadAndTakeBlock(lock);
+			EvictExternalFileCacheBlock(*handle);
 			found = true;
 			return false;
 		}
 
 		// release the memory and mark the block as unloaded
 		handle->Unload(lock);
+		EvictExternalFileCacheBlock(*handle);
 
 		if (memory_usage.GetUsedMemory(MemoryUsageCaches::NO_FLUSH) <= memory_limit) {
 			found = true;
@@ -471,6 +482,7 @@ idx_t BufferPool::PurgeAgedBlocksInternal(EvictionQueue &queue, uint32_t max_age
 		    bool is_fresh = lru_timestamp_msec >= limit && lru_timestamp_msec <= now;
 		    purged_bytes += handle->GetMemoryUsage();
 		    handle->Unload(lock);
+		    EvictExternalFileCacheBlock(*handle);
 		    // Return false to stop iterating if the current block is_fresh
 		    return !is_fresh;
 	    });

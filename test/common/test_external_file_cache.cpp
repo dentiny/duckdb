@@ -302,6 +302,38 @@ TEST_CASE("Re-enabled external file cache refreshes live handle metadata", "[ext
 	REQUIRE(cache.GetCachedFileCount() == 1);
 }
 
+TEST_CASE("Evicted external file cache blocks are removed from the block map", "[external_file_cache]") {
+	DuckDB db(":memory:");
+	auto &db_instance = *db.instance;
+	auto tracking_fs = make_uniq<EFCTrackingFileSystem>();
+
+	const idx_t BLOCK_SIZE = 32768;
+	const idx_t NUM_BLOCKS = 16;
+	const idx_t FILE_SIZE = BLOCK_SIZE * NUM_BLOCKS;
+
+	Connection con(db);
+	con.Query(StringUtil::Format("SET external_file_cache_local_block_size=%llu", BLOCK_SIZE));
+	con.Query("SET memory_limit='96KB'");
+
+	auto content = MakeTestContent(FILE_SIZE);
+	EFCTestFileGuard test_file("test_evict_map_entries.bin", content);
+
+	CachingFileSystem cfs(*tracking_fs, db_instance);
+	auto &cache = db_instance.GetExternalFileCache();
+
+	{
+		auto handle = cfs.OpenFile(MakeTestOpenFileInfo(test_file.GetPath()), FileFlags::FILE_FLAGS_READ);
+		REQUIRE(ReadFull(*handle, FILE_SIZE) == content);
+	}
+
+	// Force buffer pool eviction.
+	con.Query("CREATE TABLE memory_pressure AS SELECT range::BIGINT AS x FROM range(500000)");
+
+	for (auto &info : cache.GetCachedFileInformation()) {
+		REQUIRE(info.loaded);
+	}
+}
+
 TEST_CASE("Concurrent SET and Read do not corrupt data or cache state", "[external_file_cache]") {
 	DuckDB db(":memory:");
 	auto &db_instance = *db.instance;

@@ -23,11 +23,13 @@ class DatabaseInstance;
 class FetchBlockTask : public BaseExecutorTask {
 public:
 	FetchBlockTask(CachingFileHandle &caching_file_handle_p, TaskExecutor &executor, QueryContext context_p,
-	               BufferManager &buffer_manager_p, shared_ptr<CacheBlock> block_p, idx_t block_idx_p,
-	               idx_t block_size_p, BufferHandle &result_pin_p)
+	               BufferManager &buffer_manager_p, ExternalFileCache &external_file_cache_p,
+	               shared_ptr<CachingFileHandle::CachedFile> cached_file_p, shared_ptr<CacheBlock> block_p,
+	               idx_t block_idx_p, idx_t block_size_p, BufferHandle &result_pin_p)
 	    : BaseExecutorTask(executor), caching_file_handle(caching_file_handle_p), context(context_p),
-	      buffer_manager(buffer_manager_p), block(std::move(block_p)), block_idx(block_idx_p), block_size(block_size_p),
-	      result_pin(result_pin_p) {
+	      buffer_manager(buffer_manager_p), external_file_cache(external_file_cache_p),
+	      cached_file(std::move(cached_file_p)), block(std::move(block_p)), block_idx(block_idx_p),
+	      block_size(block_size_p), result_pin(result_pin_p) {
 	}
 
 	void ExecuteTask() override {
@@ -72,6 +74,7 @@ public:
 					block->block_handle = buf.GetBlockHandle();
 					block->nr_bytes = to_read;
 					block->state = CacheBlockState::LOADED;
+					external_file_cache.RegisterBlock(block->block_handle, cached_file, block_idx);
 #ifdef DEBUG
 					block->checksum = Checksum(buf.Ptr(), to_read);
 #endif
@@ -103,6 +106,8 @@ private:
 	CachingFileHandle &caching_file_handle;
 	QueryContext context;
 	BufferManager &buffer_manager;
+	ExternalFileCache &external_file_cache;
+	shared_ptr<CachingFileHandle::CachedFile> cached_file;
 	shared_ptr<CacheBlock> block;
 	idx_t block_idx;
 	idx_t block_size;
@@ -267,8 +272,8 @@ FileBufferHandleGroup CachingFileHandle::Read(const idx_t nr_bytes, const idx_t 
 	const idx_t num_blocks = last_block - first_block + 1;
 
 	// Atomically reindex (if needed) and acquire the block range.
-	auto blocks =
-	    external_file_cache.ReindexAndAcquireBlocks(*current_cached_file, block_size, first_block, num_blocks);
+	auto blocks = external_file_cache.ReindexAndAcquireBlocks(current_cached_file, block_size, first_block,
+	                                                          num_blocks);
 
 	// Schedule block fetch tasks for all blocks.
 	vector<BufferHandle> pins(num_blocks);
@@ -277,8 +282,9 @@ FileBufferHandleGroup CachingFileHandle::Read(const idx_t nr_bytes, const idx_t 
 
 	for (idx_t idx = 0; idx < num_blocks; idx++) {
 		executor.ScheduleTask(make_uniq<FetchBlockTask>(*this, executor, context,
-		                                                external_file_cache.GetBufferManager(), blocks[idx],
-		                                                first_block + idx, block_size, pins[idx]));
+		                                                external_file_cache.GetBufferManager(), external_file_cache,
+		                                                current_cached_file, blocks[idx], first_block + idx,
+		                                                block_size, pins[idx]));
 	}
 	executor.WorkOnTasks();
 
