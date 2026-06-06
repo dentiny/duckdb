@@ -70,8 +70,8 @@ SELECT k, v FROM big WHERE k IN (10, 200000, 11, 200001, 12, 200002) ORDER BY k;
 # ====================================================================
 # Case 4: Unsorted but co-located.
 # ====================================================================
-query II
-SELECT k, v FROM big WHERE k IN (42, 7, 99, 13) ORDER BY k;
+query II nosort
+SELECT k, v FROM big WHERE k IN (42, 7, 99, 13);
 ----
 7	70
 13	130
@@ -231,3 +231,128 @@ SELECT k, v FROM del WHERE k IN (50, 99, 100, 200099, 200100, 200101) ORDER BY k
 99	990
 200100	2001000
 200101	2001010
+
+# ====================================================================
+# Case 12: Nested columns in a co-located indexed fetch.
+# ====================================================================
+statement ok
+CREATE TABLE nested_bulk (
+    k INTEGER PRIMARY KEY,
+    l INTEGER[],
+    a INTEGER[3],
+    st STRUCT(i INTEGER, s VARCHAR),
+    v VARIANT,
+    marker INTEGER
+);
+
+statement ok
+INSERT INTO nested_bulk
+SELECT
+    range::INTEGER,
+    CASE WHEN range % 5 = 0 THEN NULL ELSE [range::INTEGER, (range + 1)::INTEGER] END,
+    [range::INTEGER, (range + 10)::INTEGER, NULL]::INTEGER[3],
+    CASE WHEN range % 11 = 0 THEN NULL ELSE {'i': range::INTEGER, 's': 's_' || range::VARCHAR} END,
+    CASE WHEN range % 13 = 0 THEN NULL ELSE {'x': range::INTEGER, 's': 'v_' || range::VARCHAR}::VARIANT END,
+    range::INTEGER
+FROM range(1000);
+
+statement ok
+BEGIN;
+
+statement ok
+DELETE FROM nested_bulk WHERE k IN (13, 15, 17);
+
+statement ok
+UPDATE nested_bulk SET marker = -marker WHERE k IN (14, 16);
+
+query IIITTITI nosort
+SELECT probe.ord, nested_bulk.k, marker, l::VARCHAR, a::VARCHAR, st.i, st.s, v.x::INTEGER
+FROM (VALUES (1, 17), (2, 16), (3, 15), (4, 14), (5, 13), (6, 12)) AS probe(ord, k)
+JOIN nested_bulk ON nested_bulk.k = probe.k
+ORDER BY probe.ord;
+----
+2	16	-16	[16, 17]	[16, 26, NULL]	16	s_16	16
+4	14	-14	[14, 15]	[14, 24, NULL]	14	s_14	14
+6	12	12	[12, 13]	[12, 22, NULL]	12	s_12	12
+
+statement ok
+ROLLBACK;
+
+# ====================================================================
+# Case 13: FORCE_FETCH index maintenance with secondary, composite, and
+# nullable indexes after indexed-column updates.
+# ====================================================================
+statement ok
+CREATE TABLE idx_maint (
+    id INTEGER PRIMARY KEY,
+    a INTEGER,
+    b INTEGER,
+    c VARCHAR,
+    nullable_key INTEGER
+);
+
+statement ok
+INSERT INTO idx_maint
+SELECT
+    range::INTEGER,
+    (range % 1000)::INTEGER,
+    (range % 2000)::INTEGER,
+    'c_' || (range % 10)::VARCHAR,
+    CASE WHEN range % 17 = 0 THEN NULL ELSE (range % 500)::INTEGER END
+FROM range(10000);
+
+statement ok
+CREATE INDEX idx_maint_a ON idx_maint(a);
+
+statement ok
+CREATE INDEX idx_maint_bc ON idx_maint(b, c);
+
+statement ok
+CREATE INDEX idx_maint_nullable ON idx_maint(nullable_key);
+
+statement ok
+UPDATE idx_maint
+SET a = 70000 + id,
+    b = 80000 + id,
+    c = 'updated_' || id::VARCHAR,
+    nullable_key = 90000 + id
+WHERE id IN (100, 101, 102, 103);
+
+query I
+SELECT count(*) FROM idx_maint WHERE a IN (70100, 70101, 70102, 70103);
+----
+4
+
+query I
+DELETE FROM idx_maint WHERE id IN (100, 101, 102, 103, 119);
+----
+5
+
+query I
+SELECT count(*) FROM idx_maint WHERE id IN (100, 101, 102, 103, 119);
+----
+0
+
+query I
+SELECT count(*) FROM idx_maint WHERE a IN (70100, 70101, 70102, 70103);
+----
+0
+
+query I
+SELECT count(*) FROM idx_maint
+WHERE (b = 80100 AND c = 'updated_100')
+   OR (b = 80101 AND c = 'updated_101')
+   OR (b = 80102 AND c = 'updated_102')
+   OR (b = 80103 AND c = 'updated_103');
+----
+0
+
+query I
+SELECT count(*) FROM idx_maint WHERE nullable_key IN (90100, 90101, 90102, 90103);
+----
+0
+
+query I
+SELECT count(*) FROM idx_maint WHERE nullable_key IS NULL;
+----
+587
