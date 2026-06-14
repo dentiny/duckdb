@@ -1147,14 +1147,12 @@ void DataTable::LocalAppend(DuckTableEntry &table, ClientContext &context, Colum
 }
 
 void DataTable::AppendLock(DuckTransaction &transaction, TableAppendState &state) {
-	annotated_unique_lock<annotated_mutex> lock(append_lock);
-	append_blocker_cv.wait(lock, [this]() DUCKDB_REQUIRES(append_lock) { return active_index_builds == 0; });
+	state.append_lock = unique_lock<mutex>(append_lock);
 	if (!IsMainTable()) {
 		throw TransactionException("Transaction conflict: attempting to insert into table \"%s\" but it has been %s by "
 		                           "a different transaction",
 		                           GetTableName(), TableModification());
 	}
-	state.append_lock = std::move(lock);
 	state.table_lock = transaction.SharedLockTable(*info);
 	state.row_start = NumericCast<row_t>(row_groups->GetNextRowId());
 	state.current_row = state.row_start;
@@ -1168,35 +1166,14 @@ void DataTable::AppendLock(DuckTransaction &transaction, TableAppendState &state
 	}
 }
 
-DataTable::IndexBuildAppendGuard::IndexBuildAppendGuard(DataTable &tbl) : table(&tbl) {
-	const annotated_lock_guard<annotated_mutex> lock(tbl.append_lock);
-	if (!tbl.IsMainTable()) {
-		table = nullptr; // nothing to unblock in the destructor
+unique_lock<mutex> DataTable::LockAppendsForCreateIndex() {
+	unique_lock<mutex> lock(append_lock);
+	if (!IsMainTable()) {
 		throw TransactionException("Transaction conflict: attempting to add an index to table \"%s\" but it has been "
 		                           "%s by a different transaction",
-		                           tbl.GetTableName(), tbl.TableModification());
+		                           GetTableName(), TableModification());
 	}
-	tbl.active_index_builds++;
-}
-
-DataTable::IndexBuildAppendGuard &DataTable::IndexBuildAppendGuard::operator=(IndexBuildAppendGuard &&other) noexcept {
-	std::swap(table, other.table);
-	return *this;
-}
-
-DataTable::IndexBuildAppendGuard DataTable::LockAppendsForCreateIndex() {
-	return IndexBuildAppendGuard {*this};
-}
-
-DataTable::IndexBuildAppendGuard::~IndexBuildAppendGuard() {
-	if (!table) {
-		return;
-	}
-	const annotated_lock_guard<annotated_mutex> lk(table->append_lock);
-	D_ASSERT(table->active_index_builds > 0);
-	if (--table->active_index_builds == 0) {
-		table->append_blocker_cv.notify_all();
-	}
+	return lock;
 }
 
 bool DataTableInfo::AppendRequiresNewRowGroup(RowGroupCollection &collection, transaction_t checkpoint_id) {
