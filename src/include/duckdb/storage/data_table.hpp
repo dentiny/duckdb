@@ -9,6 +9,7 @@
 #pragma once
 
 #include "duckdb/common/enums/column_segment_info_scan_type.hpp"
+#include "duckdb/common/mutex.hpp"
 #include "duckdb/common/unique_ptr.hpp"
 #include "duckdb/storage/table/data_table_info.hpp"
 #include "duckdb/storage/table/persistent_table_data.hpp"
@@ -174,7 +175,10 @@ public:
 	                  const vector<column_t> &column_path, DataChunk &updates);
 
 	//! Fetches an append lock
-	void AppendLock(DuckTransaction &transaction, TableAppendState &state);
+	void AppendLock(DuckTransaction &transaction, TableAppendState &state) DUCKDB_EXCLUDES(append_lock);
+
+	//! Lock appends while creating an index over the table
+	unique_lock<mutex> LockAppendsForCreateIndex() DUCKDB_EXCLUDES(append_lock);
 	//! Begin appending structs to this table, obtaining necessary locks, etc
 	void InitializeAppend(DuckTransaction &transaction, TableAppendState &state);
 	//! Append a chunk to the table using the AppendState obtained from InitializeAppend
@@ -344,7 +348,7 @@ private:
 	//! The set of physical columns stored by this DataTable
 	vector<ColumnDefinition> column_definitions;
 	//! Lock for appending entries to the table
-	mutex append_lock;
+	annotated_mutex append_lock;
 	//! The row groups of the table
 	shared_ptr<RowGroupCollection> row_groups;
 	//! The version of the data table

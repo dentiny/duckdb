@@ -1,8 +1,10 @@
 # Handles PR metadata signaling for trusted apply workflow
 name: OnPR
 on:
-  pull_request:
-    types: [opened, reopened, synchronize]
+  workflow_dispatch:
+  # Disabled on PR to avoid extra CI alongside Main (threadsan-only mode).
+  # pull_request:
+  #   types: [opened, reopened, synchronize]
 
 concurrency:
   group: onpr-${{ github.event.number }}

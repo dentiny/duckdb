@@ -61,8 +61,8 @@ env:
   # Add the CI job's `needs:` list here as well. Otherwise, those are skipped
   # and the dependent job is also skipped.
   #
-  # For example, to run only "extensions", use:
-  # OVERRIDE_JOBS: linux-relassert linux-release extensions
+  # Fork/dev: run only Thread Sanitizer for faster CI feedback.
+  OVERRIDE_JOBS: threadsan
 
 jobs:
  prepare:
@@ -1189,7 +1189,6 @@ jobs:
     if: ${{ contains(fromJson(needs.prepare.outputs.enabled_jobs), 'threadsan') }}
     needs:
       - prepare
-      - linux-relassert
     runs-on: ${{ needs.prepare.outputs.runner_linux_x64 }}
     env:
       CC: clang-20
