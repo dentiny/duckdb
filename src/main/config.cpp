@@ -2,6 +2,8 @@
 
 #include "duckdb/common/cgroups.hpp"
 #include "duckdb/common/file_system.hpp"
+#include "duckdb/common/debug_file_system.hpp"
+#include "duckdb/common/virtual_file_system.hpp"
 #include "duckdb/common/operator/cast_operators.hpp"
 #include "duckdb/common/operator/multiply.hpp"
 #include "duckdb/common/string_util.hpp"
@@ -109,7 +111,8 @@ static const ConfigurationOption internal_options[] = {
     DUCKDB_SETTING(DebugForceExternalSetting),
     DUCKDB_SETTING(DebugForceFetchRowSetting),
     DUCKDB_SETTING(DebugForceNoCrossProductSetting),
-    DUCKDB_SETTING(DebugLocalFileSystemDelayMsSetting),
+    DUCKDB_SETTING_CALLBACK(DebugFsDelayMeanMsSetting),
+    DUCKDB_SETTING_CALLBACK(DebugFsDelayStddevMsSetting),
     DUCKDB_GLOBAL(DebugOrderVerificationSetting),
     DUCKDB_SETTING_CALLBACK(DebugPhysicalTableScanExecutionStrategySetting),
     DUCKDB_SETTING(DebugSkipCheckpointOnCommitSetting),
@@ -246,12 +249,12 @@ static const ConfigurationOption internal_options[] = {
 
 static const ConfigurationAlias setting_aliases[] = {DUCKDB_SETTING_ALIAS("configure_metrics", 29),
                                                      DUCKDB_SETTING_ALIAS("custom_profiling_settings", 29),
-                                                     DUCKDB_SETTING_ALIAS("memory_limit", 127),
-                                                     DUCKDB_SETTING_ALIAS("null_order", 60),
-                                                     DUCKDB_SETTING_ALIAS("profile_output", 150),
-                                                     DUCKDB_SETTING_ALIAS("user", 167),
+                                                     DUCKDB_SETTING_ALIAS("memory_limit", 128),
+                                                     DUCKDB_SETTING_ALIAS("null_order", 61),
+                                                     DUCKDB_SETTING_ALIAS("profile_output", 151),
+                                                     DUCKDB_SETTING_ALIAS("user", 168),
                                                      DUCKDB_SETTING_ALIAS("wal_autocheckpoint", 28),
-                                                     DUCKDB_SETTING_ALIAS("worker_threads", 165),
+                                                     DUCKDB_SETTING_ALIAS("worker_threads", 166),
                                                      FINAL_ALIAS};
 
 vector<ConfigurationOption> DBConfig::GetOptions() {
@@ -268,6 +271,11 @@ vector<ConfigurationAlias> DBConfig::GetAliases() {
 		aliases.push_back(setting_aliases[index]);
 	}
 	return aliases;
+}
+
+VirtualFileSystem &DBConfig::GetVirtualFileSystem() {
+	auto &inner = static_cast<DebugFileSystem &>(*file_system).GetInnerFileSystem();
+	return static_cast<VirtualFileSystem &>(inner);
 }
 
 SettingCallbackInfo::SettingCallbackInfo(ClientContext &context_p, SetScope scope)

@@ -585,15 +585,27 @@ struct DebugForceNoCrossProductSetting {
 	static constexpr idx_t SettingIndex = NEXT_SETTING_INDEX();
 };
 
-struct DebugLocalFileSystemDelayMsSetting {
-	using RETURN_TYPE = idx_t;
-	static constexpr const char *Name = "debug_local_file_system_delay_ms";
-	static constexpr const char *Description =
-	    "DEBUG SETTING: time to sleep before local file system open/read/write operations";
-	static constexpr const char *InputType = "UBIGINT";
-	static constexpr const char *DefaultValue = "0";
+struct DebugFsDelayMeanMsSetting {
+	using RETURN_TYPE = double;
+	static constexpr const char *Name = "debug_fs_delay_mean_ms";
+	static constexpr const char *Description = "DEBUG SETTING: mean latency (ms) for filesystem operations";
+	static constexpr const char *InputType = "DOUBLE";
+	static constexpr const char *DefaultValue = "0.0";
 	static constexpr SettingScopeTarget Scope = SettingScopeTarget::GLOBAL_ONLY;
 	static constexpr idx_t SettingIndex = NEXT_SETTING_INDEX();
+	static void OnSet(SettingCallbackInfo &info, Value &input);
+};
+
+struct DebugFsDelayStddevMsSetting {
+	using RETURN_TYPE = double;
+	static constexpr const char *Name = "debug_fs_delay_stddev_ms";
+	static constexpr const char *Description =
+	    "DEBUG SETTING: standard deviation (ms) for filesystem operation latency";
+	static constexpr const char *InputType = "DOUBLE";
+	static constexpr const char *DefaultValue = "0.0";
+	static constexpr SettingScopeTarget Scope = SettingScopeTarget::GLOBAL_ONLY;
+	static constexpr idx_t SettingIndex = NEXT_SETTING_INDEX();
+	static void OnSet(SettingCallbackInfo &info, Value &input);
 };
 
 struct DebugOrderVerificationSetting {
