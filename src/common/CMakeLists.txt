@@ -41,7 +41,6 @@ add_library_unity(
   cgroups.cpp
   column_index.cpp
   csv_writer.cpp
-  complex_json.cpp
   compressed_file_system.cpp
   constants.cpp
   checksum.cpp
@@ -60,8 +59,9 @@ add_library_unity(
   fsst.cpp
   gzip_file_system.cpp
   identifier.cpp
-  hive_partitioning.cpp
   io_latency_model.cpp
+  hive_partitioning.cpp
+  json_document.cpp
   pipe_file_system.cpp
   local_file_system.cpp
   memory_mapped_file.cpp
