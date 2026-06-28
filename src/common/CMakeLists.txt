@@ -44,7 +44,6 @@ add_library_unity(
   compressed_file_system.cpp
   constants.cpp
   checksum.cpp
-  debug_file_system.cpp
   encryption_functions.cpp
   encryption_key_manager.cpp
   encryption_state.cpp
@@ -59,7 +58,6 @@ add_library_unity(
   fsst.cpp
   gzip_file_system.cpp
   identifier.cpp
-  io_latency_model.cpp
   hive_partitioning.cpp
   json_document.cpp
   pipe_file_system.cpp
