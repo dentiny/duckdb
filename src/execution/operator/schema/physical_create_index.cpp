@@ -9,6 +9,7 @@
 #include "duckdb/main/database_manager.hpp"
 #include "duckdb/storage/table/append_state.hpp"
 #include "duckdb/storage/table/data_table_info.hpp"
+#include "duckdb/storage/table/table_index_list.hpp"
 #include "duckdb/storage/storage_manager.hpp"
 
 namespace duckdb {
@@ -44,7 +45,16 @@ PhysicalCreateIndex::PhysicalCreateIndex(PhysicalPlan &physical_plan, LogicalOpe
 //---------------------------------------------------------------------------------------------------------------------
 class CreateIndexGlobalSinkState : public GlobalSinkState {
 public:
+	~CreateIndexGlobalSinkState() override {
+		if (placeholder && index_list && !committed) {
+			index_list->RemovePlaceholderIndex(*placeholder);
+		}
+	}
+
 	unique_ptr<IndexBuildGlobalState> gstate;
+	optional_ptr<TableIndexList> index_list;
+	optional_ptr<Index> placeholder;
+	bool committed = false;
 };
 
 unique_ptr<GlobalSinkState> PhysicalCreateIndex::GetGlobalSinkState(ClientContext &context) const {
