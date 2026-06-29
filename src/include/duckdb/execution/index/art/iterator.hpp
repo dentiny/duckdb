@@ -83,9 +83,7 @@ struct RowIdSetOutput {
 };
 
 //! Output policy that flags a unique-constraint violation: it stops scanning as soon as two
-//! consecutive emitted row IDs share the same key. Comparing emitted-to-emitted (rather than
-//! counting Add calls per leaf) correctly handles a single logical key whose row IDs span
-//! multiple SetKey calls inside a gated nested leaf.
+//! consecutive emitted row IDs share the same key.
 struct UniqueViolationOutput {
 	bool violation = false;
 	bool has_previous_key = false;

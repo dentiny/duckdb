@@ -67,6 +67,9 @@ public:
 	TableIndexIterationHelper<Index> Indexes() const;
 	//! Adds an index entry to the list of index entries.
 	void AddIndex(unique_ptr<Index> index);
+	//! Adds an unbound placeholder index in BINDING state.
+	//! Does NOT increment unbound_count, so concurrent Bind() calls skip it via the unbound_count == 0 fast path.
+	Index &AddPlaceholderIndex(unique_ptr<Index> index);
 	//! Removes an index entry from the list of index entries and release any storage the index owns.
 	void RemoveIndex(const Identifier &name);
 	//! Returns true, if the index name does not exist.

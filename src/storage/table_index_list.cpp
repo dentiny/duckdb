@@ -95,6 +95,17 @@ void TableIndexList::AddIndex(unique_ptr<Index> index) {
 	}
 }
 
+// unbound count is not incremented here, since it doesn't need to be materialized.
+Index &TableIndexList::AddPlaceholderIndex(unique_ptr<Index> index) {
+	D_ASSERT(index);
+	D_ASSERT(!index->IsBound());
+	lock_guard<mutex> lock(index_entries_lock);
+	auto index_entry = make_uniq<IndexEntry>(std::move(index));
+	index_entry->bind_state = IndexBindState::BINDING;
+	index_entries.push_back(std::move(index_entry));
+	return *index_entries.back()->index;
+}
+
 void TableIndexList::RemoveIndex(const Identifier &name) {
 	lock_guard<mutex> lock(index_entries_lock);
 	for (idx_t i = 0; i < index_entries.size(); i++) {
