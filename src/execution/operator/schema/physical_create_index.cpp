@@ -197,7 +197,7 @@ SinkFinalizeType PhysicalCreateIndex::Finalize(Pipeline &pipeline, Event &event,
 	}
 
 	vector<LogicalType> physical_column_types;
-	physical_column_types.reserve(table.GetColumns().Physical().size());
+	physical_column_types.reserve(table.GetColumns().Physical().Size());
 	for (auto &col : table.GetColumns().Physical()) {
 		physical_column_types.emplace_back(col.Type());
 	}

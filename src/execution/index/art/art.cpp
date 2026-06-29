@@ -1458,7 +1458,7 @@ void ART::VerifyUnique(IndexLock &l) {
 	it.FindMinimum(tree);
 	ARTKey empty_key = ARTKey();
 	UniqueViolationOutput output;
-	it.Scan(empty_key, output, /*reverse=*/false);
+	it.Scan(empty_key, output, /*equal=*/false);
 	if (output.violation) {
 		throw ConstraintException("duplicate key value violates unique constraint on index \"%s\"",
 		                          name.GetIdentifierName());
