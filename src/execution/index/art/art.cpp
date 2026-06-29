@@ -1450,6 +1450,21 @@ void ART::VerifyBuffers(IndexLock &l) {
 	}
 }
 
+void ART::VerifyUnique(IndexLock &l) {
+	if (!IsUnique() || !tree.HasMetadata()) {
+		return;
+	}
+	Iterator it(*this);
+	it.FindMinimum(tree);
+	ARTKey empty_key = ARTKey();
+	UniqueViolationOutput output;
+	it.Scan(empty_key, output, /*reverse=*/false);
+	if (output.violation) {
+		throw ConstraintException("duplicate key value violates unique constraint on index \"%s\"",
+		                          name.GetIdentifierName());
+	}
+}
+
 constexpr const char *ART::TYPE_NAME;
 
 } // namespace duckdb
