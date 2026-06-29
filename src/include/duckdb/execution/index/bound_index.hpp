@@ -174,6 +174,11 @@ public:
 	//! Obtains a lock and calls VerifyAndToString.
 	void Verify();
 
+	//! Verifies that the index contains no duplicate keys.
+	virtual void VerifyUnique(IndexLock &l);
+	//! Obtains a lock and calls VerifyUnique.
+	void VerifyUnique();
+
 	//! Returns the string representation of an index.
 	virtual string ToString(IndexLock &l, bool display_ascii = false) = 0;
 	//! Obtains a lock and calls ToString.
