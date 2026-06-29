@@ -106,6 +106,16 @@ Index &TableIndexList::AddPlaceholderIndex(unique_ptr<Index> index) {
 	return *index_entries.back()->index;
 }
 
+void TableIndexList::RemovePlaceholderIndex(Index &placeholder) {
+	lock_guard<mutex> lock(index_entries_lock);
+	for (idx_t idx = 0; idx < index_entries.size(); ++idx) {
+		if (index_entries[idx]->index.get() == &placeholder) {
+			index_entries.erase_at(idx);
+			return;
+		}
+	}
+}
+
 void TableIndexList::RemoveIndex(const Identifier &name) {
 	lock_guard<mutex> lock(index_entries_lock);
 	for (idx_t i = 0; i < index_entries.size(); i++) {
