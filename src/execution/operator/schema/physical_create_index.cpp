@@ -5,6 +5,7 @@
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include "duckdb/common/exception/transaction_exception.hpp"
 #include "duckdb/execution/index/bound_index.hpp"
+#include "duckdb/execution/index/unbound_index.hpp"
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/main/database_manager.hpp"
 #include "duckdb/storage/table/append_state.hpp"
@@ -59,6 +60,19 @@ public:
 
 unique_ptr<GlobalSinkState> PhysicalCreateIndex::GetGlobalSinkState(ClientContext &context) const {
 	auto gstate = make_uniq<CreateIndexGlobalSinkState>();
+
+	auto create_info = info->Copy();
+	create_info->Cast<CreateIndexInfo>().column_ids = storage_ids;
+
+	IndexStorageInfo storage_info(info->GetIndexName());
+	storage_info.options.emplace("v1_0_0_storage", false);
+
+	auto &storage = table.GetStorage();
+	auto unbound_index = make_uniq<UnboundIndex>(std::move(create_info), std::move(storage_info),
+	                                             storage.GetTableIOManager(), storage.db);
+
+	gstate->index_list = &storage.GetDataTableInfo()->GetIndexes();
+	gstate->placeholder = &gstate->index_list->AddPlaceholderIndex(std::move(unbound_index));
 
 	IndexBuildInitGlobalStateInput global_state_input {bind_data.get(),     context,    table, *info,
 	                                                   unbound_expressions, storage_ids};
