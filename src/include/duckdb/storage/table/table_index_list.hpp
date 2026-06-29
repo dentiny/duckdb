@@ -71,6 +71,9 @@ public:
 	Index &AddPlaceholderIndex(unique_ptr<Index> index);
 	//! Removes a placeholder index.
 	void RemovePlaceholderIndex(Index &placeholder);
+	//! Replays buffered changes into the built index, verifies uniqueness, and swaps the placeholder.
+	void BindPlaceholderIndex(Index &placeholder, unique_ptr<BoundIndex> bound,
+	                          const vector<LogicalType> &physical_column_types);
 	//! Removes an index entry from the list of index entries and release any storage the index owns.
 	void RemoveIndex(const Identifier &name);
 	//! Returns true, if the index name does not exist.

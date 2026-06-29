@@ -196,8 +196,13 @@ SinkFinalizeType PhysicalCreateIndex::Finalize(Pipeline &pipeline, Event &event,
 		catalog.Alter(context, *alter_table_info);
 	}
 
-	// Add the index to the storage.
-	storage.AddIndex(std::move(bound_index));
+	vector<LogicalType> physical_column_types;
+	physical_column_types.reserve(table.GetColumns().Physical().size());
+	for (auto &col : table.GetColumns().Physical()) {
+		physical_column_types.emplace_back(col.Type());
+	}
+	gstate.index_list->BindPlaceholderIndex(*gstate.placeholder, std::move(bound_index), physical_column_types);
+	gstate.committed = true;
 
 	return SinkFinalizeType::READY;
 }

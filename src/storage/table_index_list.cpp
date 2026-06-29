@@ -116,6 +116,27 @@ void TableIndexList::RemovePlaceholderIndex(Index &placeholder) {
 	}
 }
 
+void TableIndexList::BindPlaceholderIndex(Index &placeholder, unique_ptr<BoundIndex> bound,
+                                          const vector<LogicalType> &physical_column_types) {
+	lock_guard<mutex> lock(index_entries_lock);
+	for (auto &entry : index_entries) {
+		if (entry->index.get() != &placeholder) {
+			continue;
+		}
+		lock_guard<mutex> entry_guard(entry->lock);
+		auto &unbound_index = entry->index->Cast<UnboundIndex>();
+		if (unbound_index.HasBufferedReplays()) {
+			bound->ApplyBufferedReplays(physical_column_types, unbound_index.GetBufferedReplays(),
+			                            unbound_index.GetMappedColumnIds());
+		}
+		bound->VerifyUnique();
+		entry->index = std::move(bound);
+		entry->bind_state = IndexBindState::BOUND;
+		return;
+	}
+	throw InternalException("BindPlaceholderIndex: placeholder not found");
+}
+
 void TableIndexList::RemoveIndex(const Identifier &name) {
 	lock_guard<mutex> lock(index_entries_lock);
 	for (idx_t i = 0; i < index_entries.size(); i++) {
