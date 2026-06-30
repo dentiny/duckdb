@@ -822,10 +822,9 @@ void DataTable::VerifyUniqueIndexes(TableIndexList &indexes, optional_ptr<LocalT
 	if (!manager) {
 		for (auto &entry : indexes.IndexEntries()) {
 			auto &index = *entry.index;
-			if (!index.IsUnique() || index.GetIndexType() != ART::TYPE_NAME) {
+			if (!index.IsBound() || !index.IsUnique() || index.GetIndexType() != ART::TYPE_NAME) {
 				continue;
 			}
-			D_ASSERT(index.IsBound());
 			auto &art = index.Cast<ART>();
 
 			lock_guard<mutex> guard(entry.lock);
@@ -849,13 +848,12 @@ void DataTable::VerifyUniqueIndexes(TableIndexList &indexes, optional_ptr<LocalT
 
 	// Find all indexes matching the conflict target.
 	for (auto &index : indexes.Indexes()) {
-		if (!index.IsUnique() || index.GetIndexType() != ART::TYPE_NAME) {
+		if (!index.IsBound() || !index.IsUnique() || index.GetIndexType() != ART::TYPE_NAME) {
 			continue;
 		}
 		if (!conflict_info.ConflictTargetMatches(index)) {
 			continue;
 		}
-		D_ASSERT(index.IsBound());
 		auto &art = index.Cast<ART>();
 		if (storage) {
 			auto delete_index = storage->delete_indexes.Find(art.GetIndexName());

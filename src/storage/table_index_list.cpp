@@ -165,6 +165,9 @@ bool TableIndexList::NameIsUnique(const string &name) {
 	// Only covers PK, FK, and UNIQUE indexes.
 	lock_guard<mutex> lock(index_entries_lock);
 	for (auto &entry : index_entries) {
+		if (entry->bind_state == IndexBindState::BINDING) {
+			continue;
+		}
 		auto &index = *entry->index;
 		if (index.IsPrimary() || index.IsForeign() || index.IsUnique()) {
 			if (index.GetIndexName() == name) {

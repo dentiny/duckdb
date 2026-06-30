@@ -61,7 +61,7 @@ public:
 unique_ptr<GlobalSinkState> PhysicalCreateIndex::GetGlobalSinkState(ClientContext &context) const {
 	auto gstate = make_uniq<CreateIndexGlobalSinkState>();
 
-	auto create_info = info->Copy();
+	auto create_info = info->CopyWithoutBoundExpressions();
 	create_info->Cast<CreateIndexInfo>().column_ids = storage_ids;
 
 	IndexStorageInfo storage_info(info->GetIndexName());
