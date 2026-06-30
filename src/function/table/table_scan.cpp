@@ -440,11 +440,13 @@ unique_ptr<GlobalTableFunctionState> DuckTableScanInitGlobal(ClientContext &cont
 				break;
 			}
 		}
-		if (boundary != DConstants::INVALID_INDEX) {
-			auto &scan_state = g_state->state.scan_state;
-			auto base_row_id = scan_state.row_groups->GetBaseRowId();
-			scan_state.max_row = MinValue<idx_t>(scan_state.max_row, base_row_id + boundary);
+		if (boundary == DConstants::INVALID_INDEX) {
+			throw InternalException("CreateIndex scan could not find BINDING placeholder for index \"%s\"",
+			                        bind_data.index_name);
 		}
+		auto &scan_state = g_state->state.scan_state;
+		auto base_row_id = scan_state.row_groups->GetBaseRowId();
+		scan_state.max_row = MinValue<idx_t>(scan_state.max_row, base_row_id + boundary);
 	}
 	if (!input.CanRemoveFilterColumns()) {
 		return std::move(g_state);
