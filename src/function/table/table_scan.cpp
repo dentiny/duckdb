@@ -435,8 +435,7 @@ unique_ptr<GlobalTableFunctionState> DuckTableScanInitGlobal(ClientContext &cont
 		// Look up the specific BINDING placeholder by index name to support concurrent builds.
 		idx_t boundary = DConstants::INVALID_INDEX;
 		for (auto &entry : storage.GetDataTableInfo()->GetIndexes().IndexEntries()) {
-			if (entry.bind_state == IndexBindState::BINDING &&
-			    entry.index->GetIndexName() == bind_data.index_name) {
+			if (entry.bind_state == IndexBindState::BINDING && entry.index->GetIndexName() == bind_data.index_name) {
 				boundary = entry.index->Cast<UnboundIndex>().GetScanBoundary();
 				break;
 			}
