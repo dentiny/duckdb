@@ -115,4 +115,15 @@ unique_ptr<CreateInfo> CreateIndexInfo::Copy() const {
 	return std::move(result);
 }
 
+unique_ptr<CreateInfo> CreateIndexInfo::CopyWithoutBoundExpressions() const {
+	auto result = make_uniq<CreateIndexInfo>(*this);
+	CopyProperties(*result);
+
+	result->parsed_expressions.reserve(parsed_expressions.size());
+	for (auto &expr : parsed_expressions) {
+		result->parsed_expressions.emplace_back(expr->Copy());
+	}
+	return std::move(result);
+}
+
 } // namespace duckdb

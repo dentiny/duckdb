@@ -125,9 +125,28 @@ ARTScanResult Iterator::Scan(const ARTKey &upper_bound, Output &output, bool equ
 	return ARTScanResult::COMPLETED;
 }
 
-// Explicit template instantiations for the two output policies.
+//===--------------------------------------------------------------------===//
+// UniqueViolationOutput
+//===--------------------------------------------------------------------===//
+
+void UniqueViolationOutput::SetKey(const IteratorKey &key, const idx_t column_key_len) {
+	current_key.assign(key.Data(), key.Data() + column_key_len);
+}
+
+// We only care about whether there're multiple rows correspond to one single key.
+void UniqueViolationOutput::Add(const row_t) {
+	if (has_previous_key && previous_key == current_key) {
+		violation = true;
+		return;
+	}
+	previous_key = current_key;
+	has_previous_key = true;
+}
+
+// Explicit template instantiations for the output policies.
 template ARTScanResult Iterator::Scan<RowIdSetOutput>(const ARTKey &, RowIdSetOutput &, bool);
 template ARTScanResult Iterator::Scan<KeyRowIdOutput>(const ARTKey &, KeyRowIdOutput &, bool);
+template ARTScanResult Iterator::Scan<UniqueViolationOutput>(const ARTKey &, UniqueViolationOutput &, bool);
 
 void Iterator::FindMinimum(const Node &node) {
 	reference<const Node> ref(node);

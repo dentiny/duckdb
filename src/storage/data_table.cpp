@@ -30,6 +30,7 @@
 #include "duckdb/storage/table/persistent_table_data.hpp"
 #include "duckdb/storage/table/row_group.hpp"
 #include "duckdb/storage/table/scan_state.hpp"
+#include "duckdb/storage/table/table_index_list.hpp"
 #include "duckdb/storage/table/update_state.hpp"
 #include "duckdb/storage/table_storage_info.hpp"
 #include "duckdb/transaction/duck_transaction.hpp"
@@ -351,6 +352,17 @@ bool DataTable::HasUniqueIndexes() const {
 
 void DataTable::AddIndex(unique_ptr<Index> index) {
 	info->indexes.AddIndex(std::move(index));
+}
+
+Index &DataTable::AddIndexBuildPlaceholder(unique_ptr<Index> placeholder) {
+	// Capture the boundary and register the placeholder under the append lock: this is atomic w.r.t. concurrent
+	// commits, which flush into the indexes under the same lock. Every row already committed (row_id < boundary)
+	// has finished AppendToIndexes before the placeholder is visible, so it is not buffered; every later commit
+	// gets a row_id >= boundary and is buffered into the placeholder.
+	lock_guard<mutex> guard(append_lock);
+	auto boundary = row_groups->GetNextRowId();
+	placeholder->Cast<UnboundIndex>().SetScanBoundary(boundary);
+	return info->indexes.AddPlaceholderIndex(std::move(placeholder));
 }
 
 bool DataTable::HasForeignKeyIndex(const vector<PhysicalIndex> &keys, ForeignKeyType type) {
@@ -822,10 +834,9 @@ void DataTable::VerifyUniqueIndexes(TableIndexList &indexes, optional_ptr<LocalT
 	if (!manager) {
 		for (auto &entry : indexes.IndexEntries()) {
 			auto &index = *entry.index;
-			if (!index.IsUnique() || index.GetIndexType() != ART::TYPE_NAME) {
+			if (!index.IsBound() || !index.IsUnique() || index.GetIndexType() != ART::TYPE_NAME) {
 				continue;
 			}
-			D_ASSERT(index.IsBound());
 			auto &art = index.Cast<ART>();
 
 			lock_guard<mutex> guard(entry.lock);
@@ -849,13 +860,12 @@ void DataTable::VerifyUniqueIndexes(TableIndexList &indexes, optional_ptr<LocalT
 
 	// Find all indexes matching the conflict target.
 	for (auto &index : indexes.Indexes()) {
-		if (!index.IsUnique() || index.GetIndexType() != ART::TYPE_NAME) {
+		if (!index.IsBound() || !index.IsUnique() || index.GetIndexType() != ART::TYPE_NAME) {
 			continue;
 		}
 		if (!conflict_info.ConflictTargetMatches(index)) {
 			continue;
 		}
-		D_ASSERT(index.IsBound());
 		auto &art = index.Cast<ART>();
 		if (storage) {
 			auto delete_index = storage->delete_indexes.Find(art.GetIndexName());
@@ -878,13 +888,13 @@ void DataTable::VerifyUniqueIndexes(TableIndexList &indexes, optional_ptr<LocalT
 	// Scan the other indexes and throw, if there are any conflicts.
 	manager->SetMode(ConflictManagerMode::THROW);
 	for (auto &index : indexes.Indexes()) {
-		if (!index.IsUnique() || index.GetIndexType() != ART::TYPE_NAME) {
+		// Skip placeholder indexes that are still being built concurrently.
+		if (!index.IsBound() || !index.IsUnique() || index.GetIndexType() != ART::TYPE_NAME) {
 			continue;
 		}
 		if (manager->IndexMatches(index.Cast<BoundIndex>())) {
 			continue;
 		}
-		D_ASSERT(index.IsBound());
 		auto &art = index.Cast<ART>();
 		if (storage) {
 			auto delete_index = storage->delete_indexes.Find(art.GetIndexName());
@@ -1314,6 +1324,30 @@ void DataTable::RevertAppendInternal(idx_t start_row) {
 	row_groups->RevertAppendInternal(start_row);
 }
 
+void DataTable::BufferPlaceholderRevert(IndexEntry &entry, DataChunk &table_chunk, Vector &row_identifiers) {
+	auto &unbound = entry.index->Cast<UnboundIndex>();
+	// Nothing was buffered into this placeholder, so there is nothing to compensate.
+	if (!unbound.HasBufferedReplays()) {
+		return;
+	}
+
+	// Copy the buffered INSERT's column mapping; ReferenceIndexChunk takes a non-const reference.
+	auto mapped = unbound.GetMappedColumnIds();
+	auto table_types = table_chunk.GetTypes();
+	vector<LogicalType> index_types;
+	index_types.reserve(mapped.size());
+	for (auto &col : mapped) {
+		index_types.emplace_back(table_types[col.GetPrimaryIndex()]);
+	}
+
+	DataChunk index_chunk;
+	index_chunk.InitializeEmpty(index_types);
+	TableIndexList::ReferenceIndexChunk(table_chunk, index_chunk, mapped);
+
+	// Compensating DEL nets the buffered INSERT to a no-op at finalize replay.
+	unbound.BufferChunk(index_chunk, row_identifiers, mapped, BufferedIndexReplay::DEL_ENTRY);
+}
+
 void DataTable::RevertAppend(DuckTransaction &transaction, idx_t start_row, idx_t count) {
 	lock_guard<mutex> lock(append_lock);
 	auto table_lock = transaction.SharedLockTable(*info);
@@ -1339,7 +1373,12 @@ void DataTable::RevertAppend(DuckTransaction &transaction, idx_t start_row, idx_
 					remove_index = entry.added_data_during_checkpoint;
 				} else {
 					if (!index.IsBound()) {
-						// We cannot add to unbound indexes, so there is no need to revert them.
+						if (entry.bind_state == IndexBindState::BINDING) {
+							// A concurrent CREATE INDEX is buffering commits into this placeholder; remove this
+							// transaction's reverted rows from it so finalize replay stays consistent with the table.
+							BufferPlaceholderRevert(entry, chunk, row_identifiers);
+						}
+						// Genuine WAL-replay UNBOUND indexes have no append to revert.
 						continue;
 					}
 					remove_index = index.Cast<BoundIndex>();
@@ -1485,9 +1524,17 @@ void DataTable::RevertIndexAppend(TableAppendState &state, DataChunk &chunk, row
 
 void DataTable::RevertIndexAppend(TableAppendState &state, DataChunk &chunk, Vector &row_identifiers) {
 	D_ASSERT(IsMainTable());
-	for (auto &index : info->indexes.Indexes()) {
-		auto &main_index = index.Cast<BoundIndex>();
-		main_index.Delete(chunk, row_identifiers);
+	for (auto &entry : info->indexes.IndexEntries()) {
+		lock_guard<mutex> guard(entry.lock);
+		auto &index = *entry.index;
+		if (index.IsBound()) {
+			index.Cast<BoundIndex>().Delete(chunk, row_identifiers);
+		} else if (entry.bind_state == IndexBindState::BINDING) {
+			// A concurrent CREATE INDEX is buffering commits into this placeholder; remove this
+			// transaction's reverted rows from it so finalize replay stays consistent with the table.
+			BufferPlaceholderRevert(entry, chunk, row_identifiers);
+		}
+		// WAL-replay UNBOUND indexes have no append to revert.
 	}
 }
 
