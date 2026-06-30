@@ -1526,13 +1526,16 @@ void DataTable::RevertIndexAppend(TableAppendState &state, DataChunk &chunk, row
 
 void DataTable::RevertIndexAppend(TableAppendState &state, DataChunk &chunk, Vector &row_identifiers) {
 	D_ASSERT(IsMainTable());
-	for (auto &index : info->indexes.Indexes()) {
-		// Skip placeholder indexes that are still being built concurrently.
-		if (!index.IsBound()) {
-			continue;
+	for (auto &entry : info->indexes.IndexEntries()) {
+		lock_guard<mutex> guard(entry.lock);
+		auto &index = *entry.index;
+		if (index.IsBound()) {
+			index.Cast<BoundIndex>().Delete(chunk, row_identifiers);
+		} else if (entry.bind_state == IndexBindState::BINDING) {
+			// Live CREATE INDEX placeholder: compensate the buffered INSERT with a DEL.
+			BufferPlaceholderRevert(entry, chunk, row_identifiers);
 		}
-		auto &main_index = index.Cast<BoundIndex>();
-		main_index.Delete(chunk, row_identifiers);
+		// WAL-replay UNBOUND indexes have no append to revert.
 	}
 }
 
