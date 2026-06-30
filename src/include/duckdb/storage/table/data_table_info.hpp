@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include "duckdb/common/atomic.hpp"
+#include "duckdb/common/constants.hpp"
 #include "duckdb/storage/storage_lock.hpp"
 #include "duckdb/storage/table/table_index_list.hpp"
 
@@ -55,6 +57,13 @@ public:
 	Identifier GetTableName();
 	void SetTableName(Identifier name);
 
+	//! Row-id boundary of an in-progress concurrent index build (base-relative, i.e. in GetNextRowId() space).
+	//! The create-index scan only reads rows < boundary; rows >= boundary are buffered into the placeholder
+	//! index and replayed at finalize. Returns INVALID_INDEX when no build is in progress.
+	idx_t GetIndexBuildScanBoundary() const {
+		return index_build_scan_boundary.load();
+	}
+
 private:
 	//! The database instance of the table
 	AttachedDatabase &db;
@@ -76,6 +85,8 @@ private:
 	optional_idx last_seen_checkpoint;
 	//! The amount of row groups the checkpoint is processing
 	optional_idx checkpoint_row_group_count;
+	//! Row-id boundary of an in-progress concurrent index build (see GetIndexBuildScanBoundary).
+	atomic<idx_t> index_build_scan_boundary {DConstants::INVALID_INDEX};
 };
 
 } // namespace duckdb

@@ -353,6 +353,20 @@ void DataTable::AddIndex(unique_ptr<Index> index) {
 	info->indexes.AddIndex(std::move(index));
 }
 
+Index &DataTable::AddIndexBuildPlaceholder(unique_ptr<Index> placeholder) {
+	// Capture the boundary and register the placeholder under the append lock: this is atomic w.r.t. concurrent
+	// commits, which flush into the indexes under the same lock. Every row already committed (row_id < boundary)
+	// has finished AppendToIndexes before the placeholder is visible, so it is not buffered; every later commit
+	// gets a row_id >= boundary and is buffered into the placeholder.
+	lock_guard<mutex> guard(append_lock);
+	info->index_build_scan_boundary = row_groups->GetNextRowId();
+	return info->indexes.AddPlaceholderIndex(std::move(placeholder));
+}
+
+void DataTable::ClearIndexBuildBoundary() {
+	info->index_build_scan_boundary = DConstants::INVALID_INDEX;
+}
+
 bool DataTable::HasForeignKeyIndex(const vector<PhysicalIndex> &keys, ForeignKeyType type) {
 	auto index = info->indexes.FindForeignKeyIndex(keys, type);
 	return index != nullptr;
@@ -876,13 +890,13 @@ void DataTable::VerifyUniqueIndexes(TableIndexList &indexes, optional_ptr<LocalT
 	// Scan the other indexes and throw, if there are any conflicts.
 	manager->SetMode(ConflictManagerMode::THROW);
 	for (auto &index : indexes.Indexes()) {
-		if (!index.IsUnique() || index.GetIndexType() != ART::TYPE_NAME) {
+		// Skip placeholder indexes that are still being built concurrently.
+		if (!index.IsBound() || !index.IsUnique() || index.GetIndexType() != ART::TYPE_NAME) {
 			continue;
 		}
 		if (manager->IndexMatches(index.Cast<BoundIndex>())) {
 			continue;
 		}
-		D_ASSERT(index.IsBound());
 		auto &art = index.Cast<ART>();
 		if (storage) {
 			auto delete_index = storage->delete_indexes.Find(art.GetIndexName());
@@ -1484,6 +1498,10 @@ void DataTable::RevertIndexAppend(TableAppendState &state, DataChunk &chunk, row
 void DataTable::RevertIndexAppend(TableAppendState &state, DataChunk &chunk, Vector &row_identifiers) {
 	D_ASSERT(IsMainTable());
 	for (auto &index : info->indexes.Indexes()) {
+		// Skip placeholder indexes that are still being built concurrently.
+		if (!index.IsBound()) {
+			continue;
+		}
 		auto &main_index = index.Cast<BoundIndex>();
 		main_index.Delete(chunk, row_identifiers);
 	}
