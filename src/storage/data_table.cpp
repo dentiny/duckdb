@@ -1336,7 +1336,7 @@ void DataTable::BufferPlaceholderRevert(IndexEntry &entry, DataChunk &table_chun
 
 	// Copy the buffered INSERT's column mapping; ReferenceIndexChunk takes a non-const reference.
 	auto mapped = unbound.GetMappedColumnIds();
-	auto &table_types = table_chunk.GetTypes();
+	auto table_types = table_chunk.GetTypes();
 	vector<LogicalType> index_types;
 	index_types.reserve(mapped.size());
 	for (auto &col : mapped) {
@@ -1377,7 +1377,8 @@ void DataTable::RevertAppend(DuckTransaction &transaction, idx_t start_row, idx_
 				} else {
 					if (!index.IsBound()) {
 						if (entry.bind_state == IndexBindState::BINDING) {
-							// Live CREATE INDEX placeholder: compensate the buffered INSERT with a DEL.
+							// A concurrent CREATE INDEX is buffering commits into this placeholder; remove this
+							// transaction's reverted rows from it so finalize replay stays consistent with the table.
 							BufferPlaceholderRevert(entry, chunk, row_identifiers);
 						}
 						// Genuine WAL-replay UNBOUND indexes have no append to revert.
@@ -1532,7 +1533,8 @@ void DataTable::RevertIndexAppend(TableAppendState &state, DataChunk &chunk, Vec
 		if (index.IsBound()) {
 			index.Cast<BoundIndex>().Delete(chunk, row_identifiers);
 		} else if (entry.bind_state == IndexBindState::BINDING) {
-			// Live CREATE INDEX placeholder: compensate the buffered INSERT with a DEL.
+			// A concurrent CREATE INDEX is buffering commits into this placeholder; remove this
+			// transaction's reverted rows from it so finalize replay stays consistent with the table.
 			BufferPlaceholderRevert(entry, chunk, row_identifiers);
 		}
 		// WAL-replay UNBOUND indexes have no append to revert.
