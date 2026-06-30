@@ -145,8 +145,10 @@ public:
 			// status is GATE_SET, if we've passed a gate in the previous iteration.
 			// In that case, we have not adjusted the reference.
 			if (status == GateStatus::GATE_NOT_SET && active_node.GetGateStatus() == GateStatus::GATE_SET) {
-				if (!art.IsUnique()) {
-					// Enter a gate.
+				if (!art.IsUnique() || append_mode == IndexAppendMode::INSERT_DUPLICATES) {
+					// Enter a gate. For INSERT_DUPLICATES (e.g. replaying buffered appends into a
+					// concurrently-built unique index), we deliberately accumulate duplicate row IDs for a key;
+					// the subsequent VerifyUnique scan reports the duplicate as a clean constraint violation.
 					active_key_ref = row_id;
 					depth = 0;
 					status = GateStatus::GATE_SET;
