@@ -30,6 +30,7 @@
 #include "duckdb/storage/table/persistent_table_data.hpp"
 #include "duckdb/storage/table/row_group.hpp"
 #include "duckdb/storage/table/scan_state.hpp"
+#include "duckdb/storage/table/table_index_list.hpp"
 #include "duckdb/storage/table/update_state.hpp"
 #include "duckdb/storage/table_storage_info.hpp"
 #include "duckdb/transaction/duck_transaction.hpp"
@@ -1326,6 +1327,30 @@ void DataTable::RevertAppendInternal(idx_t start_row) {
 	row_groups->RevertAppendInternal(start_row);
 }
 
+void DataTable::BufferPlaceholderRevert(IndexEntry &entry, DataChunk &table_chunk, Vector &row_identifiers) {
+	auto &unbound = entry.index->Cast<UnboundIndex>();
+	// Nothing was buffered into this placeholder, so there is nothing to compensate.
+	if (!unbound.HasBufferedReplays()) {
+		return;
+	}
+
+	// Copy the buffered INSERT's column mapping; ReferenceIndexChunk takes a non-const reference.
+	auto mapped = unbound.GetMappedColumnIds();
+	auto &table_types = table_chunk.GetTypes();
+	vector<LogicalType> index_types;
+	index_types.reserve(mapped.size());
+	for (auto &col : mapped) {
+		index_types.emplace_back(table_types[col.GetPrimaryIndex()]);
+	}
+
+	DataChunk index_chunk;
+	index_chunk.InitializeEmpty(index_types);
+	TableIndexList::ReferenceIndexChunk(table_chunk, index_chunk, mapped);
+
+	// Compensating DEL nets the buffered INSERT to a no-op at finalize replay.
+	unbound.BufferChunk(index_chunk, row_identifiers, mapped, BufferedIndexReplay::DEL_ENTRY);
+}
+
 void DataTable::RevertAppend(DuckTransaction &transaction, idx_t start_row, idx_t count) {
 	lock_guard<mutex> lock(append_lock);
 	auto table_lock = transaction.SharedLockTable(*info);
@@ -1351,7 +1376,11 @@ void DataTable::RevertAppend(DuckTransaction &transaction, idx_t start_row, idx_
 					remove_index = entry.added_data_during_checkpoint;
 				} else {
 					if (!index.IsBound()) {
-						// We cannot add to unbound indexes, so there is no need to revert them.
+						if (entry.bind_state == IndexBindState::BINDING) {
+							// Live CREATE INDEX placeholder: compensate the buffered INSERT with a DEL.
+							BufferPlaceholderRevert(entry, chunk, row_identifiers);
+						}
+						// Genuine WAL-replay UNBOUND indexes have no append to revert.
 						continue;
 					}
 					remove_index = index.Cast<BoundIndex>();

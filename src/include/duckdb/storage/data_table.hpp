@@ -334,6 +334,9 @@ private:
 	//! Rebuild all indexes after vacuuming changed rowid's (used with vacuum_rebuild_indexes setting).
 	void RebuildIndexes();
 
+	//! Buffer a compensating DEL_ENTRY into a BINDING placeholder for reverted rows.
+	void BufferPlaceholderRevert(IndexEntry &entry, DataChunk &table_chunk, Vector &row_identifiers);
+
 	void VerifyForeignKeyConstraint(optional_ptr<LocalTableStorage> storage,
 	                                const BoundForeignKeyConstraint &bound_foreign_key, ClientContext &context,
 	                                DataChunk &chunk, VerifyExistenceType type);
