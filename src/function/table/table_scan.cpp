@@ -36,6 +36,7 @@
 #include "duckdb/storage/table/scan_state.hpp"
 #include "duckdb/planner/expression_iterator.hpp"
 #include "duckdb/transaction/duck_transaction_manager.hpp"
+#include "duckdb/execution/index/unbound_index.hpp"
 
 namespace duckdb {
 
@@ -431,7 +432,15 @@ unique_ptr<GlobalTableFunctionState> DuckTableScanInitGlobal(ClientContext &cont
 		// Cap the scan at the boundary captured when the build's placeholder index was registered. Rows >= boundary
 		// commit concurrently and are buffered into the placeholder, so they must not also be scanned (which would
 		// insert the same row id into the new index twice).
-		auto boundary = storage.GetDataTableInfo()->GetIndexBuildScanBoundary();
+		// Look up the specific BINDING placeholder by index name to support concurrent builds.
+		idx_t boundary = DConstants::INVALID_INDEX;
+		for (auto &entry : storage.GetDataTableInfo()->GetIndexes().IndexEntries()) {
+			if (entry.bind_state == IndexBindState::BINDING &&
+			    entry.index->GetIndexName() == bind_data.index_name) {
+				boundary = entry.index->Cast<UnboundIndex>().GetScanBoundary();
+				break;
+			}
+		}
 		if (boundary != DConstants::INVALID_INDEX) {
 			auto &scan_state = g_state->state.scan_state;
 			auto base_row_id = scan_state.row_groups->GetBaseRowId();

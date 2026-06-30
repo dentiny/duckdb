@@ -1,0 +1,37 @@
+# name: test/sql/index/art/constraints/create_concurrent_indexes.test_slow
+# description: Two concurrent CREATE INDEX on the same table must both succeed with correct boundaries
+# group: [constraints]
+
+statement ok
+SET checkpoint_threshold='100GB'
+
+statement ok
+CREATE TABLE t AS SELECT range::BIGINT AS i, (range * 2)::BIGINT AS j FROM range(500000)
+
+concurrentloop threadid 0 2
+
+onlyif threadid=0
+statement ok
+CREATE INDEX idx_i ON t (i)
+
+onlyif threadid=1
+statement ok
+CREATE INDEX idx_j ON t (j)
+
+endloop
+
+# Both indexes must work correctly
+query I
+SELECT COUNT(*) FROM t WHERE i = 42
+----
+1
+
+query I
+SELECT COUNT(*) FROM t WHERE j = 84
+----
+1
+
+query I
+SELECT COUNT(*) FROM t
+----
+500000

@@ -311,8 +311,6 @@ public:
 	//! append lock. Rows with row_id < boundary are read by the build scan; rows >= boundary are buffered into
 	//! the placeholder and replayed at finalize. This keeps the scanned and buffered rows disjoint.
 	Index &AddIndexBuildPlaceholder(unique_ptr<Index> placeholder);
-	//! Clears the concurrent index-build boundary, so create-index scans are no longer capped.
-	void ClearIndexBuildBoundary();
 
 	//! Returns a list of the partition stats
 	vector<PartitionStatistics> GetPartitionStats(ClientContext &context);

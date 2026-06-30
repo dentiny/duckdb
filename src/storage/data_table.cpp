@@ -360,12 +360,9 @@ Index &DataTable::AddIndexBuildPlaceholder(unique_ptr<Index> placeholder) {
 	// has finished AppendToIndexes before the placeholder is visible, so it is not buffered; every later commit
 	// gets a row_id >= boundary and is buffered into the placeholder.
 	lock_guard<mutex> guard(append_lock);
-	info->index_build_scan_boundary = row_groups->GetNextRowId();
+	auto boundary = row_groups->GetNextRowId();
+	placeholder->Cast<UnboundIndex>().SetScanBoundary(boundary);
 	return info->indexes.AddPlaceholderIndex(std::move(placeholder));
-}
-
-void DataTable::ClearIndexBuildBoundary() {
-	info->index_build_scan_boundary = DConstants::INVALID_INDEX;
 }
 
 bool DataTable::HasForeignKeyIndex(const vector<PhysicalIndex> &keys, ForeignKeyType type) {

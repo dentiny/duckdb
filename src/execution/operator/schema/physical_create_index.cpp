@@ -50,13 +50,9 @@ public:
 		if (placeholder && index_list && !committed) {
 			index_list->RemovePlaceholderIndex(*placeholder);
 		}
-		if (storage) {
-			storage->ClearIndexBuildBoundary();
-		}
 	}
 
 	unique_ptr<IndexBuildGlobalState> gstate;
-	optional_ptr<DataTable> storage;
 	optional_ptr<TableIndexList> index_list;
 	optional_ptr<Index> placeholder;
 	bool committed = false;
@@ -75,7 +71,6 @@ unique_ptr<GlobalSinkState> PhysicalCreateIndex::GetGlobalSinkState(ClientContex
 	auto unbound_index = make_uniq<UnboundIndex>(std::move(create_info), std::move(storage_info),
 	                                             storage.GetTableIOManager(), storage.db);
 
-	gstate->storage = &storage;
 	gstate->index_list = &storage.GetDataTableInfo()->GetIndexes();
 	gstate->placeholder = &storage.AddIndexBuildPlaceholder(std::move(unbound_index));
 
