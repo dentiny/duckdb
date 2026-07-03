@@ -95,6 +95,48 @@ void TableIndexList::AddIndex(unique_ptr<Index> index) {
 	}
 }
 
+// unbound count is not incremented here, since it doesn't need to be materialized.
+Index &TableIndexList::AddPlaceholderIndex(unique_ptr<Index> index) {
+	D_ASSERT(index);
+	D_ASSERT(!index->IsBound());
+	lock_guard<mutex> lock(index_entries_lock);
+	auto index_entry = make_uniq<IndexEntry>(std::move(index));
+	index_entry->bind_state = IndexBindState::BINDING;
+	index_entries.push_back(std::move(index_entry));
+	return *index_entries.back()->index;
+}
+
+void TableIndexList::RemovePlaceholderIndex(Index &placeholder) {
+	lock_guard<mutex> lock(index_entries_lock);
+	for (idx_t idx = 0; idx < index_entries.size(); ++idx) {
+		if (index_entries[idx]->index.get() == &placeholder) {
+			index_entries.erase_at(idx);
+			return;
+		}
+	}
+}
+
+void TableIndexList::BindPlaceholderIndex(Index &placeholder, unique_ptr<BoundIndex> bound,
+                                          const vector<LogicalType> &physical_column_types) {
+	lock_guard<mutex> lock(index_entries_lock);
+	for (auto &entry : index_entries) {
+		if (entry->index.get() != &placeholder) {
+			continue;
+		}
+		lock_guard<mutex> entry_guard(entry->lock);
+		auto &unbound_index = entry->index->Cast<UnboundIndex>();
+		if (unbound_index.HasBufferedReplays()) {
+			bound->ApplyBufferedReplays(physical_column_types, unbound_index.GetBufferedReplays(),
+			                            unbound_index.GetMappedColumnIds());
+		}
+		bound->VerifyUnique();
+		entry->index = std::move(bound);
+		entry->bind_state = IndexBindState::BOUND;
+		return;
+	}
+	throw InternalException("BindPlaceholderIndex: placeholder not found");
+}
+
 void TableIndexList::RemoveIndex(const Identifier &name) {
 	lock_guard<mutex> lock(index_entries_lock);
 	for (idx_t i = 0; i < index_entries.size(); i++) {
@@ -123,6 +165,9 @@ bool TableIndexList::NameIsUnique(const string &name) {
 	// Only covers PK, FK, and UNIQUE indexes.
 	lock_guard<mutex> lock(index_entries_lock);
 	for (auto &entry : index_entries) {
+		if (entry->bind_state == IndexBindState::BINDING) {
+			continue;
+		}
 		auto &index = *entry->index;
 		if (index.IsPrimary() || index.IsForeign() || index.IsUnique()) {
 			if (index.GetIndexName() == name) {

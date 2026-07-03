@@ -1,0 +1,140 @@
+# name: test/sql/index/art/constraints/create_unique_index_concurrent_repro.test_slow
+# description: Concurrent unique inserts during CREATE UNIQUE INDEX must not leave a corrupt index
+# group: [constraints]
+
+# Disable checkpoint
+statement ok
+SET checkpoint_threshold='100GB'
+
+statement ok
+CREATE TABLE t AS SELECT range::BIGINT AS i FROM range(1000000)
+
+concurrentloop threadid 0 5
+
+onlyif threadid=0
+statement ok
+CREATE UNIQUE INDEX idx ON t (i)
+
+onlyif threadid=0
+statement error
+INSERT INTO t SELECT MAX(i) FROM t
+----
+<REGEX>:Constraint Error.*
+
+onlyif threadid=0
+statement ok
+DROP INDEX idx
+
+loop x 0 2000
+
+onlyif threadid<>0
+statement ok
+INSERT INTO t (i) VALUES (({threadid}::BIGINT * 1000000000) + 1000000 + {x})
+
+endloop
+
+endloop
+
+concurrentloop threadid 0 5
+
+onlyif threadid=0
+statement ok
+CREATE UNIQUE INDEX idx ON t (i)
+
+onlyif threadid=0
+statement error
+INSERT INTO t SELECT MAX(i) FROM t
+----
+<REGEX>:Constraint Error.*
+
+onlyif threadid=0
+statement ok
+DROP INDEX idx
+
+loop x 2000 4000
+
+onlyif threadid<>0
+statement ok
+INSERT INTO t (i) VALUES (({threadid}::BIGINT * 1000000000) + 1000000 + {x})
+
+endloop
+
+endloop
+
+concurrentloop threadid 0 5
+
+onlyif threadid=0
+statement ok
+CREATE UNIQUE INDEX idx ON t (i)
+
+onlyif threadid=0
+statement error
+INSERT INTO t SELECT MAX(i) FROM t
+----
+<REGEX>:Constraint Error.*
+
+onlyif threadid=0
+statement ok
+DROP INDEX idx
+
+loop x 4000 6000
+
+onlyif threadid<>0
+statement ok
+INSERT INTO t (i) VALUES (({threadid}::BIGINT * 1000000000) + 1000000 + {x})
+
+endloop
+
+endloop
+
+concurrentloop threadid 0 5
+
+onlyif threadid=0
+statement ok
+CREATE UNIQUE INDEX idx ON t (i)
+
+onlyif threadid=0
+statement error
+INSERT INTO t SELECT MAX(i) FROM t
+----
+<REGEX>:Constraint Error.*
+
+onlyif threadid=0
+statement ok
+DROP INDEX idx
+
+loop x 6000 8000
+
+onlyif threadid<>0
+statement ok
+INSERT INTO t (i) VALUES (({threadid}::BIGINT * 1000000000) + 1000000 + {x})
+
+endloop
+
+endloop
+
+concurrentloop threadid 0 5
+
+onlyif threadid=0
+statement ok
+CREATE UNIQUE INDEX idx ON t (i)
+
+onlyif threadid=0
+statement error
+INSERT INTO t SELECT MAX(i) FROM t
+----
+<REGEX>:Constraint Error.*
+
+onlyif threadid=0
+statement ok
+DROP INDEX idx
+
+loop x 8000 10000
+
+onlyif threadid<>0
+statement ok
+INSERT INTO t (i) VALUES (({threadid}::BIGINT * 1000000000) + 1000000 + {x})
+
+endloop
+
+endloop

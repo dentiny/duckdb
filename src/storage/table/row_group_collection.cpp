@@ -1117,10 +1117,9 @@ void RowGroupCollection::RemoveFromIndexes(const QueryContext &context, TableInd
 	}
 
 	for (auto &entry : indexes.IndexEntries()) {
+		lock_guard<mutex> guard(entry.lock);
 		auto &index = *entry.index;
 		if (index.IsBound()) {
-			lock_guard<mutex> guard(entry.lock);
-
 			// check which indexes we should append to or remove from
 			// note that this method might also involve appending to indexes
 			// the reason for that is that we have "delta" indexes that we must fill with data we are removing

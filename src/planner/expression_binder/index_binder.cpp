@@ -91,6 +91,7 @@ unique_ptr<LogicalOperator> IndexBinder::BindCreateIndex(ClientContext &context,
 	InitCreateIndexInfo(get, *create_index_info, table_entry.schema.name);
 	auto &bind_data = get.bind_data->Cast<TableScanBindData>();
 	bind_data.is_create_index = true;
+	bind_data.index_name = create_index_info->GetIndexName().GetIdentifierName();
 
 	auto result = make_uniq<LogicalCreateIndex>(std::move(create_index_info), std::move(expressions), table_entry,
 	                                            std::move(alter_table_info));

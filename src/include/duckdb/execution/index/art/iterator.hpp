@@ -82,6 +82,22 @@ struct RowIdSetOutput {
 	}
 };
 
+//! Output policy that flags a unique-constraint violation: it stops scanning as soon as two
+//! consecutive emitted row IDs share the same key.
+struct UniqueViolationOutput {
+	bool violation = false;
+	bool has_previous_key = false;
+	vector<uint8_t> previous_key;
+	vector<uint8_t> current_key;
+
+	// Stop when violation is detected.
+	bool IsFull() const {
+		return violation;
+	}
+	void SetKey(const IteratorKey &key, const idx_t column_key_len);
+	void Add(const row_t rid);
+};
+
 //! Output policy for scanning keys and row IDs.
 struct KeyRowIdOutput {
 	ArenaAllocator &arena;

@@ -307,6 +307,10 @@ public:
 	              IndexStorageInfo index_info);
 	//! AddIndex moves an index to this table's index list.
 	void AddIndex(unique_ptr<Index> index);
+	//! Registers a placeholder index for a concurrent index build, capturing the row-id boundary under the
+	//! append lock. Rows with row_id < boundary are read by the build scan; rows >= boundary are buffered into
+	//! the placeholder and replayed at finalize. This keeps the scanned and buffered rows disjoint.
+	Index &AddIndexBuildPlaceholder(unique_ptr<Index> placeholder);
 
 	//! Returns a list of the partition stats
 	vector<PartitionStatistics> GetPartitionStats(ClientContext &context);
@@ -327,6 +331,9 @@ private:
 
 	//! Rebuild all indexes after vacuuming changed rowid's (used with vacuum_rebuild_indexes setting).
 	void RebuildIndexes();
+
+	//! Buffer a compensating DEL_ENTRY into a BINDING placeholder for reverted rows.
+	void BufferPlaceholderRevert(IndexEntry &entry, DataChunk &table_chunk, Vector &row_identifiers);
 
 	void VerifyForeignKeyConstraint(optional_ptr<LocalTableStorage> storage,
 	                                const BoundForeignKeyConstraint &bound_foreign_key, ClientContext &context,

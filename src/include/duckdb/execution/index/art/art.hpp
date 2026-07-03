@@ -155,6 +155,8 @@ public:
 	void VerifyAllocations(IndexLock &l) override;
 	//! Verifies the index buffers.
 	void VerifyBuffers(IndexLock &l) override;
+	//! For unique ARTs, throws if any key has more than one live row ID.
+	void VerifyUnique(IndexLock &l) override;
 
 	//! Returns string representation of the ART.
 	string ToString(IndexLock &l, bool display_ascii = false) override;

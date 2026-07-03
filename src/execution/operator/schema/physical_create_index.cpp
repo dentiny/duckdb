@@ -5,10 +5,12 @@
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include "duckdb/common/exception/transaction_exception.hpp"
 #include "duckdb/execution/index/bound_index.hpp"
+#include "duckdb/execution/index/unbound_index.hpp"
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/main/database_manager.hpp"
 #include "duckdb/storage/table/append_state.hpp"
 #include "duckdb/storage/table/data_table_info.hpp"
+#include "duckdb/storage/table/table_index_list.hpp"
 #include "duckdb/storage/storage_manager.hpp"
 
 namespace duckdb {
@@ -44,11 +46,33 @@ PhysicalCreateIndex::PhysicalCreateIndex(PhysicalPlan &physical_plan, LogicalOpe
 //---------------------------------------------------------------------------------------------------------------------
 class CreateIndexGlobalSinkState : public GlobalSinkState {
 public:
+	~CreateIndexGlobalSinkState() override {
+		if (placeholder && index_list && !committed) {
+			index_list->RemovePlaceholderIndex(*placeholder);
+		}
+	}
+
 	unique_ptr<IndexBuildGlobalState> gstate;
+	optional_ptr<TableIndexList> index_list;
+	optional_ptr<Index> placeholder;
+	bool committed = false;
 };
 
 unique_ptr<GlobalSinkState> PhysicalCreateIndex::GetGlobalSinkState(ClientContext &context) const {
 	auto gstate = make_uniq<CreateIndexGlobalSinkState>();
+
+	auto create_info = info->CopyWithoutBoundExpressions();
+	create_info->Cast<CreateIndexInfo>().column_ids = storage_ids;
+
+	IndexStorageInfo storage_info(info->GetIndexName());
+	storage_info.options.emplace("v1_0_0_storage", false);
+
+	auto &storage = table.GetStorage();
+	auto unbound_index = make_uniq<UnboundIndex>(std::move(create_info), std::move(storage_info),
+	                                             storage.GetTableIOManager(), storage.db);
+
+	gstate->index_list = &storage.GetDataTableInfo()->GetIndexes();
+	gstate->placeholder = &storage.AddIndexBuildPlaceholder(std::move(unbound_index));
 
 	IndexBuildInitGlobalStateInput global_state_input {bind_data.get(),     context,    table, *info,
 	                                                   unbound_expressions, storage_ids};
@@ -162,6 +186,9 @@ SinkFinalizeType PhysicalCreateIndex::Finalize(Pipeline &pipeline, Event &event,
 		// Ensure that there are no other indexes with that name on this table.
 		auto &indexes = storage.GetDataTableInfo()->GetIndexes();
 		for (auto &index : indexes.Indexes()) {
+			if (&index == gstate.placeholder.get()) {
+				continue;
+			}
 			if (index.GetIndexName() == info->GetIndexName()) {
 				throw CatalogException("an index with that name already exists for this table: %s",
 				                       info->GetIndexName());
@@ -172,8 +199,13 @@ SinkFinalizeType PhysicalCreateIndex::Finalize(Pipeline &pipeline, Event &event,
 		catalog.Alter(context, *alter_table_info);
 	}
 
-	// Add the index to the storage.
-	storage.AddIndex(std::move(bound_index));
+	vector<LogicalType> physical_column_types;
+	physical_column_types.reserve(table.GetColumns().Physical().Size());
+	for (auto &col : table.GetColumns().Physical()) {
+		physical_column_types.emplace_back(col.Type());
+	}
+	gstate.index_list->BindPlaceholderIndex(*gstate.placeholder, std::move(bound_index), physical_column_types);
+	gstate.committed = true;
 
 	return SinkFinalizeType::READY;
 }

@@ -106,6 +106,15 @@ void BoundIndex::Verify() {
 	Verify(l);
 }
 
+void BoundIndex::VerifyUnique() {
+	IndexLock l;
+	InitializeLock(l);
+	VerifyUnique(l);
+}
+
+void BoundIndex::VerifyUnique(IndexLock &l) {
+}
+
 string BoundIndex::ToString(bool display_ascii) {
 	IndexLock l;
 	InitializeLock(l);

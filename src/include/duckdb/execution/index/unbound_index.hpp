@@ -75,6 +75,9 @@ private:
 	//! This is in sorted order of physical column IDs.
 	vector<StorageIndex> mapped_column_ids;
 
+	//! Row boundary for the index build scan (set per-placeholder in AddIndexBuildPlaceholder).
+	idx_t scan_boundary {DConstants::INVALID_INDEX};
+
 public:
 	UnboundIndex(unique_ptr<CreateInfo> create_info, IndexStorageInfo storage_info, TableIOManager &table_io_manager,
 	             AttachedDatabase &db);
@@ -105,6 +108,13 @@ public:
 	}
 	const Identifier &GetTableName() const {
 		return GetCreateInfo().table;
+	}
+
+	idx_t GetScanBoundary() const {
+		return scan_boundary;
+	}
+	void SetScanBoundary(idx_t boundary) {
+		scan_boundary = boundary;
 	}
 
 	//! Buffer Index delete or insert (replay_type) data chunk.

@@ -36,6 +36,7 @@
 #include "duckdb/storage/table/scan_state.hpp"
 #include "duckdb/planner/expression_iterator.hpp"
 #include "duckdb/transaction/duck_transaction_manager.hpp"
+#include "duckdb/execution/index/unbound_index.hpp"
 
 namespace duckdb {
 
@@ -427,6 +428,26 @@ unique_ptr<GlobalTableFunctionState> DuckTableScanInitGlobal(ClientContext &cont
 		}
 	}
 	storage.InitializeParallelScan(context, g_state->state, input.column_indexes);
+	if (bind_data.is_create_index) {
+		// Cap the scan at the boundary captured when the build's placeholder index was registered. Rows >= boundary
+		// commit concurrently and are buffered into the placeholder, so they must not also be scanned (which would
+		// insert the same row id into the new index twice).
+		// Look up the specific BINDING placeholder by index name to support concurrent builds.
+		idx_t boundary = DConstants::INVALID_INDEX;
+		for (auto &entry : storage.GetDataTableInfo()->GetIndexes().IndexEntries()) {
+			if (entry.bind_state == IndexBindState::BINDING && entry.index->GetIndexName() == bind_data.index_name) {
+				boundary = entry.index->Cast<UnboundIndex>().GetScanBoundary();
+				break;
+			}
+		}
+		if (boundary == DConstants::INVALID_INDEX) {
+			throw InternalException("CreateIndex scan could not find BINDING placeholder for index \"%s\"",
+			                        bind_data.index_name);
+		}
+		auto &scan_state = g_state->state.scan_state;
+		auto base_row_id = scan_state.row_groups->GetBaseRowId();
+		scan_state.max_row = MinValue<idx_t>(scan_state.max_row, base_row_id + boundary);
+	}
 	if (!input.CanRemoveFilterColumns()) {
 		return std::move(g_state);
 	}
@@ -815,10 +836,10 @@ unique_ptr<GlobalTableFunctionState> TableScanInitGlobal(ClientContext &context,
 	info->BindIndexes(context, ART::TYPE_NAME);
 	for (auto &entry : indexes.IndexEntries()) {
 		auto &index = *entry.index;
-		if (index.GetIndexType() != ART::TYPE_NAME) {
+		// Skip placeholder indexes that are still being built concurrently.
+		if (!index.IsBound() || index.GetIndexType() != ART::TYPE_NAME) {
 			continue;
 		}
-		D_ASSERT(index.IsBound());
 		auto &art = index.Cast<ART>();
 		index_scan = TryScanIndex(art, entry, column_list, input, filter_set, max_count, row_ids);
 		if (index_scan) {
