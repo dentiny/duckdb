@@ -111,13 +111,19 @@ bool RLEAnalyze(AnalyzeState &state, const Vector &input) {
 	}
 	rle_state.total_values_seen += input.size();
 
-	// After seeing enough data (4 vectors = 8 192 values), check whether RLE can
-	// plausibly compress.  Each RLE entry costs sizeof(rle_count_t) + sizeof(T)
-	// bytes.  If the estimated RLE size already meets or exceeds the raw size, no
-	// amount of additional data can make RLE win — bail out early.
-	static constexpr idx_t MIN_VALUES_FOR_EARLY_EXIT = 4 * STANDARD_VECTOR_SIZE;
+	// After seeing at least 25% of a typical row group, check whether continuing
+	// to analyze makes sense.  Project the current run density across the full row
+	// group: if RLE would still lose even at today's ratio, the remaining scan
+	// cannot rescue it and we exit early.
+	//
+	// Waiting for 25% of a row group (rather than just a few vectors) reduces the
+	// risk of a high-cardinality prefix causing an early exit when long runs later
+	// in the column would make RLE win.
+	static constexpr idx_t MIN_VALUES_FOR_EARLY_EXIT = DEFAULT_ROW_GROUP_SIZE / 4;
 	if (rle_state.total_values_seen >= MIN_VALUES_FOR_EARLY_EXIT) {
 		idx_t rle_entry_size = sizeof(rle_count_t) + sizeof(T);
+		// Project: if the current run density holds for the full row group, would
+		// RLE beat raw storage?
 		if (rle_state.state.seen_count * rle_entry_size >= rle_state.total_values_seen * sizeof(T)) {
 			return false;
 		}
