@@ -17,24 +17,23 @@ using namespace duckdb;
 static constexpr int32_t LINEITEM_ROW_COUNT = 1000000;
 static constexpr int32_t LINEITEM_BASE_DATE = 8827; // 1994-01-01 as days since epoch
 
-static const char CREATE_LINEITEM[] =
-    "CREATE TABLE lineitem("
-    "l_orderkey INTEGER, l_partkey INTEGER, l_suppkey INTEGER, l_linenumber INTEGER,"
-    "l_quantity DOUBLE, l_extendedprice DOUBLE, l_discount DOUBLE, l_tax DOUBLE,"
-    "l_returnflag VARCHAR, l_linestatus VARCHAR,"
-    "l_shipdate INTEGER, l_commitdate INTEGER, l_receiptdate INTEGER,"
-    "l_shipinstruct VARCHAR, l_shipmode VARCHAR, l_comment VARCHAR)";
+static const char CREATE_LINEITEM[] = "CREATE TABLE lineitem("
+                                      "l_orderkey INTEGER, l_partkey INTEGER, l_suppkey INTEGER, l_linenumber INTEGER,"
+                                      "l_quantity DOUBLE, l_extendedprice DOUBLE, l_discount DOUBLE, l_tax DOUBLE,"
+                                      "l_returnflag VARCHAR, l_linestatus VARCHAR,"
+                                      "l_shipdate INTEGER, l_commitdate INTEGER, l_receiptdate INTEGER,"
+                                      "l_shipinstruct VARCHAR, l_shipmode VARCHAR, l_comment VARCHAR)";
 
-static const char *const RETURNFLAGS[]     = {"A", "N", "R"};
-static const uint32_t    RETURNFLAG_LENS[] = {1, 1, 1};
-static const char *const LINESTATUS[]      = {"O", "F"};
-static const uint32_t    LINESTATUS_LENS[] = {1, 1};
-static const char *const SHIPINSTRUCT[]    = {"DELIVER IN PERSON", "COLLECT COD", "NONE", "TAKE BACK RETURN"};
-static const uint32_t    SHIPINSTRUCT_LENS[] = {17, 11, 4, 16};
-static const char *const SHIPMODE[]        = {"AIR", "AIR REG", "FOB", "MAIL", "RAIL", "REG AIR", "SHIP", "TRUCK"};
-static const uint32_t    SHIPMODE_LENS[]   = {3, 7, 3, 4, 4, 7, 4, 5};
-static const char        COMMENT_STR[]     = "regular annual package";
-static constexpr uint32_t COMMENT_LEN      = 22;
+static const char *const RETURNFLAGS[] = {"A", "N", "R"};
+static const uint32_t RETURNFLAG_LENS[] = {1, 1, 1};
+static const char *const LINESTATUS[] = {"O", "F"};
+static const uint32_t LINESTATUS_LENS[] = {1, 1};
+static const char *const SHIPINSTRUCT[] = {"DELIVER IN PERSON", "COLLECT COD", "NONE", "TAKE BACK RETURN"};
+static const uint32_t SHIPINSTRUCT_LENS[] = {17, 11, 4, 16};
+static const char *const SHIPMODE[] = {"AIR", "AIR REG", "FOB", "MAIL", "RAIL", "REG AIR", "SHIP", "TRUCK"};
+static const uint32_t SHIPMODE_LENS[] = {3, 7, 3, 4, 4, 7, 4, 5};
+static const char COMMENT_STR[] = "regular annual package";
+static constexpr uint32_t COMMENT_LEN = 22;
 
 // ---------------------------------------------------------------------------
 // Base class — shared schema, data generation, and disk persistence
@@ -127,20 +126,19 @@ class AppenderLineitem1MPrimaryKeyBenchmark : public AppenderLineitemBenchmark {
 public:
 	static AppenderLineitem1MPrimaryKeyBenchmark *GetInstance() {
 		static AppenderLineitem1MPrimaryKeyBenchmark singleton(true);
-		auto b = duckdb::unique_ptr<AppenderLineitem1MPrimaryKeyBenchmark>(
-		    new AppenderLineitem1MPrimaryKeyBenchmark(false));
+		auto b =
+		    duckdb::unique_ptr<AppenderLineitem1MPrimaryKeyBenchmark>(new AppenderLineitem1MPrimaryKeyBenchmark(false));
 		return &singleton;
 	}
 
 	void Load(DuckDBBenchmarkState *state) override {
-		state->conn.Query(
-		    "CREATE TABLE lineitem("
-		    "l_orderkey INTEGER, l_partkey INTEGER, l_suppkey INTEGER, l_linenumber INTEGER,"
-		    "l_quantity DOUBLE, l_extendedprice DOUBLE, l_discount DOUBLE, l_tax DOUBLE,"
-		    "l_returnflag VARCHAR, l_linestatus VARCHAR,"
-		    "l_shipdate INTEGER, l_commitdate INTEGER, l_receiptdate INTEGER,"
-		    "l_shipinstruct VARCHAR, l_shipmode VARCHAR, l_comment VARCHAR,"
-		    "PRIMARY KEY (l_orderkey, l_linenumber))");
+		state->conn.Query("CREATE TABLE lineitem("
+		                  "l_orderkey INTEGER, l_partkey INTEGER, l_suppkey INTEGER, l_linenumber INTEGER,"
+		                  "l_quantity DOUBLE, l_extendedprice DOUBLE, l_discount DOUBLE, l_tax DOUBLE,"
+		                  "l_returnflag VARCHAR, l_linestatus VARCHAR,"
+		                  "l_shipdate INTEGER, l_commitdate INTEGER, l_receiptdate INTEGER,"
+		                  "l_shipinstruct VARCHAR, l_shipmode VARCHAR, l_comment VARCHAR,"
+		                  "PRIMARY KEY (l_orderkey, l_linenumber))");
 	}
 };
 auto global_instance_AppenderLineitem1MPrimaryKey = AppenderLineitem1MPrimaryKeyBenchmark::GetInstance();
