@@ -79,7 +79,37 @@ unique_ptr<AnalyzeState> DictionaryCompressionStorage::StringInitAnalyze(ColumnD
 
 bool DictionaryCompressionStorage::StringAnalyze(AnalyzeState &state_p, const Vector &input) {
 	auto &state = state_p.Cast<DictionaryAnalyzeState>();
-	return DictionaryCompression::UpdateState(state, input);
+
+	// Once the dictionary has stopped growing for several consecutive vectors, all
+	// remaining values are already in the hash set.  Skip per-string hash lookups
+	// and just advance the tuple counter — no segment overflow for typical
+	// low-cardinality data, so a single HasEnoughSpace check per vector suffices.
+	static constexpr idx_t SATURATION_VECTORS_THRESHOLD = 4;
+	if (state.is_saturated) {
+		if (!state.CalculateSpaceRequirements(false, 0)) {
+			// Rare: segment is full — fall through to full analysis for this vector
+			state.is_saturated = false;
+			state.vectors_without_new_string = 0;
+		} else {
+			for (idx_t i = 0; i < input.size(); i++) {
+				state.AddLastLookup();
+			}
+			return true;
+		}
+	}
+
+	auto unique_before = state.current_unique_count;
+	bool result = DictionaryCompression::UpdateState(state, input);
+
+	if (state.current_unique_count == unique_before) {
+		state.vectors_without_new_string++;
+		if (state.vectors_without_new_string >= SATURATION_VECTORS_THRESHOLD) {
+			state.is_saturated = true;
+		}
+	} else {
+		state.vectors_without_new_string = 0;
+	}
+	return result;
 }
 
 idx_t DictionaryCompressionStorage::StringFinalAnalyze(AnalyzeState &state_p) {

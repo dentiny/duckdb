@@ -170,29 +170,42 @@ idx_t FSSTStorage::StringFinalAnalyze(AnalyzeState &state_p) {
 
 	size_t output_buffer_size = 7 + 2 * state.fsst_string_total_size; // size as specified in fsst.h
 
+	// Cap the number of strings fed to duckdb_fsst_create + duckdb_fsst_compress.
+	// A symbol table built from 1024 representative strings is as good as one built
+	// from 30 000+; the extra samples only slow down libfsst::buildSymbolTable.
+	// Size estimation is re-scaled below to account for the reduced sample.
+	static constexpr size_t FSST_MAX_ENCODER_SAMPLE = 1024;
+	const size_t encode_count = MinValue<size_t>(string_count, FSST_MAX_ENCODER_SAMPLE);
+
 	vector<size_t> fsst_string_sizes;
 	vector<unsigned char *> fsst_string_ptrs;
-	for (auto &str : state.fsst_strings) {
-		fsst_string_sizes.push_back(str.GetSize());
-		fsst_string_ptrs.push_back((unsigned char *)str.GetData()); // NOLINT
+	for (size_t i = 0; i < encode_count; i++) {
+		fsst_string_sizes.push_back(state.fsst_strings[i].GetSize());
+		fsst_string_ptrs.push_back((unsigned char *)state.fsst_strings[i].GetData()); // NOLINT
 	}
 
-	state.fsst_encoder = duckdb_fsst_create(string_count, &fsst_string_sizes[0], &fsst_string_ptrs[0], 0);
+	state.fsst_encoder = duckdb_fsst_create(encode_count, &fsst_string_sizes[0], &fsst_string_ptrs[0], 0);
 
 	// TODO: do we really need to encode to get a size estimate?
-	auto compressed_ptrs = vector<unsigned char *>(string_count, nullptr);
-	auto compressed_sizes = vector<size_t>(string_count, 0);
-	unique_ptr<unsigned char[]> compressed_buffer(new unsigned char[output_buffer_size]);
+	auto compressed_ptrs = vector<unsigned char *>(encode_count, nullptr);
+	auto compressed_sizes = vector<size_t>(encode_count, 0);
+	// Re-compute output buffer size for the (possibly smaller) encode_count sample.
+	size_t encode_total_size = 0;
+	for (auto s : fsst_string_sizes) {
+		encode_total_size += s;
+	}
+	unique_ptr<unsigned char[]> compressed_buffer(new unsigned char[7 + 2 * encode_total_size]);
 
 	auto res =
-	    duckdb_fsst_compress(state.fsst_encoder, string_count, &fsst_string_sizes[0], &fsst_string_ptrs[0],
-	                         output_buffer_size, compressed_buffer.get(), &compressed_sizes[0], &compressed_ptrs[0]);
+	    duckdb_fsst_compress(state.fsst_encoder, encode_count, &fsst_string_sizes[0], &fsst_string_ptrs[0],
+	                         7 + 2 * encode_total_size, compressed_buffer.get(), &compressed_sizes[0],
+	                         &compressed_ptrs[0]);
 
-	if (string_count != res) {
+	if (encode_count != res) {
 		throw std::runtime_error("FSST output buffer is too small unexpectedly");
 	}
 
-	// Sum and and Max compressed lengths
+	// Sum and Max compressed lengths
 	for (auto &size : compressed_sizes) {
 		compressed_dict_size += size;
 		max_compressed_string_length = MaxValue(max_compressed_string_length, size);
@@ -204,7 +217,12 @@ idx_t FSSTStorage::StringFinalAnalyze(AnalyzeState &state_p) {
 	auto bitpacked_offsets_size =
 	    BitpackingPrimitives::GetRequiredSize(string_count + state.empty_strings, minimum_width);
 
-	auto estimated_base_size = double(bitpacked_offsets_size + compressed_dict_size) * (1 / ANALYSIS_SAMPLE_SIZE);
+	// Scale from the (possibly capped) encoder sample back to the full 25%-sampled set,
+	// then from the 25% sample back to the full row group.
+	// encode_count strings represent encode_count/string_count of the sample,
+	// so the combined scale is state.count / encode_count.
+	double full_scale = (encode_count > 0) ? (double(state.count) / double(encode_count)) : 1.0;
+	auto estimated_base_size = double(bitpacked_offsets_size + compressed_dict_size) * full_scale;
 	auto num_blocks = estimated_base_size / double(state.info.GetBlockSize() - sizeof(duckdb_fsst_decoder_t));
 	auto symtable_size = num_blocks * sizeof(duckdb_fsst_decoder_t);
 	auto estimated_size = estimated_base_size + symtable_size;
