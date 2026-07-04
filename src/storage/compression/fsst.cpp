@@ -158,6 +158,16 @@ idx_t FSSTStorage::StringFinalAnalyze(AnalyzeState &state_p) {
 		return DConstants::INVALID_INDEX;
 	}
 
+	// FSST encodes repeated sub-string patterns using a symbol table and only yields
+	// a size benefit when strings are long enough to contain recurring byte sequences.
+	// For very short strings the symbol table overhead dominates; dictionary compression
+	// wins instead. Skip the expensive duckdb_fsst_create + duckdb_fsst_compress calls
+	// when the average sampled string length is below this threshold.
+	static constexpr size_t FSST_MIN_AVG_STRING_LENGTH = 10;
+	if (state.fsst_string_total_size / string_count < FSST_MIN_AVG_STRING_LENGTH) {
+		return DConstants::INVALID_INDEX;
+	}
+
 	size_t output_buffer_size = 7 + 2 * state.fsst_string_total_size; // size as specified in fsst.h
 
 	vector<size_t> fsst_string_sizes;

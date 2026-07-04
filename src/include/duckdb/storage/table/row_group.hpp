@@ -70,6 +70,11 @@ private:
 public:
 	const vector<CompressionType> &compression_types;
 	CheckpointOptions options;
+	//! Detected compression types from previous row groups — points into
+	//! OptimisticWriteCollection::detected_compression_types so the cache
+	//! persists across multiple FlushToDisk calls within the same append session.
+	//! nullptr when writing outside an optimistic append context (e.g. full checkpoint).
+	optional_ptr<vector<CompressionType>> detected_compression_types;
 
 public:
 	PartialBlockManager &GetPartialBlockManager(idx_t column_idx);

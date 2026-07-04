@@ -89,11 +89,16 @@ ColumnDataCheckpointer::ColumnDataCheckpointer(vector<reference<ColumnCheckpoint
 	CreateIntermediateVector(checkpoint_states, intermediate);
 }
 
-void ColumnDataCheckpointer::ScanSegments(const std::function<void(Vector &)> &callback) {
+void ColumnDataCheckpointer::ScanSegments(const std::function<void(Vector &)> &callback,
+                                           double sample_rate) {
 	auto &first_state = checkpoint_states[0];
 	auto &col_data = first_state.get().original_column;
 
 	// TODO: scan all the nodes from all segments, no need for CheckpointScan to virtualize this I think..
+	idx_t vec_idx = 0;
+	idx_t sample_stride = (sample_rate >= 1.0 || sample_rate <= 0.0)
+	                          ? 1
+	                          : static_cast<idx_t>(std::ceil(1.0 / sample_rate));
 	for (auto &segment_node : col_data.data.SegmentNodes()) {
 		auto &segment = segment_node.GetNode();
 		ColumnScanState scan_state(nullptr);
@@ -102,6 +107,12 @@ void ColumnDataCheckpointer::ScanSegments(const std::function<void(Vector &)> &c
 
 		auto &scan_vector = intermediate.data[0];
 		for (idx_t base_row_index = 0; base_row_index < segment.count; base_row_index += STANDARD_VECTOR_SIZE) {
+			// Always include the first vector so analyzers see at least one sample.
+			// For subsequent vectors, apply the stride to skip non-sampled ones.
+			if (vec_idx > 0 && sample_stride > 1 && (vec_idx % sample_stride) != 0) {
+				vec_idx++;
+				continue;
+			}
 			intermediate.Reset();
 
 			idx_t count = MinValue<idx_t>(segment.count - base_row_index, STANDARD_VECTOR_SIZE);
@@ -110,6 +121,7 @@ void ColumnDataCheckpointer::ScanSegments(const std::function<void(Vector &)> &c
 			col_data.CheckpointScan(segment, scan_state, count, scan_vector);
 			scan_vector.BufferMutable().SetVectorSize(count);
 			callback(scan_vector);
+			vec_idx++;
 		}
 	}
 }
@@ -189,7 +201,21 @@ vector<CheckpointAnalyzeResult> ColumnDataCheckpointer::DetectBestCompressionMet
 		}
 	}
 
+	// For the base data column (state 0), check if a previous row group in this flush batch
+	// already determined the best compression method. If so, narrow the candidate list to that
+	// method only — this eliminates running all other analyzers during ScanSegments.
+	if (!checkpoint_states.empty() && forced_methods[0] == CompressionType::COMPRESSION_AUTO) {
+		auto cached_type = checkpoint_info.GetDetectedCompressionType();
+		if (cached_type != CompressionType::COMPRESSION_AUTO) {
+			forced_methods[0] = ForceCompression(storage_manager, compression_functions[0], cached_type);
+		}
+	}
+
 	InitAnalyze();
+
+	// Read the configured sample rate and apply it to the analyze scan only.
+	// The write scan (below) always uses 100% of the data.
+	double analyze_sample_rate = Settings::Get<CompressionAnalyzeSampleSizeSetting>(config);
 
 	// scan over all the segments and run the analyze step
 	ScanSegments([&](Vector &scan_vector) {
@@ -209,7 +235,7 @@ vector<CheckpointAnalyzeResult> ColumnDataCheckpointer::DetectBestCompressionMet
 				}
 			}
 		}
-	});
+	}, analyze_sample_rate);
 
 	vector<CheckpointAnalyzeResult> result;
 	result.resize(checkpoint_states.size());
@@ -268,6 +294,13 @@ vector<CheckpointAnalyzeResult> ColumnDataCheckpointer::DetectBestCompressionMet
 		                 col_data.info.GetTableName(), col_data.column_index, col_data.type.ToString(), best_score);
 		result[i] = CheckpointAnalyzeResult(std::move(chosen_state), best_function);
 	}
+
+	// Cache the winning compression type for the base data column (state 0) so that
+	// subsequent row groups in this flush batch can skip running all other analyzers.
+	if (!result.empty() && result[0].function) {
+		checkpoint_info.SetDetectedCompressionType(result[0].function->type);
+	}
+
 	return result;
 }
 

@@ -47,6 +47,12 @@ struct ColumnCheckpointInfo {
 public:
 	PartialBlockManager &GetPartialBlockManager();
 	CompressionType GetCompressionType();
+	//! Returns the compression type detected for this column in a previous row group of
+	//! this flush batch, or COMPRESSION_AUTO if not yet cached.
+	CompressionType GetDetectedCompressionType() const;
+	//! Records the winning compression type for this column so subsequent row groups in
+	//! the same flush batch can skip running all other analyzers.
+	void SetDetectedCompressionType(CompressionType type);
 
 private:
 	RowGroupWriteInfo &info;

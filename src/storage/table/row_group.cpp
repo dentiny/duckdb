@@ -1312,6 +1312,28 @@ CompressionType ColumnCheckpointInfo::GetCompressionType() {
 	return info.compression_types[column_idx];
 }
 
+CompressionType ColumnCheckpointInfo::GetDetectedCompressionType() const {
+	if (!info.detected_compression_types) {
+		return CompressionType::COMPRESSION_AUTO;
+	}
+	auto &cache = *info.detected_compression_types;
+	if (column_idx < cache.size()) {
+		return cache[column_idx];
+	}
+	return CompressionType::COMPRESSION_AUTO;
+}
+
+void ColumnCheckpointInfo::SetDetectedCompressionType(CompressionType type) {
+	if (!info.detected_compression_types) {
+		return;
+	}
+	auto &cache = *info.detected_compression_types;
+	if (cache.size() <= column_idx) {
+		cache.resize(column_idx + 1, CompressionType::COMPRESSION_AUTO);
+	}
+	cache[column_idx] = type;
+}
+
 shared_ptr<ColumnData> RowGroup::CheckpointColumn(const RowGroup &row_group, idx_t column_idx, RowGroupWriteInfo &info,
                                                   RowGroupWriteData &write_data) {
 	auto &column = row_group.GetColumn(column_idx);

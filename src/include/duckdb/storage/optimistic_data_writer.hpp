@@ -23,6 +23,9 @@ struct OptimisticWriteCollection {
 	idx_t unflushed_data_size = 0;
 	idx_t prev_allocated_size = 0;
 	vector<unique_ptr<PartialBlockManager>> partial_block_managers;
+	//! Per-column compression type detected during the first row group written for each column.
+	//! Reused for subsequent row groups to skip running all compression analyzers.
+	vector<CompressionType> detected_compression_types;
 
 	void MergeStorage(OptimisticWriteCollection &collection);
 	void FinalizeFlush();

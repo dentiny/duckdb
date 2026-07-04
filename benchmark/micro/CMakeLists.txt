@@ -6,6 +6,7 @@ add_library(
   appender_lineitem.cpp
   bulkupdate.cpp
   cast.cpp
+  compression_detection.cpp
   in.cpp
   storage.cpp
   string_serialize.cpp)

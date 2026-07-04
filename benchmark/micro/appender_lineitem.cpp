@@ -22,44 +22,42 @@ static constexpr int32_t LINEITEM_ROW_COUNT = 1000000;
 // Days since 1970-01-01 for 1994-01-01 (start of the TPC-H date range)
 static constexpr int32_t LINEITEM_BASE_DATE = 8827;
 
-static const char CREATE_LINEITEM_NO_PK[] =
-    "CREATE TABLE lineitem("
-    "l_orderkey INTEGER, "
-    "l_partkey INTEGER, "
-    "l_suppkey INTEGER, "
-    "l_linenumber INTEGER, "
-    "l_quantity DOUBLE, "
-    "l_extendedprice DOUBLE, "
-    "l_discount DOUBLE, "
-    "l_tax DOUBLE, "
-    "l_returnflag VARCHAR, "
-    "l_linestatus VARCHAR, "
-    "l_shipdate INTEGER, "
-    "l_commitdate INTEGER, "
-    "l_receiptdate INTEGER, "
-    "l_shipinstruct VARCHAR, "
-    "l_shipmode VARCHAR, "
-    "l_comment VARCHAR)";
+static const char CREATE_LINEITEM_NO_PK[] = "CREATE TABLE lineitem("
+                                            "l_orderkey INTEGER, "
+                                            "l_partkey INTEGER, "
+                                            "l_suppkey INTEGER, "
+                                            "l_linenumber INTEGER, "
+                                            "l_quantity DOUBLE, "
+                                            "l_extendedprice DOUBLE, "
+                                            "l_discount DOUBLE, "
+                                            "l_tax DOUBLE, "
+                                            "l_returnflag VARCHAR, "
+                                            "l_linestatus VARCHAR, "
+                                            "l_shipdate INTEGER, "
+                                            "l_commitdate INTEGER, "
+                                            "l_receiptdate INTEGER, "
+                                            "l_shipinstruct VARCHAR, "
+                                            "l_shipmode VARCHAR, "
+                                            "l_comment VARCHAR)";
 
-static const char CREATE_LINEITEM_PK[] =
-    "CREATE TABLE lineitem("
-    "l_orderkey INTEGER, "
-    "l_partkey INTEGER, "
-    "l_suppkey INTEGER, "
-    "l_linenumber INTEGER, "
-    "l_quantity DOUBLE, "
-    "l_extendedprice DOUBLE, "
-    "l_discount DOUBLE, "
-    "l_tax DOUBLE, "
-    "l_returnflag VARCHAR, "
-    "l_linestatus VARCHAR, "
-    "l_shipdate INTEGER, "
-    "l_commitdate INTEGER, "
-    "l_receiptdate INTEGER, "
-    "l_shipinstruct VARCHAR, "
-    "l_shipmode VARCHAR, "
-    "l_comment VARCHAR, "
-    "PRIMARY KEY (l_orderkey, l_linenumber))";
+static const char CREATE_LINEITEM_PK[] = "CREATE TABLE lineitem("
+                                         "l_orderkey INTEGER, "
+                                         "l_partkey INTEGER, "
+                                         "l_suppkey INTEGER, "
+                                         "l_linenumber INTEGER, "
+                                         "l_quantity DOUBLE, "
+                                         "l_extendedprice DOUBLE, "
+                                         "l_discount DOUBLE, "
+                                         "l_tax DOUBLE, "
+                                         "l_returnflag VARCHAR, "
+                                         "l_linestatus VARCHAR, "
+                                         "l_shipdate INTEGER, "
+                                         "l_commitdate INTEGER, "
+                                         "l_receiptdate INTEGER, "
+                                         "l_shipinstruct VARCHAR, "
+                                         "l_shipmode VARCHAR, "
+                                         "l_comment VARCHAR, "
+                                         "PRIMARY KEY (l_orderkey, l_linenumber))";
 
 // TPC-H enumeration domains
 static const char *const RETURNFLAGS[] = {"A", "N", "R"};
@@ -92,6 +90,10 @@ public:
 		return false;
 	}
 
+	size_t NRuns() override {
+		return 200;
+	}
+
 	void RunBenchmark(DuckDBBenchmarkState *state) override {
 		Appender appender(state->conn, "lineitem");
 		for (int32_t i = 0; i < LINEITEM_ROW_COUNT; i++) {
@@ -100,22 +102,22 @@ public:
 			const idx_t si = idx_t(i) % 4;
 			const idx_t sm = idx_t(i) % 8;
 			appender.BeginRow();
-			appender.Append<int32_t>(i / 7 + 1);                                        // l_orderkey
-			appender.Append<int32_t>(i % 200000 + 1);                                   // l_partkey
-			appender.Append<int32_t>(i % 10000 + 1);                                    // l_suppkey
-			appender.Append<int32_t>(i % 7 + 1);                                        // l_linenumber
-			appender.Append<double>(1.0 + double(i % 50));                              // l_quantity
-			appender.Append<double>(900.0 + double(i % 104949) * 0.01);                 // l_extendedprice
-			appender.Append<double>(double(i % 11) * 0.01);                             // l_discount
-			appender.Append<double>(double(i % 9) * 0.01);                              // l_tax
-			appender.Append<string_t>(string_t(RETURNFLAGS[rf], RETURNFLAG_LENS[rf]));  // l_returnflag
-			appender.Append<string_t>(string_t(LINESTATUS[ls], LINESTATUS_LENS[ls]));   // l_linestatus
-			appender.Append<int32_t>(LINEITEM_BASE_DATE + i % 2557);                    // l_shipdate
-			appender.Append<int32_t>(LINEITEM_BASE_DATE + i % 2557);                    // l_commitdate
-			appender.Append<int32_t>(LINEITEM_BASE_DATE + i % 2557);                    // l_receiptdate
+			appender.Append<int32_t>(i / 7 + 1);                                          // l_orderkey
+			appender.Append<int32_t>(i % 200000 + 1);                                     // l_partkey
+			appender.Append<int32_t>(i % 10000 + 1);                                      // l_suppkey
+			appender.Append<int32_t>(i % 7 + 1);                                          // l_linenumber
+			appender.Append<double>(1.0 + double(i % 50));                                // l_quantity
+			appender.Append<double>(900.0 + double(i % 104949) * 0.01);                   // l_extendedprice
+			appender.Append<double>(double(i % 11) * 0.01);                               // l_discount
+			appender.Append<double>(double(i % 9) * 0.01);                                // l_tax
+			appender.Append<string_t>(string_t(RETURNFLAGS[rf], RETURNFLAG_LENS[rf]));    // l_returnflag
+			appender.Append<string_t>(string_t(LINESTATUS[ls], LINESTATUS_LENS[ls]));     // l_linestatus
+			appender.Append<int32_t>(LINEITEM_BASE_DATE + i % 2557);                      // l_shipdate
+			appender.Append<int32_t>(LINEITEM_BASE_DATE + i % 2557);                      // l_commitdate
+			appender.Append<int32_t>(LINEITEM_BASE_DATE + i % 2557);                      // l_receiptdate
 			appender.Append<string_t>(string_t(SHIPINSTRUCT[si], SHIPINSTRUCT_LENS[si])); // l_shipinstruct
-			appender.Append<string_t>(string_t(SHIPMODE[sm], SHIPMODE_LENS[sm]));       // l_shipmode
-			appender.Append<string_t>(string_t(COMMENT_STR, COMMENT_LEN));              // l_comment
+			appender.Append<string_t>(string_t(SHIPMODE[sm], SHIPMODE_LENS[sm]));         // l_shipmode
+			appender.Append<string_t>(string_t(COMMENT_STR, COMMENT_LEN));                // l_comment
 			appender.EndRow();
 		}
 		appender.Close();
@@ -167,8 +169,8 @@ class AppenderLineitem1MPrimaryKeyBenchmark : public AppenderLineitemBenchmark {
 public:
 	static AppenderLineitem1MPrimaryKeyBenchmark *GetInstance() {
 		static AppenderLineitem1MPrimaryKeyBenchmark singleton(true);
-		auto b = duckdb::unique_ptr<AppenderLineitem1MPrimaryKeyBenchmark>(
-		    new AppenderLineitem1MPrimaryKeyBenchmark(false));
+		auto b =
+		    duckdb::unique_ptr<AppenderLineitem1MPrimaryKeyBenchmark>(new AppenderLineitem1MPrimaryKeyBenchmark(false));
 		return &singleton;
 	}
 
@@ -198,22 +200,22 @@ public:
 			const idx_t si = idx_t(i) % 4;
 			const idx_t sm = idx_t(i) % 8;
 			appender.BeginRow();
-			appender.Append<int32_t>(i / 7 + 1);                                        // l_orderkey
-			appender.Append<int32_t>(i % 200000 + 1);                                   // l_partkey
-			appender.Append<int32_t>(i % 10000 + 1);                                    // l_suppkey
-			appender.Append<int32_t>(i % 7 + 1);                                        // l_linenumber
-			appender.Append<double>(1.0 + double(i % 50));                              // l_quantity
-			appender.Append<double>(900.0 + double(i % 104949) * 0.01);                 // l_extendedprice
-			appender.Append<double>(double(i % 11) * 0.01);                             // l_discount
-			appender.Append<double>(double(i % 9) * 0.01);                              // l_tax
-			appender.Append<string_t>(string_t(RETURNFLAGS[rf], RETURNFLAG_LENS[rf]));  // l_returnflag
-			appender.Append<string_t>(string_t(LINESTATUS[ls], LINESTATUS_LENS[ls]));   // l_linestatus
-			appender.Append<int32_t>(LINEITEM_BASE_DATE + i % 2557);                    // l_shipdate
-			appender.Append<int32_t>(LINEITEM_BASE_DATE + i % 2557);                    // l_commitdate
-			appender.Append<int32_t>(LINEITEM_BASE_DATE + i % 2557);                    // l_receiptdate
+			appender.Append<int32_t>(i / 7 + 1);                                          // l_orderkey
+			appender.Append<int32_t>(i % 200000 + 1);                                     // l_partkey
+			appender.Append<int32_t>(i % 10000 + 1);                                      // l_suppkey
+			appender.Append<int32_t>(i % 7 + 1);                                          // l_linenumber
+			appender.Append<double>(1.0 + double(i % 50));                                // l_quantity
+			appender.Append<double>(900.0 + double(i % 104949) * 0.01);                   // l_extendedprice
+			appender.Append<double>(double(i % 11) * 0.01);                               // l_discount
+			appender.Append<double>(double(i % 9) * 0.01);                                // l_tax
+			appender.Append<string_t>(string_t(RETURNFLAGS[rf], RETURNFLAG_LENS[rf]));    // l_returnflag
+			appender.Append<string_t>(string_t(LINESTATUS[ls], LINESTATUS_LENS[ls]));     // l_linestatus
+			appender.Append<int32_t>(LINEITEM_BASE_DATE + i % 2557);                      // l_shipdate
+			appender.Append<int32_t>(LINEITEM_BASE_DATE + i % 2557);                      // l_commitdate
+			appender.Append<int32_t>(LINEITEM_BASE_DATE + i % 2557);                      // l_receiptdate
 			appender.Append<string_t>(string_t(SHIPINSTRUCT[si], SHIPINSTRUCT_LENS[si])); // l_shipinstruct
-			appender.Append<string_t>(string_t(SHIPMODE[sm], SHIPMODE_LENS[sm]));       // l_shipmode
-			appender.Append<string_t>(string_t(COMMENT_STR, COMMENT_LEN));              // l_comment
+			appender.Append<string_t>(string_t(SHIPMODE[sm], SHIPMODE_LENS[sm]));         // l_shipmode
+			appender.Append<string_t>(string_t(COMMENT_STR, COMMENT_LEN));                // l_comment
 			appender.EndRow();
 		}
 		appender.Close();
@@ -235,8 +237,7 @@ class DirectAppenderLineitem1MBenchmark : public DirectAppenderLineitemBenchmark
 public:
 	static DirectAppenderLineitem1MBenchmark *GetInstance() {
 		static DirectAppenderLineitem1MBenchmark singleton(true);
-		auto b =
-		    duckdb::unique_ptr<DirectAppenderLineitem1MBenchmark>(new DirectAppenderLineitem1MBenchmark(false));
+		auto b = duckdb::unique_ptr<DirectAppenderLineitem1MBenchmark>(new DirectAppenderLineitem1MBenchmark(false));
 		return &singleton;
 	}
 
@@ -267,3 +268,76 @@ public:
 	}
 };
 auto global_instance_DirectAppenderLineitem1MPrimaryKey = DirectAppenderLineitem1MPrimaryKeyBenchmark::GetInstance();
+
+// ---------------------------------------------------------------------------
+// DirectAppender no-WAL variant: same schema, but the attached database runs
+// with RecoveryMode::NO_WAL_WRITES so every FlushInternal commit skips the
+// WriteToWAL → LocalStorage::Flush → ColumnDataCheckpointer path entirely.
+// Use to isolate the pure row-loop + local-append cost from compression cost.
+// ---------------------------------------------------------------------------
+class DirectAppenderLineitem1MNoWALBenchmark : public DirectAppenderLineitemBenchmark {
+	DirectAppenderLineitem1MNoWALBenchmark(bool register_benchmark)
+	    : DirectAppenderLineitemBenchmark(register_benchmark, "DirectAppenderLineitem1MNoWAL") {
+	}
+
+public:
+	static DirectAppenderLineitem1MNoWALBenchmark *GetInstance() {
+		static DirectAppenderLineitem1MNoWALBenchmark singleton(true);
+		auto b = duckdb::unique_ptr<DirectAppenderLineitem1MNoWALBenchmark>(
+		    new DirectAppenderLineitem1MNoWALBenchmark(false));
+		return &singleton;
+	}
+
+	// Use in-memory for the primary connection; real storage is the attached no-WAL db.
+	bool InMemory() override {
+		return false;
+	}
+
+	void Load(DuckDBBenchmarkState *state) override {
+		DeleteDatabase("lineitem_nowal.db");
+		state->conn.Query("ATTACH 'lineitem_nowal.db' AS nowal (recovery_mode 'NO_WAL_WRITES')");
+		state->conn.Query(string("CREATE TABLE nowal.lineitem") +
+		                  string(CREATE_LINEITEM_NO_PK).substr(strlen("CREATE TABLE lineitem")));
+	}
+
+	void RunBenchmark(DuckDBBenchmarkState *state) override {
+		DirectAppender appender(state->conn, "nowal", "main", "lineitem");
+		for (int32_t i = 0; i < LINEITEM_ROW_COUNT; i++) {
+			const idx_t rf = idx_t(i) % 3;
+			const idx_t ls = idx_t(i) % 2;
+			const idx_t si = idx_t(i) % 4;
+			const idx_t sm = idx_t(i) % 8;
+			appender.BeginRow();
+			appender.Append<int32_t>(i / 7 + 1);                                          // l_orderkey
+			appender.Append<int32_t>(i % 200000 + 1);                                     // l_partkey
+			appender.Append<int32_t>(i % 10000 + 1);                                      // l_suppkey
+			appender.Append<int32_t>(i % 7 + 1);                                          // l_linenumber
+			appender.Append<double>(1.0 + double(i % 50));                                // l_quantity
+			appender.Append<double>(900.0 + double(i % 104949) * 0.01);                   // l_extendedprice
+			appender.Append<double>(double(i % 11) * 0.01);                               // l_discount
+			appender.Append<double>(double(i % 9) * 0.01);                                // l_tax
+			appender.Append<string_t>(string_t(RETURNFLAGS[rf], RETURNFLAG_LENS[rf]));    // l_returnflag
+			appender.Append<string_t>(string_t(LINESTATUS[ls], LINESTATUS_LENS[ls]));     // l_linestatus
+			appender.Append<int32_t>(LINEITEM_BASE_DATE + i % 2557);                      // l_shipdate
+			appender.Append<int32_t>(LINEITEM_BASE_DATE + i % 2557);                      // l_commitdate
+			appender.Append<int32_t>(LINEITEM_BASE_DATE + i % 2557);                      // l_receiptdate
+			appender.Append<string_t>(string_t(SHIPINSTRUCT[si], SHIPINSTRUCT_LENS[si])); // l_shipinstruct
+			appender.Append<string_t>(string_t(SHIPMODE[sm], SHIPMODE_LENS[sm]));         // l_shipmode
+			appender.Append<string_t>(string_t(COMMENT_STR, COMMENT_LEN));                // l_comment
+			appender.EndRow();
+		}
+		appender.Close();
+	}
+
+	void Cleanup(DuckDBBenchmarkState *state) override {
+		state->conn.Query("DROP TABLE nowal.lineitem");
+		state->conn.Query(string("CREATE TABLE nowal.lineitem") +
+		                  string(CREATE_LINEITEM_NO_PK).substr(strlen("CREATE TABLE lineitem")));
+	}
+
+	string BenchmarkInfo() override {
+		return "Ingest 1M rows using DirectAppender with WAL disabled (NO_WAL_WRITES) — "
+		       "isolates pure append cost from compression/checkpoint overhead";
+	}
+};
+auto global_instance_DirectAppenderLineitem1MNoWAL = DirectAppenderLineitem1MNoWALBenchmark::GetInstance();

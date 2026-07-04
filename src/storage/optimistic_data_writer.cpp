@@ -177,6 +177,7 @@ void OptimisticDataWriter::FlushToDisk(OptimisticWriteCollection &collection,
 		compression_types.push_back(column.CompressionType());
 	}
 	RowGroupWriteInfo info(*partial_manager, compression_types, collection.partial_block_managers);
+	info.detected_compression_types = &collection.detected_compression_types;
 	auto result = RowGroup::WriteToDisk(info, row_groups);
 	// move new (checkpointed) row groups to the row group collection
 	for (idx_t i = 0; i < row_groups.size(); i++) {

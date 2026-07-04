@@ -239,6 +239,13 @@
         ]
     },
     {
+        "name": "compression_analyze_sample_size",
+        "description": "Fraction of vectors sampled during compression analysis (0.0-1.0). Lower values reduce CPU overhead from DetectBestCompressionMethod at the cost of potentially selecting a suboptimal compression method. Defaults to 1.0 (analyze all data).",
+        "type": "DOUBLE",
+        "scope": "global",
+        "default_value": "1.0"
+    },
+    {
         "name": "configure_profiling",
         "description": "Accepts a JSON enabling custom metrics",
         "type": "VARCHAR",

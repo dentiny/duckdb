@@ -68,7 +68,7 @@ public:
 	void FinalizeCheckpoint();
 
 private:
-	void ScanSegments(const std::function<void(Vector &)> &callback);
+	void ScanSegments(const std::function<void(Vector &)> &callback, double sample_rate = 1.0);
 	vector<CheckpointAnalyzeResult> DetectBestCompressionMethod();
 	void WriteToDisk();
 	void WritePersistentSegments(ColumnCheckpointState &state);
