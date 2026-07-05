@@ -179,9 +179,9 @@ idx_t FSSTStorage::StringFinalAnalyze(AnalyzeState &state_p) {
 
 	vector<size_t> fsst_string_sizes;
 	vector<unsigned char *> fsst_string_ptrs;
-	for (size_t i = 0; i < encode_count; i++) {
-		fsst_string_sizes.push_back(state.fsst_strings[i].GetSize());
-		fsst_string_ptrs.push_back((unsigned char *)state.fsst_strings[i].GetData()); // NOLINT
+	for (auto &str : state.fsst_strings) {
+		fsst_string_sizes.push_back(str.GetSize());
+		fsst_string_ptrs.push_back((unsigned char *)str.GetData()); // NOLINT
 	}
 
 	state.fsst_encoder = duckdb_fsst_create(encode_count, &fsst_string_sizes[0], &fsst_string_ptrs[0], 0);
@@ -217,12 +217,14 @@ idx_t FSSTStorage::StringFinalAnalyze(AnalyzeState &state_p) {
 	auto bitpacked_offsets_size =
 	    BitpackingPrimitives::GetRequiredSize(string_count + state.empty_strings, minimum_width);
 
-	// Scale from the (possibly capped) encoder sample back to the full 25%-sampled set,
-	// then from the 25% sample back to the full row group.
-	// encode_count strings represent encode_count/string_count of the sample,
-	// so the combined scale is state.count / encode_count.
-	double full_scale = (encode_count > 0) ? (double(state.count) / double(encode_count)) : 1.0;
-	auto estimated_base_size = double(bitpacked_offsets_size + compressed_dict_size) * full_scale;
+	// Scale the two components separately:
+	//   - bitpacked_offsets_size was computed for string_count values (= 25% sample),
+	//     so the correct scale is 1 / ANALYSIS_SAMPLE_SIZE to project to the full dataset.
+	//   - compressed_dict_size was computed for encode_count values (= capped sample),
+	//     so the correct scale is state.count / encode_count.
+	double offset_scale = (ANALYSIS_SAMPLE_SIZE > 0) ? (1.0 / ANALYSIS_SAMPLE_SIZE) : 1.0;
+	double dict_scale = (encode_count > 0) ? (double(state.count) / double(encode_count)) : 1.0;
+	auto estimated_base_size = double(bitpacked_offsets_size) * offset_scale + double(compressed_dict_size) * dict_scale;
 	auto num_blocks = estimated_base_size / double(state.info.GetBlockSize() - sizeof(duckdb_fsst_decoder_t));
 	auto symtable_size = num_blocks * sizeof(duckdb_fsst_decoder_t);
 	auto estimated_size = estimated_base_size + symtable_size;

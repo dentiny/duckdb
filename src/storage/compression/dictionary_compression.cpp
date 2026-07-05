@@ -91,10 +91,29 @@ bool DictionaryCompressionStorage::StringAnalyze(AnalyzeState &state_p, const Ve
 			state.is_saturated = false;
 			state.vectors_without_new_string = 0;
 		} else {
-			for (idx_t i = 0; i < input.size(); i++) {
+			// Fast path: skip per-string hash lookups, but we still verify each value
+			// is already in the dictionary.  If a new string appears after saturation,
+			// we reset the saturated flag so later vectors get full analysis.
+			bool found_new_string = false;
+			for (auto entry : input.Values<string_t>()) {
+				if (!entry.IsValid()) {
+					state.AddNull();
+					continue;
+				}
+				auto &str = entry.GetValue();
+				if (!state.LookupString(str)) {
+					// New string appeared — dictionary is no longer saturated
+					found_new_string = true;
+					break;
+				}
 				state.AddLastLookup();
 			}
-			return true;
+			if (!found_new_string) {
+				return true;
+			}
+			// Reset saturation and fall through to full analysis for this vector
+			state.is_saturated = false;
+			state.vectors_without_new_string = 0;
 		}
 	}
 
