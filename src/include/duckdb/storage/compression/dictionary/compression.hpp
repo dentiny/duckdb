@@ -37,7 +37,9 @@ public:
 	bool CalculateSpaceRequirements(bool new_string, idx_t string_size);
 	void Flush(bool final = false);
 	idx_t Finalize();
-	void EnableSourceColumnStats(unique_ptr<BaseStatistics> stats);
+	//! Enables reusing precomputed stats from the uncompressed source column instead of recomputing them
+	//! per string during compression
+	void SetSourceColumnStats(unique_ptr<BaseStatistics> stats);
 
 public:
 	// State regarding current segment
@@ -56,9 +58,11 @@ public:
 	// Result of latest LookupString call
 	uint32_t latest_lookup_result;
 
-	//! When set, segment stats are copied from the uncompressed source column instead of recomputing per string
-	bool reuse_source_column_stats = false;
+	//! Column-level stats for a row group. Once assigned, segment stats are copied from the uncompressed
+	//! source column instead of recomputing per string
 	unique_ptr<BaseStatistics> source_column_stats;
+	//! Whether no segment has been flushed yet for this column
+	bool is_first_flush = true;
 };
 
 } // namespace duckdb

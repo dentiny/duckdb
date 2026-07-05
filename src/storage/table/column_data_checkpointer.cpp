@@ -310,6 +310,12 @@ bool ColumnDataCheckpointer::ValidityCoveredByBasedata(vector<CheckpointAnalyzeR
 }
 
 unique_ptr<BaseStatistics> ColumnDataCheckpointer::CollectUncompressedSourceStats(const ColumnData &source_column) {
+	if (source_column.HasUpdates()) {
+		// CheckpointScan overlays committed updates onto the scanned data, so the segment-level stats
+		// (which reflect only the on-disk values) would not match what actually gets compressed
+		return nullptr;
+	}
+
 	for (auto &segment_node : source_column.data.SegmentNodes()) {
 		auto &segment = segment_node.GetNode();
 		if (segment.GetCompressionFunction().type != CompressionType::COMPRESSION_UNCOMPRESSED) {
@@ -360,7 +366,7 @@ void ColumnDataCheckpointer::WriteToDisk() { // Analyze the candidate functions 
 		if (function->type == CompressionType::COMPRESSION_DICTIONARY) {
 			auto &original_col = checkpoint_state.get().original_column;
 			if (auto source_stats = ColumnDataCheckpointer::CollectUncompressedSourceStats(original_col)) {
-				compression_states[i]->Cast<DictionaryCompressionCompressState>().EnableSourceColumnStats(
+				compression_states[i]->Cast<DictionaryCompressionCompressState>().SetSourceColumnStats(
 				    std::move(source_stats));
 			}
 		}

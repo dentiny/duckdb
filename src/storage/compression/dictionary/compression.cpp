@@ -54,7 +54,7 @@ bool DictionaryCompressionCompressState::LookupString(string_t str) {
 }
 
 void DictionaryCompressionCompressState::AddNewString(string_t str) {
-	if (!reuse_source_column_stats) {
+	if (!source_column_stats) {
 		stats_writer.Update(str);
 	}
 
@@ -82,7 +82,7 @@ void DictionaryCompressionCompressState::AddNewString(string_t str) {
 }
 
 void DictionaryCompressionCompressState::AddNull() {
-	if (!reuse_source_column_stats) {
+	if (!source_column_stats) {
 		stats_writer.SetHasNull();
 	}
 	selection_buffer.push_back(0);
@@ -107,21 +107,29 @@ bool DictionaryCompressionCompressState::CalculateSpaceRequirements(bool new_str
 
 void DictionaryCompressionCompressState::Flush(bool final) {
 	auto segment_size = Finalize();
-	if (reuse_source_column_stats && source_column_stats) {
-		current_segment->GetStatsMutable().Merge(*source_column_stats);
+	if (source_column_stats) {
+		// The source stats describe the entire column, not just this segment. If the column is split
+		// across multiple segments, merging the full stats into every segment would cause additive stats
+		// (e.g. total_string_length) to be summed multiple times once merged into the global column stats.
+		// Only a column that fits into a single segment can safely take the exact source stats; otherwise
+		// expand bounds only, which discards (rather than corrupts) the additive stats.
+		bool single_segment = is_first_flush && final;
+		auto merge_type = single_segment ? StatsMergeType::MERGE_STATS : StatsMergeType::EXPAND_BOUNDS;
+		current_segment->GetStatsMutable().Merge(*source_column_stats, merge_type);
 		FlushCurrentSegment(segment_size);
 		stats_writer.Clear();
 	} else {
 		FlushCurrentSegment(stats_writer, segment_size);
 	}
+	is_first_flush = false;
 
 	if (!final) {
 		CreateEmptySegment();
 	}
 }
 
-void DictionaryCompressionCompressState::EnableSourceColumnStats(unique_ptr<BaseStatistics> stats) {
-	reuse_source_column_stats = true;
+void DictionaryCompressionCompressState::SetSourceColumnStats(unique_ptr<BaseStatistics> stats) {
+	D_ASSERT(stats);
 	source_column_stats = std::move(stats);
 }
 
