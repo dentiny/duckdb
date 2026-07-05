@@ -2,6 +2,8 @@
 #include "duckdb_benchmark.hpp"
 #include "duckdb/main/appender.hpp"
 
+#include <cstdlib>
+
 using namespace duckdb;
 
 // Benchmarks DirectAppender ingestion of a TPC-H lineitem-inspired schema.
@@ -142,3 +144,49 @@ public:
 	}
 };
 auto global_instance_AppenderLineitem1MPrimaryKey = AppenderLineitem1MPrimaryKeyBenchmark::GetInstance();
+
+// ---------------------------------------------------------------------------
+// Variant 3: per-column USING COMPRESSION — skips the analyze scan when
+//            combined with the skip-analyze-if-specified optimisation
+// ---------------------------------------------------------------------------
+class AppenderLineitem1MForcedCompressionBenchmark : public AppenderLineitemBenchmark {
+	AppenderLineitem1MForcedCompressionBenchmark(bool register_benchmark)
+	    : AppenderLineitemBenchmark(register_benchmark, "AppenderLineitem1MForcedCompression") {
+	}
+
+public:
+	static AppenderLineitem1MForcedCompressionBenchmark *GetInstance() {
+		static AppenderLineitem1MForcedCompressionBenchmark singleton(true);
+		auto b = duckdb::unique_ptr<AppenderLineitem1MForcedCompressionBenchmark>(
+		    new AppenderLineitem1MForcedCompressionBenchmark(false));
+		return &singleton;
+	}
+
+	void Load(DuckDBBenchmarkState *state) override {
+		state->conn.Query("CREATE TABLE lineitem("
+		                  "l_orderkey INTEGER USING COMPRESSION BITPACKING,"
+		                  "l_partkey INTEGER USING COMPRESSION BITPACKING,"
+		                  "l_suppkey INTEGER USING COMPRESSION BITPACKING,"
+		                  "l_linenumber INTEGER USING COMPRESSION BITPACKING,"
+		                  "l_quantity DOUBLE USING COMPRESSION ALP,"
+		                  "l_extendedprice DOUBLE USING COMPRESSION ALP,"
+		                  "l_discount DOUBLE USING COMPRESSION ALP,"
+		                  "l_tax DOUBLE USING COMPRESSION ALP,"
+		                  "l_returnflag VARCHAR USING COMPRESSION DICTIONARY,"
+		                  "l_linestatus VARCHAR USING COMPRESSION DICTIONARY,"
+		                  "l_shipdate INTEGER USING COMPRESSION BITPACKING,"
+		                  "l_commitdate INTEGER USING COMPRESSION BITPACKING,"
+		                  "l_receiptdate INTEGER USING COMPRESSION BITPACKING,"
+		                  "l_shipinstruct VARCHAR USING COMPRESSION DICTIONARY,"
+		                  "l_shipmode VARCHAR USING COMPRESSION DICTIONARY,"
+		                  "l_comment VARCHAR USING COMPRESSION DICTIONARY)");
+	}
+
+	size_t NRuns() override {
+		if (const char *env = std::getenv("DUCKDB_BENCHMARK_NRUNS")) {
+			return std::stoull(env);
+		}
+		return Benchmark::NRuns();
+	}
+};
+auto global_instance_AppenderLineitem1MForcedCompression = AppenderLineitem1MForcedCompressionBenchmark::GetInstance();
