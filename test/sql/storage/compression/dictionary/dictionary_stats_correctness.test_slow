@@ -1,0 +1,64 @@
+# name: test/sql/storage/compression/dictionary/dictionary_stats_correctness.test_slow
+# description: Verify dictionary compression segment statistics
+# group: [dictionary]
+
+load {TEST_DIR}/dictionary_stats_correctness.db readwrite v1.0.0
+
+statement ok
+PRAGMA force_compression='dictionary';
+
+# Heavily duplicated strings (a handful of distinct values) with some NULLs, spanning multiple row groups
+# (default row group size is 122880 rows).
+statement ok
+CREATE TABLE dup_strings AS
+	SELECT CASE WHEN i % 11 = 0 THEN NULL ELSE 'value_' || (i % 7) END AS s
+	FROM range(300000) tbl(i);
+
+statement ok
+CHECKPOINT;
+
+query I
+SELECT DISTINCT compression FROM pragma_storage_info('dup_strings') WHERE segment_type ILIKE 'VARCHAR';
+----
+Dictionary
+
+query I
+SELECT SUM(LENGTH(s)) FROM dup_strings;
+----
+1909089
+
+query I
+SELECT SUM(stats.total_string_length::UBIGINT) FROM pragma_storage_info('dup_strings') WHERE segment_type ILIKE 'VARCHAR';
+----
+1909089
+
+query I
+SELECT MIN(s) FROM dup_strings;
+----
+value_0
+
+query I
+SELECT MIN(stats.min::VARCHAR) FROM pragma_storage_info('dup_strings') WHERE segment_type ILIKE 'VARCHAR';
+----
+value_0
+
+query I
+SELECT MAX(s) FROM dup_strings;
+----
+value_6
+
+query I
+SELECT MAX(stats.max::VARCHAR) FROM pragma_storage_info('dup_strings') WHERE segment_type ILIKE 'VARCHAR';
+----
+value_6
+
+# every segment must correctly report that the column both can and cannot be null
+query I
+SELECT bool_and(stats.has_null::BOOLEAN) FROM pragma_storage_info('dup_strings') WHERE segment_type ILIKE 'VARCHAR';
+----
+true
+
+query I
+SELECT bool_and(stats.has_no_null::BOOLEAN) FROM pragma_storage_info('dup_strings') WHERE segment_type ILIKE 'VARCHAR';
+----
+true
