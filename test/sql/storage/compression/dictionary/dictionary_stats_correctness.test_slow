@@ -1,5 +1,9 @@
 # name: test/sql/storage/compression/dictionary/dictionary_stats_correctness.test_slow
-# description: Verify dictionary compression segment statistics
+# description: Verify dictionary compression segment statistics (total_string_length, min, max, nullability)
+#              are correct for columns with many duplicate values, including across multiple row groups.
+#              Dictionary compression only records a new dictionary entry once per distinct value, so a naive
+#              per-string stats collection undercounts additive stats (like total_string_length) for columns
+#              with many duplicate values.
 # group: [dictionary]
 
 load {TEST_DIR}/dictionary_stats_correctness.db readwrite v1.0.0

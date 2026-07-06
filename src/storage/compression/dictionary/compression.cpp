@@ -133,6 +133,33 @@ void DictionaryCompressionCompressState::SetSourceColumnStats(unique_ptr<BaseSta
 	source_column_stats = std::move(stats);
 }
 
+unique_ptr<BaseStatistics>
+DictionaryCompressionCompressState::CollectUncompressedSourceStats(const ColumnData &source_column) {
+	if (source_column.HasUpdates()) {
+		// CheckpointScan overlays committed updates onto the scanned data, so the segment-level stats
+		// (which reflect only the on-disk values) would not match what actually gets compressed
+		return nullptr;
+	}
+
+	for (auto &segment_node : source_column.GetSegmentTree().SegmentNodes()) {
+		auto &segment = segment_node.GetNode();
+		if (segment.GetCompressionFunction().type != CompressionType::COMPRESSION_UNCOMPRESSED) {
+			return nullptr;
+		}
+	}
+
+	auto merged_stats = BaseStatistics::CreateEmpty(source_column.type);
+	for (auto &segment_node : source_column.GetSegmentTree().SegmentNodes()) {
+		auto &segment = segment_node.GetNode();
+		merged_stats.Merge(segment.GetStats());
+	}
+
+	if (!merged_stats.CanHaveNoNull() && !merged_stats.CanHaveNull()) {
+		return nullptr;
+	}
+	return make_uniq<BaseStatistics>(merged_stats.Copy());
+}
+
 idx_t DictionaryCompressionCompressState::Finalize() {
 	auto &buffer_manager = BufferManager::GetBufferManager(checkpoint_data.GetDatabase());
 	auto handle = buffer_manager.Pin(current_segment->GetBlockHandle());

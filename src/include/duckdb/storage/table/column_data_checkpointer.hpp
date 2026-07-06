@@ -76,7 +76,6 @@ private:
 	void InitAnalyze();
 	void DropSegments();
 	bool ValidityCoveredByBasedata(vector<CheckpointAnalyzeResult> &result);
-	static unique_ptr<BaseStatistics> CollectUncompressedSourceStats(const ColumnData &source_column);
 
 private:
 	vector<reference<ColumnCheckpointState>> &checkpoint_states;

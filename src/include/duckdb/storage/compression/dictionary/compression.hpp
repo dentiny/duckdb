@@ -41,6 +41,11 @@ public:
 	//! per string during compression
 	void SetSourceColumnStats(unique_ptr<BaseStatistics> stats);
 
+	//! Collects the exact stats of a fully uncompressed source column, so they can be reused instead of
+	//! recomputed during dictionary compression (which would otherwise undercount duplicate values). Returns
+	//! nullptr if the source column doesn't meet the conditions required for this to be safe.
+	static unique_ptr<BaseStatistics> CollectUncompressedSourceStats(const ColumnData &source_column);
+
 public:
 	// State regarding current segment
 	StringDictionaryContainer current_dictionary;
