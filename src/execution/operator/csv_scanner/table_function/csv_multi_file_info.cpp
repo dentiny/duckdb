@@ -280,6 +280,7 @@ unique_ptr<GlobalTableFunctionState> CSVMultiFileInfo::InitializeGlobalState(Cli
 struct CSVLocalState : public LocalTableFunctionState {
 public:
 	unique_ptr<StringValueScanner> csv_reader;
+	CSVScanClaim scan_claim;
 	bool done = false;
 };
 
@@ -360,12 +361,23 @@ bool CSVFileScan::TryInitializeScan(ClientContext &context, GlobalTableFunctionS
 	auto &lstate = lstate_p.Cast<CSVLocalState>();
 	auto csv_reader_ptr = shared_ptr_cast<BaseFileReader, CSVFileScan>(shared_from_this());
 	gstate.FinishScan(std::move(lstate.csv_reader));
-	lstate.csv_reader = gstate.Next(csv_reader_ptr);
-	if (!lstate.csv_reader) {
+	if (!gstate.TryClaimNext(csv_reader_ptr, lstate.scan_claim)) {
 		// exhausted the scan
 		return false;
 	}
 	return true;
+}
+
+void CSVFileScan::PrepareScan(ClientContext &context, GlobalTableFunctionState &gstate_p,
+                              LocalTableFunctionState &lstate_p) {
+	auto &lstate = lstate_p.Cast<CSVLocalState>();
+	D_ASSERT(lstate.scan_claim.valid);
+	auto scan_claim = std::move(lstate.scan_claim);
+	auto &file = *scan_claim.file;
+	lstate.csv_reader =
+	    make_uniq<StringValueScanner>(scan_claim.scanner_idx, file.buffer_manager, file.state_machine,
+	                                  file.error_handler, scan_claim.file, false, scan_claim.boundary);
+	lstate.csv_reader->buffer_tracker = std::move(scan_claim.buffer_tracker);
 }
 
 AsyncResult CSVFileScan::Scan(ClientContext &context, GlobalTableFunctionState &global_state,

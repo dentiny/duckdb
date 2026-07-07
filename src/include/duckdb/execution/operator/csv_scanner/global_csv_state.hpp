@@ -20,6 +20,14 @@
 namespace duckdb {
 struct MultiFileBindData;
 
+struct CSVScanClaim {
+	shared_ptr<CSVFileScan> file;
+	CSVIterator boundary;
+	shared_ptr<CSVBufferUsage> buffer_tracker;
+	idx_t scanner_idx = 0;
+	bool valid = false;
+};
+
 //! CSV Global State is used in the CSV Reader Table Function, it controls what each thread
 struct CSVGlobalState : public GlobalTableFunctionState {
 public:
@@ -32,7 +40,7 @@ public:
 	//! Generates a CSV Scanner, with information regarding the piece of buffer it should be read.
 	//! In case it returns a nullptr it means we are done reading these files.
 	void FinishScan(unique_ptr<StringValueScanner> scanner);
-	unique_ptr<StringValueScanner> Next(shared_ptr<CSVFileScan> &file);
+	bool TryClaimNext(shared_ptr<CSVFileScan> &file, CSVScanClaim &claim);
 	void FinishLaunchingTasks(CSVFileScan &scan);
 
 	void FillRejectsTable(CSVFileScan &scan);

@@ -42,7 +42,7 @@ void CSVGlobalState::FinishScan(unique_ptr<StringValueScanner> scanner) {
 	FinishTask(*previous_file);
 }
 
-unique_ptr<StringValueScanner> CSVGlobalState::Next(shared_ptr<CSVFileScan> &current_file_ptr) {
+bool CSVGlobalState::TryClaimNext(shared_ptr<CSVFileScan> &current_file_ptr, CSVScanClaim &claim) {
 	auto &current_file = *current_file_ptr;
 	if (!initialized) {
 		// initialize the boundary for this file
@@ -55,7 +55,7 @@ unique_ptr<StringValueScanner> CSVGlobalState::Next(shared_ptr<CSVFileScan> &cur
 		// produce the next boundary for this file
 		if (current_boundary.done || !current_boundary.Next(*current_file.buffer_manager, current_file.options)) {
 			// finished processing this file - return
-			return nullptr;
+			return false;
 		}
 	}
 	// create the scanner for this file
@@ -64,14 +64,12 @@ unique_ptr<StringValueScanner> CSVGlobalState::Next(shared_ptr<CSVFileScan> &cur
 		    make_shared_ptr<CSVBufferUsage>(*current_file.buffer_manager, current_boundary.GetBufferIdx());
 	}
 	++current_file.started_tasks;
-	// We first create the scanner for the current boundary
-	auto csv_scanner =
-	    make_uniq<StringValueScanner>(scanner_idx++, current_file.buffer_manager, current_file.state_machine,
-	                                  current_file.error_handler, current_file_ptr, false, current_boundary);
-
-	csv_scanner->buffer_tracker = current_buffer_in_use;
-	// We initialize the scan
-	return csv_scanner;
+	claim.file = current_file_ptr;
+	claim.boundary = current_boundary;
+	claim.buffer_tracker = current_buffer_in_use;
+	claim.scanner_idx = scanner_idx++;
+	claim.valid = true;
+	return true;
 }
 
 void CSVGlobalState::FinishLaunchingTasks(CSVFileScan &file) {
