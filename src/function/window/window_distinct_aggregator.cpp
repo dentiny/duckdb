@@ -3,10 +3,13 @@
 #include "duckdb/common/sorting/sort.hpp"
 #include "duckdb/execution/merge_sort_tree.hpp"
 #include "duckdb/function/window/window_aggregate_states.hpp"
+#include "duckdb/parallel/task_executor.hpp"
+#include "duckdb/parallel/thread_context.hpp"
 #include "duckdb/planner/bound_result_modifier.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 #include "duckdb/planner/expression/bound_window_expression.hpp"
 
+#include <exception>
 #include <numeric>
 #include <thread>
 
@@ -73,20 +76,20 @@ public:
 	//! Create a new local sort
 	optional_ptr<LocalSinkState> InitializeLocalSort(ExecutionContext &context) const;
 
-	bool TryPrepareNextStage(WindowDistinctAggregatorLocalState &lstate);
-
 	//! The tree allocators.
 	//! We need to hold onto them for the tree lifetime,
 	//! not the lifetime of the local state that constructed part of the tree
 	mutable vector<unique_ptr<ArenaAllocator>> tree_allocators;
 	//! Finalize guard
 	mutable mutex lock;
+	//! Finalize executor
+	unique_ptr<TaskExecutor> finalize_executor;
+	//! Finalize error
+	std::exception_ptr finalize_error;
 	//! Finalize stage
 	atomic<WindowDistinctSortStage> stage;
 	//! Tasks launched
 	idx_t total_tasks = 0;
-	//! Tasks launched
-	mutable idx_t tasks_assigned;
 	//! Tasks landed
 	mutable atomic<idx_t> tasks_completed;
 
@@ -117,7 +120,7 @@ WindowDistinctAggregatorGlobalState::WindowDistinctAggregatorGlobalState(ClientC
                                                                          const WindowDistinctAggregator &aggregator,
                                                                          idx_t group_count)
     : WindowAggregatorGlobalState(client, aggregator, group_count), stage(WindowDistinctSortStage::INIT),
-      tasks_assigned(0), tasks_completed(0), merge_sort_tree(*this, group_count), levels_flat_native(client, aggr) {
+      tasks_completed(0), merge_sort_tree(*this, group_count), levels_flat_native(client, aggr) {
 	//	1:	functionComputePrevIdcs(𝑖𝑛)
 	//	2:		sorted ← []
 	//	We sort the aggregate arguments and use the partition index as a tie-breaker.
@@ -169,7 +172,6 @@ WindowDistinctAggregatorGlobalState::WindowDistinctAggregatorGlobalState(ClientC
 optional_ptr<LocalSinkState> WindowDistinctAggregatorGlobalState::InitializeLocalSort(ExecutionContext &context) const {
 	lock_guard<mutex> local_sort_guard(lock);
 	auto local_sink = sort->GetLocalSinkState(context);
-	++tasks_assigned;
 	local_sinks.emplace_back(std::move(local_sink));
 
 	return local_sinks.back().get();
@@ -187,17 +189,14 @@ public:
 	void Sink(ExecutionContext &context, DataChunk &sink_chunk, DataChunk &coll_chunk, idx_t input_idx,
 	          optional_ptr<SelectionVector> filter_sel, idx_t filtered, InterruptState &interrupt);
 	void Finalize(ExecutionContext &context, WindowAggregatorGlobalState &gastate, CollectionPtr collection) override;
-	void Sorted();
-	void ExecuteTask(ExecutionContext &context, WindowDistinctAggregatorGlobalState &gdstate);
+	static void Sorted(const WindowDistinctAggregatorGlobalState &gdstate, idx_t block_idx);
+	static void ExecuteTask(ExecutionContext &context, WindowDistinctAggregatorGlobalState &gdstate,
+	                        WindowDistinctSortStage stage, idx_t block_idx);
 	void Evaluate(ExecutionContext &context, const WindowDistinctAggregatorGlobalState &gdstate,
 	              const DataChunk &bounds, Vector &result, idx_t count, idx_t row_idx);
 
 	//! Thread-local sorting data
 	optional_ptr<LocalSinkState> local_sink;
-	//! Finalize stage
-	WindowDistinctSortStage stage = WindowDistinctSortStage::INIT;
-	//! Finalize scan block index
-	idx_t block_idx;
 	//! Thread-local tree aggregation
 	Vector update_v;
 	Vector source_v;
@@ -293,7 +292,8 @@ void WindowDistinctAggregatorLocalState::Finalize(ExecutionContext &context, Win
 }
 
 void WindowDistinctAggregatorLocalState::ExecuteTask(ExecutionContext &context,
-                                                     WindowDistinctAggregatorGlobalState &gdstate) {
+                                                     WindowDistinctAggregatorGlobalState &gdstate,
+                                                     WindowDistinctSortStage stage, idx_t block_idx) {
 	PostIncrement<atomic<idx_t>> on_done(gdstate.tasks_completed);
 
 	switch (stage) {
@@ -318,70 +318,73 @@ void WindowDistinctAggregatorLocalState::ExecuteTask(ExecutionContext &context,
 		break;
 	}
 	case WindowDistinctSortStage::SORTED:
-		Sorted();
+		Sorted(gdstate, block_idx);
 		break;
 	default:
 		break;
 	}
 }
 
-bool WindowDistinctAggregatorGlobalState::TryPrepareNextStage(WindowDistinctAggregatorLocalState &lstate) {
-	lock_guard<mutex> stage_guard(lock);
+namespace {
 
-	switch (stage.load()) {
-	case WindowDistinctSortStage::INIT:
-		total_tasks = local_sinks.size();
-		tasks_assigned = 0;
-		tasks_completed = 0;
-		lstate.stage = stage = WindowDistinctSortStage::COMBINE;
-		lstate.block_idx = tasks_assigned++;
-		return true;
+class WindowDistinctAggregatorTask : public BaseExecutorTask {
+public:
+	WindowDistinctAggregatorTask(TaskExecutor &executor, ClientContext &client, optional_ptr<Pipeline> pipeline,
+	                             WindowDistinctAggregatorGlobalState &gdstate,
+	                             WindowDistinctSortStage stage, idx_t block_idx)
+	    : BaseExecutorTask(executor), client(client), pipeline(pipeline), gdstate(gdstate), stage(stage),
+	      block_idx(block_idx) {
+	}
+
+	void ExecuteTask() override {
+		ThreadContext thread_context(client);
+		ExecutionContext execution_context(client, thread_context, pipeline);
+		WindowDistinctAggregatorLocalState::ExecuteTask(execution_context, gdstate, stage, block_idx);
+	}
+
+	string TaskType() const override {
+		return "WindowDistinctAggregatorTask";
+	}
+
+private:
+	ClientContext &client;
+	optional_ptr<Pipeline> pipeline;
+	WindowDistinctAggregatorGlobalState &gdstate;
+	WindowDistinctSortStage stage;
+	idx_t block_idx;
+};
+
+void ScheduleWindowDistinctTasks(ExecutionContext &context, WindowDistinctAggregatorGlobalState &gdsink,
+                                 WindowDistinctSortStage stage, idx_t task_count) {
+	auto &executor = *gdsink.finalize_executor;
+	gdsink.stage = stage;
+	gdsink.total_tasks = task_count;
+	gdsink.tasks_completed = 0;
+
+	for (idx_t block_idx = 0; block_idx < task_count; ++block_idx) {
+		executor.ScheduleTask(make_uniq<WindowDistinctAggregatorTask>(executor, context.client, context.pipeline,
+		                                                               gdsink, stage, block_idx));
+	}
+}
+
+void PrepareNextWindowDistinctStage(ExecutionContext &context, WindowDistinctAggregatorGlobalState &gdsink,
+                                    WindowDistinctSortStage stage) {
+	switch (stage) {
 	case WindowDistinctSortStage::COMBINE:
-		if (tasks_assigned < total_tasks) {
-			lstate.stage = WindowDistinctSortStage::COMBINE;
-			lstate.block_idx = tasks_assigned++;
-			return true;
-		} else if (tasks_completed < tasks_assigned) {
-			return false;
-		}
-		// All combines are done, so move on to materialising the sorted data (1 task)
-		total_tasks = 1;
-		tasks_completed = 0;
-		tasks_assigned = 0;
-		lstate.stage = stage = WindowDistinctSortStage::FINALIZE;
-		lstate.block_idx = tasks_assigned++;
-		return true;
+		ScheduleWindowDistinctTasks(context, gdsink, WindowDistinctSortStage::FINALIZE, 1);
+		return;
 	case WindowDistinctSortStage::FINALIZE:
-		if (tasks_completed < tasks_assigned) {
-			//	Wait for the single task to finish
-			return false;
-		}
-		//	Move on to building the tree in parallel
-		total_tasks = local_sinks.size();
-		tasks_completed = 0;
-		tasks_assigned = 0;
-		lstate.stage = stage = WindowDistinctSortStage::SORTED;
-		lstate.block_idx = tasks_assigned++;
-		return true;
+		ScheduleWindowDistinctTasks(context, gdsink, WindowDistinctSortStage::SORTED, gdsink.local_sinks.size());
+		return;
 	case WindowDistinctSortStage::SORTED:
-		if (tasks_assigned < total_tasks) {
-			lstate.stage = WindowDistinctSortStage::SORTED;
-			lstate.block_idx = tasks_assigned++;
-			return true;
-		} else if (tasks_completed < tasks_assigned) {
-			lstate.stage = WindowDistinctSortStage::FINISHED;
-			// Sleep while other tasks finish
-			return false;
-		}
-		break;
+		gdsink.stage = WindowDistinctSortStage::FINISHED;
+		return;
 	default:
-		break;
+		throw InternalException("Unexpected window distinct finalization stage");
 	}
-
-	lstate.stage = stage = WindowDistinctSortStage::FINISHED;
-
-	return true;
 }
+
+} // namespace
 
 void WindowDistinctAggregator::Finalize(ExecutionContext &context, CollectionPtr collection, const FrameStats &stats,
                                         OperatorSinkInput &sink) {
@@ -389,13 +392,41 @@ void WindowDistinctAggregator::Finalize(ExecutionContext &context, CollectionPtr
 	auto &ldstate = sink.local_state.Cast<WindowDistinctAggregatorLocalState>();
 	ldstate.Finalize(context, gdsink, collection);
 
-	// Sort, merge and build the tree in parallel
-	while (gdsink.stage.load() != WindowDistinctSortStage::FINISHED) {
-		if (gdsink.TryPrepareNextStage(ldstate)) {
-			ldstate.ExecuteTask(context, gdsink);
-		} else {
-			std::this_thread::yield();
+	try {
+		while (true) {
+			TaskExecutor *executor;
+			WindowDistinctSortStage wait_stage;
+			{
+				lock_guard<mutex> finalize_guard(gdsink.lock);
+				if (gdsink.stage.load() == WindowDistinctSortStage::INIT) {
+					gdsink.finalize_executor = make_uniq<TaskExecutor>(context.client);
+					ScheduleWindowDistinctTasks(context, gdsink, WindowDistinctSortStage::COMBINE,
+					                            gdsink.local_sinks.size());
+				}
+				if (gdsink.finalize_error) {
+					std::rethrow_exception(gdsink.finalize_error);
+				}
+				if (gdsink.stage.load() == WindowDistinctSortStage::FINISHED) {
+					break;
+				}
+				wait_stage = gdsink.stage.load();
+				executor = gdsink.finalize_executor.get();
+			}
+
+			executor->WorkOnTasks();
+
+			lock_guard<mutex> finalize_guard(gdsink.lock);
+			if (gdsink.stage.load() == wait_stage) {
+				PrepareNextWindowDistinctStage(context, gdsink, wait_stage);
+			}
 		}
+	} catch (...) {
+		lock_guard<mutex> finalize_guard(gdsink.lock);
+		if (!gdsink.finalize_error) {
+			gdsink.finalize_error = std::current_exception();
+			gdsink.stage = WindowDistinctSortStage::FINISHED;
+		}
+		throw;
 	}
 
 	//	These are a parallel implementations,
@@ -406,7 +437,7 @@ void WindowDistinctAggregator::Finalize(ExecutionContext &context, CollectionPtr
 	++gdsink.finalized;
 }
 
-void WindowDistinctAggregatorLocalState::Sorted() {
+void WindowDistinctAggregatorLocalState::Sorted(const WindowDistinctAggregatorGlobalState &gdstate, idx_t block_idx) {
 	using ZippedTuple = WindowDistinctAggregatorGlobalState::ZippedTuple;
 	auto &collection = *gdstate.sorted;
 	auto &prev_idcs = gdstate.zipped_tree.LowestLevel();
