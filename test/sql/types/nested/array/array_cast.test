@@ -170,3 +170,19 @@ query I
 SELECT TRY_CAST(l AS INTEGER[][3]) FROM VALUES (['foo']) as v(l);
 ----
 NULL
+
+# Sliced lists keep child offsets into the original list child vector. LIST -> ARRAY casts should only cast selected
+# child values, not a prefix of the original child vector.
+query II
+WITH t(l) AS (VALUES (['bad','1','2']), (['bad','3','4']))
+SELECT list_slice(l, 2, 3), TRY_CAST(list_slice(l, 2, 3) AS INTEGER[2])
+FROM t
+----
+[1, 2]	[1, 2]
+[3, 4]	[3, 4]
+
+query I
+SELECT CAST(list_slice(l, 2, 3) AS INTEGER[2])
+FROM (VALUES (['bad','1','2'])) t(l)
+----
+[1, 2]
