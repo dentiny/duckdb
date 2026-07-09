@@ -37,6 +37,14 @@ public:
 	bool CalculateSpaceRequirements(bool new_string, idx_t string_size);
 	void Flush(bool final = false);
 	idx_t Finalize();
+	//! Enables reusing precomputed stats from the uncompressed source column instead of recomputing them
+	//! per string during compression
+	void SetSourceColumnStats(unique_ptr<BaseStatistics> stats);
+
+	//! Collects the exact stats of a fully uncompressed source column, so they can be reused instead of
+	//! recomputed during dictionary compression (which would otherwise undercount duplicate values). Returns
+	//! nullptr if the source column doesn't meet the conditions required for this to be safe.
+	static unique_ptr<BaseStatistics> CollectUncompressedSourceStats(const ColumnData &source_column);
 
 public:
 	// State regarding current segment
@@ -54,6 +62,12 @@ public:
 
 	// Result of latest LookupString call
 	uint32_t latest_lookup_result;
+
+	//! Column-level stats for a row group. Once assigned, segment stats are copied from the uncompressed
+	//! source column instead of recomputing per string
+	unique_ptr<BaseStatistics> source_column_stats;
+	//! Whether no segment has been flushed yet for this column
+	bool is_first_flush = true;
 };
 
 } // namespace duckdb

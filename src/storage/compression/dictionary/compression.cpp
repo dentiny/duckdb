@@ -54,7 +54,9 @@ bool DictionaryCompressionCompressState::LookupString(string_t str) {
 }
 
 void DictionaryCompressionCompressState::AddNewString(string_t str) {
-	stats_writer.Update(str);
+	if (!source_column_stats) {
+		stats_writer.Update(str);
+	}
 
 	// Copy string to dict
 	current_dictionary.size += str.GetSize();
@@ -80,7 +82,9 @@ void DictionaryCompressionCompressState::AddNewString(string_t str) {
 }
 
 void DictionaryCompressionCompressState::AddNull() {
-	stats_writer.SetHasNull();
+	if (!source_column_stats) {
+		stats_writer.SetHasNull();
+	}
 	selection_buffer.push_back(0);
 	current_segment->count++;
 }
@@ -105,11 +109,57 @@ bool DictionaryCompressionCompressState::CalculateSpaceRequirements(bool new_str
 
 void DictionaryCompressionCompressState::Flush(bool final) {
 	auto segment_size = Finalize();
-	FlushCurrentSegment(stats_writer, segment_size);
+	if (source_column_stats) {
+		// The source stats describe the entire column, not just this segment. If the column is split
+		// across multiple segments, merging the full stats into every segment would cause additive stats
+		// (e.g. total_string_length) to be summed multiple times once merged into the global column stats.
+		// Only a column that fits into a single segment can safely take the exact source stats; otherwise
+		// expand bounds only, which discards (rather than corrupts) the additive stats.
+		bool single_segment = is_first_flush && final;
+		auto merge_type = single_segment ? StatsMergeType::MERGE_STATS : StatsMergeType::EXPAND_BOUNDS;
+		current_segment->GetStatsMutable().Merge(*source_column_stats, merge_type);
+		FlushCurrentSegment(segment_size);
+		stats_writer.Clear();
+	} else {
+		FlushCurrentSegment(stats_writer, segment_size);
+	}
+	is_first_flush = false;
 
 	if (!final) {
 		CreateEmptySegment();
 	}
+}
+
+void DictionaryCompressionCompressState::SetSourceColumnStats(unique_ptr<BaseStatistics> stats) {
+	D_ASSERT(stats);
+	source_column_stats = std::move(stats);
+}
+
+unique_ptr<BaseStatistics>
+DictionaryCompressionCompressState::CollectUncompressedSourceStats(const ColumnData &source_column) {
+	if (source_column.HasUpdates()) {
+		// CheckpointScan overlays committed updates onto the scanned data, so the segment-level stats
+		// (which reflect only the on-disk values) would not match what actually gets compressed
+		return nullptr;
+	}
+
+	for (auto &segment_node : source_column.GetSegmentTree().SegmentNodes()) {
+		auto &segment = segment_node.GetNode();
+		if (segment.GetCompressionFunction().type != CompressionType::COMPRESSION_UNCOMPRESSED) {
+			return nullptr;
+		}
+	}
+
+	auto merged_stats = BaseStatistics::CreateEmpty(source_column.type);
+	for (auto &segment_node : source_column.GetSegmentTree().SegmentNodes()) {
+		auto &segment = segment_node.GetNode();
+		merged_stats.Merge(segment.GetStats());
+	}
+
+	if (!merged_stats.CanHaveNoNull() && !merged_stats.CanHaveNull()) {
+		return nullptr;
+	}
+	return make_uniq<BaseStatistics>(merged_stats.Copy());
 }
 
 idx_t DictionaryCompressionCompressState::Finalize() {

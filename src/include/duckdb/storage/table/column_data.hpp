@@ -120,6 +120,9 @@ public:
 	ColumnSegmentTree &GetSegmentTree() {
 		return data;
 	}
+	const ColumnSegmentTree &GetSegmentTree() const {
+		return data;
+	}
 	void SetCount(idx_t new_count) {
 		this->count = new_count;
 	}
