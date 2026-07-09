@@ -75,6 +75,10 @@ private:
 	//! This is in sorted order of physical column IDs.
 	vector<StorageIndex> mapped_column_ids;
 
+	//! Rows with row_id >= build_snapshot_max_row are replayed into the index after the build scan finishes.
+	//! Rows with row_id < build_snapshot_max_row are covered by the CREATE INDEX scan.
+	optional_idx build_snapshot_max_row;
+
 public:
 	UnboundIndex(unique_ptr<CreateInfo> create_info, IndexStorageInfo storage_info, TableIOManager &table_io_manager,
 	             AttachedDatabase &db);
@@ -122,6 +126,13 @@ public:
 
 	const vector<StorageIndex> &GetMappedColumnIds() const {
 		return mapped_column_ids;
+	}
+
+	void SetBuildSnapshotMaxRow(idx_t max_row) {
+		build_snapshot_max_row = max_row;
+	}
+	optional_idx GetBuildSnapshotMaxRow() const {
+		return build_snapshot_max_row;
 	}
 };
 

@@ -79,7 +79,56 @@ unique_ptr<AnalyzeState> DictionaryCompressionStorage::StringInitAnalyze(ColumnD
 
 bool DictionaryCompressionStorage::StringAnalyze(AnalyzeState &state_p, const Vector &input) {
 	auto &state = state_p.Cast<DictionaryAnalyzeState>();
-	return DictionaryCompression::UpdateState(state, input);
+
+	// Once the dictionary has stopped growing for several consecutive vectors, all
+	// remaining values are already in the hash set.  Skip per-string hash lookups
+	// and just advance the tuple counter — no segment overflow for typical
+	// low-cardinality data, so a single HasEnoughSpace check per vector suffices.
+	static constexpr idx_t SATURATION_VECTORS_THRESHOLD = 4;
+	if (state.is_saturated) {
+		if (!state.CalculateSpaceRequirements(false, 0)) {
+			// Rare: segment is full — fall through to full analysis for this vector
+			state.is_saturated = false;
+			state.vectors_without_new_string = 0;
+		} else {
+			// Fast path: skip per-string hash lookups, but we still verify each value
+			// is already in the dictionary.  If a new string appears after saturation,
+			// we reset the saturated flag so later vectors get full analysis.
+			bool found_new_string = false;
+			for (auto entry : input.Values<string_t>()) {
+				if (!entry.IsValid()) {
+					state.AddNull();
+					continue;
+				}
+				auto &str = entry.GetValue();
+				if (!state.LookupString(str)) {
+					// New string appeared — dictionary is no longer saturated
+					found_new_string = true;
+					break;
+				}
+				state.AddLastLookup();
+			}
+			if (!found_new_string) {
+				return true;
+			}
+			// Reset saturation and fall through to full analysis for this vector
+			state.is_saturated = false;
+			state.vectors_without_new_string = 0;
+		}
+	}
+
+	auto unique_before = state.current_unique_count;
+	bool result = DictionaryCompression::UpdateState(state, input);
+
+	if (state.current_unique_count == unique_before) {
+		state.vectors_without_new_string++;
+		if (state.vectors_without_new_string >= SATURATION_VECTORS_THRESHOLD) {
+			state.is_saturated = true;
+		}
+	} else {
+		state.vectors_without_new_string = 0;
+	}
+	return result;
 }
 
 idx_t DictionaryCompressionStorage::StringFinalAnalyze(AnalyzeState &state_p) {

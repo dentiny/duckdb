@@ -28,6 +28,7 @@
 #include "duckdb/storage/table/append_state.hpp"
 #include "duckdb/storage/table/delete_state.hpp"
 #include "duckdb/storage/table/persistent_table_data.hpp"
+#include "duckdb/storage/table/table_index_list.hpp"
 #include "duckdb/storage/table/row_group.hpp"
 #include "duckdb/storage/table/scan_state.hpp"
 #include "duckdb/storage/table/update_state.hpp"
@@ -286,6 +287,9 @@ void DataTable::InitializeParallelScan(ClientContext &context, ParallelTableScan
                                        const vector<ColumnIndex> &column_indexes) {
 	auto &local_storage = LocalStorage::Get(context, db);
 	row_groups->InitializeParallelScan(state.scan_state);
+	if (auto snapshot = GetCreateIndexBuildSnapshotMaxRow(); snapshot.IsValid()) {
+		state.scan_state.max_row = snapshot.GetIndex();
+	}
 
 	local_storage.InitializeParallelScan(*this, state.local_state);
 }
@@ -320,7 +324,40 @@ void DataTable::Scan(DuckTransaction &transaction, DataChunk &result, TableScanS
 }
 
 bool DataTable::CreateIndexScan(TableScanState &state, DataChunk &result) {
-	return state.table_state.Scan(result, TableScanType::TABLE_SCAN_OMIT_PERMANENTLY_DELETED);
+	if (!state.table_state.Scan(result, TableScanType::TABLE_SCAN_OMIT_PERMANENTLY_DELETED)) {
+		return false;
+	}
+	if (auto snapshot = GetCreateIndexBuildSnapshotMaxRow(); snapshot.IsValid()) {
+		auto snapshot_max_row = snapshot.GetIndex();
+		result.Flatten();
+		auto row_id_data = FlatVector::GetData<row_t>(result.data.back());
+		idx_t count = 0;
+		SelectionVector sel(result.size());
+		for (idx_t i = 0; i < result.size(); i++) {
+			if (row_id_data[i] < row_t(snapshot_max_row)) {
+				sel.set_index(count++, i);
+			}
+		}
+		if (count == 0) {
+			result.SetCardinality(0);
+			return false;
+		}
+		if (count < result.size()) {
+			result.Slice(sel, count);
+		}
+	}
+	return result.size() > 0;
+}
+
+optional_idx DataTable::GetCreateIndexBuildSnapshotMaxRow() const {
+	for (auto &entry : info->indexes.IndexEntries()) {
+		if (entry.bind_state != IndexBindState::BINDING) {
+			continue;
+		}
+		auto &unbound_index = entry.index->Cast<UnboundIndex>();
+		return unbound_index.GetBuildSnapshotMaxRow();
+	}
+	return optional_idx();
 }
 
 //===--------------------------------------------------------------------===//
@@ -826,7 +863,9 @@ void DataTable::VerifyUniqueIndexes(TableIndexList &indexes, optional_ptr<LocalT
 			if (!index.IsUnique() || index.GetIndexType() != ART::TYPE_NAME) {
 				continue;
 			}
-			D_ASSERT(index.IsBound());
+			if (!index.IsBound()) {
+				continue;
+			}
 			auto &art = index.Cast<ART>();
 
 			lock_guard<mutex> guard(entry.lock);
@@ -853,10 +892,12 @@ void DataTable::VerifyUniqueIndexes(TableIndexList &indexes, optional_ptr<LocalT
 		if (!index.IsUnique() || index.GetIndexType() != ART::TYPE_NAME) {
 			continue;
 		}
+		if (!index.IsBound()) {
+			continue;
+		}
 		if (!conflict_info.ConflictTargetMatches(index)) {
 			continue;
 		}
-		D_ASSERT(index.IsBound());
 		auto &art = index.Cast<ART>();
 		if (storage) {
 			auto delete_index = storage->delete_indexes.Find(art.GetIndexName());
@@ -882,10 +923,12 @@ void DataTable::VerifyUniqueIndexes(TableIndexList &indexes, optional_ptr<LocalT
 		if (!index.IsUnique() || index.GetIndexType() != ART::TYPE_NAME) {
 			continue;
 		}
+		if (!index.IsBound()) {
+			continue;
+		}
 		if (manager->IndexMatches(index.Cast<BoundIndex>())) {
 			continue;
 		}
-		D_ASSERT(index.IsBound());
 		auto &art = index.Cast<ART>();
 		if (storage) {
 			auto delete_index = storage->delete_indexes.Find(art.GetIndexName());
@@ -1386,6 +1429,28 @@ ErrorData DataTable::AppendToIndexes(TableIndexList &indexes, optional_ptr<Table
 		if (!index.IsBound()) {
 			// Buffer only the key columns, and store their mapping.
 			auto &unbound_index = index.Cast<UnboundIndex>();
+			if (entry.bind_state == IndexBindState::BINDING) {
+				if (auto snapshot = unbound_index.GetBuildSnapshotMaxRow(); snapshot.IsValid()) {
+					auto snapshot_max_row = snapshot.GetIndex();
+					row_ids.Flatten();
+					auto row_id_data = FlatVector::GetData<row_t>(row_ids);
+					idx_t count = 0;
+					SelectionVector sel(index_chunk.size());
+					for (idx_t i = 0; i < index_chunk.size(); i++) {
+						if (row_id_data[i] >= row_t(snapshot_max_row)) {
+							sel.set_index(count++, i);
+						}
+					}
+					if (count == 0) {
+						continue;
+					}
+					if (count < index_chunk.size()) {
+						index_chunk.Slice(sel, count);
+						table_chunk.Slice(sel, count);
+						row_ids.Slice(sel, count);
+					}
+				}
+			}
 			unbound_index.BufferChunk(index_chunk, row_ids, mapped_column_ids, BufferedIndexReplay::INSERT_ENTRY);
 			continue;
 		}

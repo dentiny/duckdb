@@ -3,6 +3,8 @@ add_library(
   duckdb_benchmark_micro OBJECT
   append.cpp
   append_mix.cpp
+  appender_advanced.cpp
+  appender_lineitem.cpp
   bulkupdate.cpp
   cast.cpp
   in.cpp

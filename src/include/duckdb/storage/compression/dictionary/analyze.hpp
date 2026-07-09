@@ -34,5 +34,10 @@ public:
 	string_set_t current_set;
 	bitpacking_width_t current_width;
 	bitpacking_width_t next_width;
+
+	//! Saturation tracking: once the dictionary stops growing for several consecutive
+	//! vectors, per-string hash lookups can be replaced by a simple tuple counter.
+	idx_t vectors_without_new_string = 0;
+	bool is_saturated = false;
 };
 } // namespace duckdb
