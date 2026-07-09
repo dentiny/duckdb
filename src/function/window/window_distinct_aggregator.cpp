@@ -330,8 +330,8 @@ namespace {
 class WindowDistinctAggregatorTask : public BaseExecutorTask {
 public:
 	WindowDistinctAggregatorTask(TaskExecutor &executor, ClientContext &client, optional_ptr<Pipeline> pipeline,
-	                             WindowDistinctAggregatorGlobalState &gdstate,
-	                             WindowDistinctSortStage stage, idx_t block_idx)
+	                             WindowDistinctAggregatorGlobalState &gdstate, WindowDistinctSortStage stage,
+	                             idx_t block_idx)
 	    : BaseExecutorTask(executor), client(client), pipeline(pipeline), gdstate(gdstate), stage(stage),
 	      block_idx(block_idx) {
 	}
@@ -363,7 +363,7 @@ void ScheduleWindowDistinctTasks(ExecutionContext &context, WindowDistinctAggreg
 
 	for (idx_t block_idx = 0; block_idx < task_count; ++block_idx) {
 		executor.ScheduleTask(make_uniq<WindowDistinctAggregatorTask>(executor, context.client, context.pipeline,
-		                                                               gdsink, stage, block_idx));
+		                                                              gdsink, stage, block_idx));
 	}
 }
 
