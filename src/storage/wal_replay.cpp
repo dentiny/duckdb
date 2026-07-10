@@ -1212,9 +1212,18 @@ void WriteAheadLogDeserializer::ReplayRowGroupData() {
 		for (auto &col : state.current_table->GetColumns().Physical()) {
 			column_ids.emplace_back(col.StorageOid());
 		}
+		DataChunk index_chunk;
+		vector<StorageIndex> mapped_column_ids;
+		const auto has_unbound_indexes = indexes.HasUnbound();
+		if (has_unbound_indexes) {
+			TableIndexList::InitializeIndexChunk(index_chunk, storage.GetTypes(), mapped_column_ids, *table_info);
+		}
 		Vector row_id_vector(LogicalType::ROW_TYPE, STANDARD_VECTOR_SIZE);
 		auto current_row_id = storage.GetNextRowId();
 		for (auto &chunk : new_row_groups.Chunks(transaction, column_ids)) {
+			if (has_unbound_indexes) {
+				TableIndexList::ReferenceIndexChunk(chunk, index_chunk, mapped_column_ids);
+			}
 			auto row_id_writer = FlatVector::Writer<row_t>(row_id_vector, chunk.size());
 			for (idx_t r = 0; r < chunk.size(); r++) {
 				row_id_writer.WriteValue(NumericCast<row_t>(current_row_id + r));
@@ -1223,7 +1232,8 @@ void WriteAheadLogDeserializer::ReplayRowGroupData() {
 			for (auto &index : indexes.Indexes()) {
 				if (!index.IsBound()) {
 					auto &unbound_index = index.Cast<UnboundIndex>();
-					unbound_index.BufferChunk(chunk, row_id_vector, column_ids, BufferedIndexReplay::INSERT_ENTRY);
+					unbound_index.BufferChunk(index_chunk, row_id_vector, mapped_column_ids,
+					                          BufferedIndexReplay::INSERT_ENTRY);
 					continue;
 				}
 				auto &bound_index = index.Cast<BoundIndex>();
