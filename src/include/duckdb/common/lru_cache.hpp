@@ -36,9 +36,13 @@ public:
 	using mapped_type = shared_ptr<Val>;
 	using hasher = KeyHash;
 	using key_equal = KeyEqual;
+	using EntryCallback = std::function<void(const Key &, const shared_ptr<Val> &)>;
 
 	// @param max_total_weight_p: Maximum total weight (in relevant unit) of entries. 0 means unlimited.
-	explicit SharedLruCache(idx_t max_total_weight_p) : max_total_weight(max_total_weight_p), current_total_weight(0) {
+	explicit SharedLruCache(idx_t max_total_weight_p, EntryCallback insert_callback_p = nullptr,
+	                        EntryCallback delete_callback_p = nullptr)
+	    : max_total_weight(max_total_weight_p), current_total_weight(0),
+	      insert_callback(std::move(insert_callback_p)), delete_callback(std::move(delete_callback_p)) {
 	}
 
 	// Disable copy and move
@@ -72,8 +76,9 @@ public:
 		new_entry.payload = std::move(payload);
 		new_entry.payload_weight = payload_weight;
 
-		entry_map[std::move(key)] = std::move(new_entry);
+		auto entry = entry_map.emplace(std::move(key), std::move(new_entry));
 		current_total_weight += payload_weight;
+		OnEntryInserted(entry.first);
 	}
 
 	// Delete the entry with key `key`.
@@ -101,9 +106,12 @@ public:
 
 	// Clear the whole cache.
 	void Clear() {
-		entry_map.clear();
-		lru_list.clear();
-		current_total_weight = 0;
+		while (!lru_list.empty()) {
+			const auto &stale_key = lru_list.back();
+			auto stale_it = entry_map.find(stale_key);
+			D_ASSERT(stale_it != entry_map.end());
+			DeleteImpl(stale_it);
+		}
 	}
 
 	// Evict entries based on their access, until we've freed at least the target number of bytes or there's no entries
@@ -145,7 +153,20 @@ private:
 
 	using EntryMap = unordered_map<Key, Entry, KeyHash, KeyEqual>;
 
+	void OnEntryInserted(typename EntryMap::iterator iter) {
+		if (insert_callback) {
+			insert_callback(iter->first, iter->second.value);
+		}
+	}
+
+	void OnEntryDeleted(typename EntryMap::iterator iter) {
+		if (delete_callback) {
+			delete_callback(iter->first, iter->second.value);
+		}
+	}
+
 	void DeleteImpl(typename EntryMap::iterator iter) {
+		OnEntryDeleted(iter);
 		current_total_weight -= iter->second.payload_weight;
 		lru_list.erase(iter->second.lru_iterator);
 		entry_map.erase(iter);
@@ -173,6 +194,8 @@ private:
 	idx_t current_total_weight;
 	EntryMap entry_map;
 	list<Key> lru_list;
+	EntryCallback insert_callback;
+	EntryCallback delete_callback;
 };
 
 } // namespace duckdb

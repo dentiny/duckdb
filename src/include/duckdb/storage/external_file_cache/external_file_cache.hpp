@@ -111,8 +111,7 @@ private:
 	atomic<bool> enable;
 	//! Generation counter, incremented whenever cache enablement changes.
 	atomic<idx_t> generation;
-	//! Paths of the cached files tracked in the ObjectCache.
-	//! Entries should only be inserted at `GetOrCreateCachedFile` and deleted at object cache entry deletion.
+	//! Paths of cached files currently tracked in the ObjectCache.
 	unordered_set<string> cached_file_keys DUCKDB_GUARDED_BY(lock);
 	//! Lock for accessing cached_file_keys.
 	mutable annotated_mutex lock;

@@ -46,6 +46,12 @@ public:
 	//! Get the rough cache memory usage in bytes for this entry.
 	//! Used for eviction decisions. Return invalid index to prevent eviction.
 	virtual optional_idx GetEstimatedCacheMemory() const = 0;
+
+	virtual void OnLRUCacheInsert(const string &) {
+	}
+
+	virtual void OnLRUCacheDelete(const string &) {
+	}
 };
 
 struct CleanupBufferPool {
@@ -63,7 +69,15 @@ public:
 	explicit ObjectCache(BufferPool &buffer_pool_p) : ObjectCache(DEFAULT_MAX_MEMORY, buffer_pool_p) {
 	}
 
-	ObjectCache(idx_t max_memory, BufferPool &buffer_pool_p) : lru_cache(max_memory), buffer_pool(buffer_pool_p) {
+	ObjectCache(idx_t max_memory, BufferPool &buffer_pool_p)
+	    : lru_cache(max_memory,
+	                [](const string &key, const shared_ptr<ObjectCacheEntry> &value) {
+		                value->OnLRUCacheInsert(key);
+	                },
+	                [](const string &key, const shared_ptr<ObjectCacheEntry> &value) {
+		                value->OnLRUCacheDelete(key);
+	                }),
+	      buffer_pool(buffer_pool_p) {
 	}
 
 	shared_ptr<ObjectCacheEntry> GetObject(const string &key) {

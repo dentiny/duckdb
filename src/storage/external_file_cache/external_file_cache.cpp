@@ -18,12 +18,9 @@ class ExternalFileCache::ExternalFileCacheObjectCacheEntry : public ObjectCacheE
 public:
 	ExternalFileCacheObjectCacheEntry(ExternalFileCache &cache_p, string path_p, idx_t generation_p)
 	    : cache(cache_p), cached_file(make_shared_ptr<CachedFile>(std::move(path_p), generation_p)) {
-		cache.InsertCachedFileKey(cached_file->path);
 	}
 
-	~ExternalFileCacheObjectCacheEntry() override {
-		cache.EraseCachedFileKey(cached_file->path);
-	}
+	~ExternalFileCacheObjectCacheEntry() override = default;
 
 	static string ObjectType() {
 		return "external_file_cache";
@@ -31,6 +28,14 @@ public:
 
 	string GetObjectType() override {
 		return ObjectType();
+	}
+
+	void OnLRUCacheInsert(const string &) override {
+		cache.InsertCachedFileKey(cached_file->path);
+	}
+
+	void OnLRUCacheDelete(const string &) override {
+		cache.EraseCachedFileKey(cached_file->path);
 	}
 
 	optional_idx GetEstimatedCacheMemory() const override {
