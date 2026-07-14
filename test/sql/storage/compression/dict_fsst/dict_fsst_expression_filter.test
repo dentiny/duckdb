@@ -17,9 +17,24 @@ SELECT concat('HumanEval/', i::VARCHAR) AS task_id
 FROM range(0, 2048) tbl(i)
 
 statement ok
+CREATE TABLE with_nulls AS
+SELECT CASE WHEN i % 11 = 0 THEN NULL ELSE concat('HumanEval/', i::VARCHAR) END AS task_id
+FROM range(0, 164) tbl(i)
+
+statement ok
+CREATE TABLE appended_after_checkpoint AS
+SELECT concat('HumanEval/', i::VARCHAR) AS task_id
+FROM range(0, 164) tbl(i)
+
+statement ok
 CHECKPOINT
 
 restart
+
+statement ok
+INSERT INTO appended_after_checkpoint
+SELECT concat('HumanEval/', i::VARCHAR) AS task_id
+FROM range(0, 10) tbl(i)
 
 query I
 SELECT count(*) FROM pragma_storage_info('partial_segment')
@@ -57,6 +72,18 @@ SELECT count(*) FROM full_vector
 WHERE split_part(task_id, '/', 2)::INTEGER >= 10
 ----
 2038
+
+query I
+SELECT count(*) FROM with_nulls
+WHERE split_part(task_id, '/', 2)::INTEGER >= 10
+----
+140
+
+query I
+SELECT count(*) FROM appended_after_checkpoint
+WHERE split_part(task_id, '/', 2)::INTEGER >= 10
+----
+154
 
 statement ok
 DELETE FROM full_vector
