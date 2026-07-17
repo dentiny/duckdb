@@ -300,9 +300,10 @@ BoundStatement SecretManager::BindCreateSecret(CatalogTransaction transaction, C
 		// Cast the provided value to the expected type
 		string error_msg;
 		Value cast_value;
-		if (!param.second.DefaultTryCastAs(matched_param->second, cast_value, &error_msg)) {
+		const auto &matched_type = matched_param->second.GetType();
+		if (!param.second.DefaultTryCastAs(matched_type, cast_value, &error_msg)) {
 			throw BinderException("Failed to cast option '%s' to type '%s': '%s'", matched_param->first,
-			                      matched_param->second.ToString(), error_msg);
+			                      matched_type.ToString(), error_msg);
 		}
 
 		bound_info.options[Identifier(matched_param->first.GetIdentifierName()).GetIdentifierName()] = {cast_value};

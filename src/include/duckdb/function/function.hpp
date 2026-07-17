@@ -112,7 +112,7 @@ struct FunctionLocalState {
 
 struct FunctionParameters {
 	vector<Value> values;
-	named_parameter_map_t named_parameters;
+	bound_named_parameter_map_t named_parameters;
 };
 
 class FunctionParameter {

@@ -178,6 +178,7 @@ using duckdb::GetCTableFunction;
 duckdb_table_function duckdb_create_table_function() {
 	auto function = new duckdb::TableFunction("", {}, duckdb::CTableFunction, duckdb::CTableFunctionBind,
 	                                          duckdb::CTableFunctionInit, duckdb::CTableFunctionLocalInit);
+	function->SetNullHandling(duckdb::FunctionNullHandling::SPECIAL_HANDLING);
 	function->function_info = duckdb::make_shared_ptr<duckdb::CTableFunctionInfo>();
 	function->cardinality = duckdb::CTableFunctionCardinality;
 	return reinterpret_cast<duckdb_table_function>(function);
@@ -285,7 +286,7 @@ duckdb_state duckdb_register_table_function(duckdb_connection connection, duckdb
 		return DuckDBError;
 	}
 	for (auto it = tf.named_parameters.begin(); it != tf.named_parameters.end(); it++) {
-		if (duckdb::TypeVisitor::Contains(it->second, duckdb::LogicalTypeId::INVALID)) {
+		if (duckdb::TypeVisitor::Contains(it->second.GetType(), duckdb::LogicalTypeId::INVALID)) {
 			return DuckDBError;
 		}
 	}

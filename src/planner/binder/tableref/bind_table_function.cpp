@@ -186,8 +186,31 @@ static void ApplyPostgresSetofAliasCompatibility(const TableFunction &table_func
 	return_names[0] = ref.alias;
 }
 
+void Binder::ValidateTableFunctionNullHandling(const TableFunction &table_function, const vector<Value> &parameters,
+                                               const bound_named_parameter_map_t &named_parameters) {
+	if (table_function.GetNullHandling() == FunctionNullHandling::SPECIAL_HANDLING) {
+		return;
+	}
+	for (idx_t parameter_idx = 0; parameter_idx < parameters.size(); parameter_idx++) {
+		auto &parameter_type = parameter_idx < table_function.GetArguments().size()
+		                           ? table_function.GetArguments()[parameter_idx]
+		                           : table_function.GetVarArgs();
+		if (parameter_type != LogicalType::TABLE && parameters[parameter_idx].IsNull()) {
+			throw InvalidInputException("Table function \"%s\" does not accept NULL for positional parameter %d",
+			                            table_function.name, parameter_idx + 1);
+		}
+	}
+	for (const auto &entry : named_parameters) {
+		if (entry.second.IsNull()) {
+			throw InvalidInputException("Table function \"%s\" does not accept NULL for named parameter \"%s\"",
+			                            table_function.name, entry.first);
+		}
+	}
+}
+
 BoundStatement Binder::BindTableFunctionInternal(TableFunction &table_function, const TableFunctionRef &ref,
                                                  vector<Value> parameters, named_parameter_map_t named_parameters,
+	                                             bound_named_parameter_map_t bound_named_parameters,
                                                  vector<LogicalType> input_table_types,
                                                  vector<Identifier> input_table_names,
                                                  optional_ptr<unique_ptr<LogicalOperator>> input_plan) {
@@ -201,8 +224,9 @@ BoundStatement Binder::BindTableFunctionInternal(TableFunction &table_function, 
 	auto constexpr ordinality_name = "ordinality";
 	string ordinality_column_name = ordinality_name;
 	optional_idx ordinality_column_id;
+	ValidateTableFunctionNullHandling(table_function, parameters, bound_named_parameters);
 	if (table_function.bind || table_function.bind_replace || table_function.bind_operator) {
-		TableFunctionBindInput bind_input(parameters, named_parameters, input_table_types, input_table_names,
+		TableFunctionBindInput bind_input(parameters, bound_named_parameters, input_table_types, input_table_names,
 		                                  table_function.function_info.get(), this, table_function, ref, input_plan);
 		if (table_function.bind_operator) {
 			vector<string> operator_names;
@@ -355,15 +379,14 @@ BoundStatement Binder::BindTableFunctionInternal(TableFunction &table_function, 
 }
 
 BoundStatement Binder::BindTableFunction(TableFunction &function, vector<Value> parameters) {
-	named_parameter_map_t named_parameters;
 	vector<LogicalType> input_table_types;
 	vector<Identifier> input_table_names;
 
 	TableFunctionRef ref;
 	ref.alias = function.name;
 	D_ASSERT(!ref.alias.empty());
-	return BindTableFunctionInternal(function, ref, std::move(parameters), std::move(named_parameters),
-	                                 std::move(input_table_types), std::move(input_table_names), nullptr);
+	return BindTableFunctionInternal(function, ref, std::move(parameters), {}, {}, std::move(input_table_types),
+	                                 std::move(input_table_names), nullptr);
 }
 
 BoundStatement Binder::Bind(TableFunctionRef &ref) {
@@ -440,7 +463,8 @@ BoundStatement Binder::Bind(TableFunctionRef &ref) {
 	auto table_function = function.functions.GetFunctionByOffset(best_function_idx.GetIndex());
 
 	// now check the named parameters
-	BindNamedParameters(table_function.named_parameters, named_parameters, error_context, table_function.name);
+	auto bound_named_parameters =
+	    BindNamedParameters(table_function.named_parameters, named_parameters, error_context, table_function.name);
 
 	vector<LogicalType> input_table_types;
 	vector<Identifier> input_table_names;
@@ -480,6 +504,7 @@ BoundStatement Binder::Bind(TableFunctionRef &ref) {
 	BoundStatement get;
 	try {
 		get = BindTableFunctionInternal(table_function, ref, std::move(parameters), std::move(named_parameters),
+		                                std::move(bound_named_parameters),
 		                                std::move(input_table_types), std::move(input_table_names), &subquery.plan);
 	} catch (std::exception &ex) {
 		error = ErrorData(ex);

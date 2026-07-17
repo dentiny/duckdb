@@ -107,7 +107,7 @@ struct LocalTableFunctionState {
 };
 
 struct TableFunctionBindInput {
-	TableFunctionBindInput(vector<Value> &inputs, named_parameter_map_t &named_parameters,
+	TableFunctionBindInput(vector<Value> &inputs, bound_named_parameter_map_t &named_parameters,
 	                       vector<LogicalType> &input_table_types, vector<Identifier> &input_table_names,
 	                       optional_ptr<TableFunctionInfo> info, optional_ptr<Binder> binder,
 	                       TableFunction &table_function, const TableFunctionRef &ref,
@@ -118,7 +118,7 @@ struct TableFunctionBindInput {
 	}
 
 	vector<Value> &inputs;
-	named_parameter_map_t &named_parameters;
+	bound_named_parameter_map_t &named_parameters;
 	vector<LogicalType> &input_table_types;
 	vector<Identifier> &input_table_names;
 	optional_ptr<TableFunctionInfo> info;
@@ -404,6 +404,13 @@ public:
 	TableFunction(const vector<LogicalType> &arguments, std::nullptr_t function, table_function_bind_t bind = nullptr,
 	              table_function_init_global_t init_global = nullptr, table_function_init_local_t init_local = nullptr);
 
+	auto GetNullHandling() const -> FunctionNullHandling {
+		return null_handling;
+	}
+	auto SetNullHandling(FunctionNullHandling value) -> void {
+		null_handling = value;
+	}
+
 	bool HasBindCallback() const {
 		return bind != nullptr;
 	}
@@ -542,6 +549,9 @@ public:
 	DUCKDB_API bool Equal(const TableFunction &rhs) const;
 	DUCKDB_API bool operator==(const TableFunction &rhs) const;
 	DUCKDB_API bool operator!=(const TableFunction &rhs) const;
+
+private:
+	FunctionNullHandling null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING;
 };
 
 } // namespace duckdb

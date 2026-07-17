@@ -726,7 +726,7 @@ void duckdb_copy_function_set_copy_from_function(duckdb_copy_function copy_funct
 		return;
 	}
 	for (auto it = tf.named_parameters.begin(); it != tf.named_parameters.end(); it++) {
-		if (duckdb::TypeVisitor::Contains(it->second, duckdb::LogicalTypeId::INVALID)) {
+		if (duckdb::TypeVisitor::Contains(it->second.GetType(), duckdb::LogicalTypeId::INVALID)) {
 			return;
 		}
 	}

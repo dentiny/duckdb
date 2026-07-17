@@ -470,7 +470,7 @@ struct TableFunctionExtractor {
 			results.emplace_back(fun.GetArguments()[i].ToString());
 		}
 		for (auto &param : fun.named_parameters) {
-			results.emplace_back(param.second.ToString());
+			results.emplace_back(param.second.GetType().ToString());
 		}
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
 	}
@@ -532,7 +532,7 @@ struct PragmaFunctionExtractor {
 			results.emplace_back(fun.GetArguments()[i].ToString());
 		}
 		for (auto &param : fun.named_parameters) {
-			results.emplace_back(param.second.ToString());
+			results.emplace_back(param.second.GetType().ToString());
 		}
 		return Value::LIST(LogicalType::VARCHAR, std::move(results));
 	}

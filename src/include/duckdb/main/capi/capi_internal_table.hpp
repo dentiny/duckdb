@@ -61,6 +61,16 @@ struct CTableInternalBindInfo {
 	    : context(context), parameters(parameters), named_parameters(named_parameters), return_types(return_types),
 	      names(names), bind_data(bind_data), function_info(function_info), success(true) {
 	}
+	CTableInternalBindInfo(ClientContext &context, const vector<Value> &parameters,
+	                       const bound_named_parameter_map_t &bound_named_parameters,
+	                       vector<LogicalType> &return_types, vector<string> &names, CTableBindData &bind_data,
+	                       CTableFunctionInfo &function_info)
+	    : context(context), parameters(parameters), return_types(return_types), names(names), bind_data(bind_data),
+	      function_info(function_info), success(true) {
+		for (const auto &entry : bound_named_parameters) {
+			named_parameters.emplace(entry.first, entry.second.GetRawValueForBridge());
+		}
+	}
 
 	ClientContext &context;
 

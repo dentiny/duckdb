@@ -16,8 +16,11 @@ map<string, T> order_case_insensitive_map(const identifier_map_t<T> &input_map) 
 	return result;
 }
 
-void Binder::BindNamedParameters(named_parameter_type_map_t &types, named_parameter_map_t &values,
-                                 QueryErrorContext &error_context, const Identifier &func_name) {
+bound_named_parameter_map_t Binder::BindNamedParameters(const named_parameter_type_map_t &types,
+                                                        named_parameter_map_t &values,
+                                                        QueryErrorContext &error_context,
+                                                        const Identifier &func_name) {
+	bound_named_parameter_map_t result;
 	for (auto &kv : values) {
 		auto entry = types.find(kv.first);
 		if (entry == types.end()) {
@@ -28,7 +31,7 @@ void Binder::BindNamedParameters(named_parameter_type_map_t &types, named_parame
 				named_params += "    ";
 				named_params += kv_ordered_params.first;
 				named_params += " ";
-				named_params += kv_ordered_params.second.ToString();
+				named_params += kv_ordered_params.second.GetType().ToString();
 				named_params += "\n";
 			}
 			string error_msg;
@@ -40,10 +43,13 @@ void Binder::BindNamedParameters(named_parameter_type_map_t &types, named_parame
 			throw BinderException(error_context, "Invalid named parameter \"%s\" for function %s\n%s", kv.first,
 			                      func_name.GetIdentifierName(), error_msg);
 		}
-		if (entry->second.id() != LogicalTypeId::ANY) {
-			kv.second = kv.second.DefaultCastAs(entry->second);
+		const auto &type = entry->second.GetType();
+		if (type.id() != LogicalTypeId::ANY) {
+			kv.second = kv.second.DefaultCastAs(type);
 		}
+		result.emplace(kv.first, BoundNamedParameterValue(kv.second, type, func_name, kv.first));
 	}
+	return result;
 }
 
 } // namespace duckdb

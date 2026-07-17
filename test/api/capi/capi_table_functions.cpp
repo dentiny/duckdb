@@ -184,7 +184,7 @@ void my_named_bind(duckdb_bind_info info) {
 
 	auto nparam = duckdb_bind_get_named_parameter(info, "my_parameter");
 	if (nparam) {
-		my_bind_data->multiplier = duckdb_get_int64(nparam);
+		my_bind_data->multiplier = duckdb_is_null_value(nparam) ? 0 : duckdb_get_int64(nparam);
 	} else {
 		my_bind_data->multiplier = 1;
 	}
@@ -240,6 +240,11 @@ TEST_CASE("Test Table Function named parameters in C API", "[capi]") {
 	REQUIRE_NO_FAIL(*result);
 	REQUIRE(result->Fetch<int64_t>(0, 0) == 126);
 	REQUIRE(result->Fetch<int64_t>(0, 1) == 252);
+
+	result = tester.Query("SELECT * FROM my_multiplier_function(2, my_parameter=NULL)");
+	REQUIRE_NO_FAIL(*result);
+	REQUIRE(result->Fetch<int64_t>(0, 0) == 0);
+	REQUIRE(result->Fetch<int64_t>(0, 1) == 0);
 }
 
 struct my_bind_connection_id_data {

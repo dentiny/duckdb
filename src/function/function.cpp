@@ -188,7 +188,7 @@ string Function::CallToString(const Identifier &catalog_name, const Identifier &
 		input_arguments.push_back(arg.ToString());
 	}
 	for (auto &kv : named_parameters) {
-		input_arguments.push_back(StringUtil::Format("%s : %s", kv.first, kv.second.ToString()));
+		input_arguments.push_back(StringUtil::Format("%s : %s", kv.first, kv.second.GetType().ToString()));
 	}
 	string prefix = "";
 	if (RequiresCatalogAndSchemaNamePrefix(catalog_name, schema_name)) {

@@ -10,6 +10,7 @@
 #include "duckdb/common/serializer/serializer.hpp"
 #include "duckdb/common/serializer/deserializer.hpp"
 #include "duckdb/parser/tableref/table_function_ref.hpp"
+#include "duckdb/planner/binder.hpp"
 #include "duckdb/planner/filter/expression_filter.hpp"
 
 namespace duckdb {
@@ -374,8 +375,12 @@ unique_ptr<LogicalOperator> LogicalGet::Deserialize(Deserializer &deserializer) 
 	auto &context = deserializer.Get<ClientContext &>();
 	virtual_column_map_t virtual_columns;
 	if (!has_serialize) {
+		QueryErrorContext error_context;
+		auto bound_named_parameters = Binder::BindNamedParameters(function.named_parameters, result->named_parameters,
+		                                                        error_context, function.name);
+		Binder::ValidateTableFunctionNullHandling(function, result->parameters, bound_named_parameters);
 		TableFunctionRef empty_ref;
-		TableFunctionBindInput input(result->parameters, result->named_parameters, result->input_table_types,
+		TableFunctionBindInput input(result->parameters, bound_named_parameters, result->input_table_types,
 		                             result->input_table_names, function.function_info.get(), nullptr, result->function,
 		                             empty_ref, nullptr);
 
