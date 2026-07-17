@@ -530,6 +530,11 @@ DynamicTableFilterSet::GetFinalTableFilters(const PhysicalTableScan &scan,
 		for (auto &filter_entry : *existing_filters) {
 			result->PushFilter(filter_entry.GetIndex(), filter_entry.Filter().Cast<ExpressionFilter>().Copy());
 		}
+		for (auto &row_group_filter : existing_filters->GetRowGroupFilters()) {
+			auto row_group_filter_copy = row_group_filter.Copy();
+			result->PushRowGroupFilter(std::move(row_group_filter_copy.column_indexes),
+			                           std::move(row_group_filter_copy.filters));
+		}
 	}
 	for (auto &entry : filters) {
 		for (auto &filter_entry : *entry.second) {
