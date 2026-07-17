@@ -16,11 +16,20 @@
 
 namespace duckdb {
 
+struct TableFilterSetMultiColumnFilter {
+	vector<ProjectionIndex> column_indexes;
+	vector<unique_ptr<TableFilter>> filters;
+
+	bool Equals(const TableFilterSetMultiColumnFilter &other) const;
+	TableFilterSetMultiColumnFilter Copy() const;
+};
+
 //! The filters in here are non-composite (only need a single column to be evaluated)
-//! Conditions like `A = 2 OR B = 4` are not pushed into a TableFilterSet.
+//! Cross-column OR conditions can be stored separately for row-group pruning only.
 class TableFilterSet {
 public:
 	void PushFilter(ProjectionIndex col_idx, unique_ptr<TableFilter> filter);
+	void PushRowGroupFilter(vector<ProjectionIndex> column_indexes, vector<unique_ptr<TableFilter>> filters);
 	bool HasFilters() const;
 	idx_t FilterCount() const;
 	bool HasFilter(ProjectionIndex col_idx) const;
@@ -42,6 +51,10 @@ public:
 
 	map<ProjectionIndex, unique_ptr<TableFilter>> GetTableFiltersForSerialization(Serializer &serializer) const;
 	map<ProjectionIndex, unique_ptr<TableFilter>> &GetTableFiltersForDeserialization(Deserializer &deserializer);
+
+	const vector<TableFilterSetMultiColumnFilter> &GetRowGroupFilters() const;
+	vector<TableFilterSetMultiColumnFilter> TakeRowGroupFilters();
+	void SetRowGroupFilters(vector<TableFilterSetMultiColumnFilter> filters);
 
 public:
 	class TableFilterIteratorEntry {
@@ -109,6 +122,7 @@ public:
 
 private:
 	map<ProjectionIndex, unique_ptr<TableFilter>> filters;
+	vector<TableFilterSetMultiColumnFilter> row_group_filters;
 };
 
 class DynamicTableFilterSet {

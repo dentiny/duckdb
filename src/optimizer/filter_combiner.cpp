@@ -594,6 +594,8 @@ FilterPushdownResult FilterCombiner::TryPushdownOrClause(TableFilterSet &table_f
 		return FilterPushdownResult::NO_PUSHDOWN;
 	}
 	auto conj_filter = make_uniq<BoundConjunctionExpression>(ExpressionType::CONJUNCTION_OR);
+	vector<ProjectionIndex> row_group_filter_columns;
+	vector<unique_ptr<TableFilter>> row_group_filters;
 	if (conj.GetChildren().empty()) {
 		return FilterPushdownResult::NO_PUSHDOWN;
 	}
@@ -626,23 +628,20 @@ FilterPushdownResult FilterCombiner::TryPushdownOrClause(TableFilterSet &table_f
 		if (!proj_id.IsValid()) {
 			proj_id = column_ref->Binding().column_index;
 			col_type = column_ref->GetReturnType();
-		} else if (proj_id != column_ref->Binding().column_index) {
-			return FilterPushdownResult::NO_PUSHDOWN;
 		}
 
 		auto comparison_type = invert ? FlipComparisonExpression(comp.GetExpressionType()) : comp.GetExpressionType();
+		unique_ptr<Expression> filter_expression;
 		if (const_val->GetValue().IsNull()) {
 			switch (comparison_type) {
 			case ExpressionType::COMPARE_DISTINCT_FROM: {
-				auto null_expr = ExpressionFilter::CreateNullCheckExpression(CreateFilterTargetExpression(*column_ref),
-				                                                             ExpressionType::OPERATOR_IS_NOT_NULL);
-				conj_filter->GetChildrenMutable().push_back(std::move(null_expr));
+				filter_expression = ExpressionFilter::CreateNullCheckExpression(
+				    CreateFilterTargetExpression(*column_ref), ExpressionType::OPERATOR_IS_NOT_NULL);
 				break;
 			}
 			case ExpressionType::COMPARE_NOT_DISTINCT_FROM: {
-				auto null_expr = ExpressionFilter::CreateNullCheckExpression(CreateFilterTargetExpression(*column_ref),
-				                                                             ExpressionType::OPERATOR_IS_NULL);
-				conj_filter->GetChildrenMutable().push_back(std::move(null_expr));
+				filter_expression = ExpressionFilter::CreateNullCheckExpression(
+				    CreateFilterTargetExpression(*column_ref), ExpressionType::OPERATOR_IS_NULL);
 				break;
 			}
 			default:
@@ -651,11 +650,25 @@ FilterPushdownResult FilterCombiner::TryPushdownOrClause(TableFilterSet &table_f
 				break;
 			}
 		} else {
-			conj_filter->GetChildrenMutable().push_back(
-			    CreateComparisonExpression(*column_ref, comparison_type, const_val->GetValue()));
+			filter_expression = CreateComparisonExpression(*column_ref, comparison_type, const_val->GetValue());
 		}
+		if (!filter_expression) {
+			continue;
+		}
+		if (column_ref->Binding().column_index == proj_id) {
+			conj_filter->GetChildrenMutable().push_back(filter_expression->Copy());
+		}
+		row_group_filter_columns.push_back(column_ref->Binding().column_index);
+		row_group_filters.push_back(make_uniq<ExpressionFilter>(std::move(filter_expression)));
 	}
-	table_filters.PushFilter(proj_id, CreateOptionalExpressionFilter(std::move(conj_filter), col_type));
+	if (row_group_filters.empty()) {
+		return FilterPushdownResult::NO_PUSHDOWN;
+	}
+	if (conj_filter->GetChildren().size() == row_group_filters.size()) {
+		table_filters.PushFilter(proj_id, CreateOptionalExpressionFilter(std::move(conj_filter), col_type));
+	} else {
+		table_filters.PushRowGroupFilter(std::move(row_group_filter_columns), std::move(row_group_filters));
+	}
 	return FilterPushdownResult::PUSHED_DOWN_PARTIALLY;
 }
 
