@@ -744,9 +744,9 @@ bool RowGroup::CheckZonemap(optional_ptr<ClientContext> context, ScanFilterInfo 
 	auto &column_ids = filters.GetColumnIds();
 	for (auto &row_group_filter : table_filters->GetRowGroupFilters()) {
 		bool all_filters_are_false = true;
-		for (idx_t i = 0; i < row_group_filter.filters.size(); i++) {
-			auto &filter = *row_group_filter.filters[i];
-			const auto &base_column_index = column_ids[row_group_filter.column_indexes[i]];
+		for (auto &row_group_entry : row_group_filter.filters) {
+			auto &filter = *row_group_entry.filter;
+			const auto &base_column_index = column_ids[row_group_entry.column_index];
 
 			FilterPropagateResult prune_result;
 			if (base_column_index.IsRowIdColumn()) {

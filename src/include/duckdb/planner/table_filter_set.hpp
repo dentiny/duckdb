@@ -16,9 +16,16 @@
 
 namespace duckdb {
 
+struct TableFilterSetRowGroupFilter {
+	ProjectionIndex column_index;
+	unique_ptr<TableFilter> filter;
+
+	bool Equals(const TableFilterSetRowGroupFilter &other) const;
+	TableFilterSetRowGroupFilter Copy() const;
+};
+
 struct TableFilterSetMultiColumnFilter {
-	vector<ProjectionIndex> column_indexes;
-	vector<unique_ptr<TableFilter>> filters;
+	vector<TableFilterSetRowGroupFilter> filters;
 
 	bool Equals(const TableFilterSetMultiColumnFilter &other) const;
 	TableFilterSetMultiColumnFilter Copy() const;
@@ -29,7 +36,7 @@ struct TableFilterSetMultiColumnFilter {
 class TableFilterSet {
 public:
 	void PushFilter(ProjectionIndex col_idx, unique_ptr<TableFilter> filter);
-	void PushRowGroupFilter(vector<ProjectionIndex> column_indexes, vector<unique_ptr<TableFilter>> filters);
+	void PushRowGroupFilter(vector<TableFilterSetRowGroupFilter> filters);
 	bool HasFilters() const;
 	idx_t FilterCount() const;
 	bool HasFilter(ProjectionIndex col_idx) const;
