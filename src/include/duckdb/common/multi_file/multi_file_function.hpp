@@ -200,7 +200,7 @@ public:
 		for (auto &kv : input.named_parameters) {
 			auto loption = StringUtil::Lower(kv.first.GetIdentifierName());
 			if (loption == "allow_empty") {
-				multi_file_reader->ParseOption(loption, kv.second, file_options, context);
+				multi_file_reader->ParseOption(loption, kv.second.GetValueOrNull(), file_options, context);
 				if (file_options.allow_empty) {
 					glob_input.allow_empty = true;
 				}
@@ -215,10 +215,11 @@ public:
 		auto options = interface->InitializeOptions(context, input.info);
 		for (auto &kv : input.named_parameters) {
 			auto loption = StringUtil::Lower(kv.first.GetIdentifierName());
-			if (multi_file_reader->ParseOption(loption, kv.second, file_options, context)) {
+			if (multi_file_reader->ParseOption(loption, kv.second.GetValueOrNull(), file_options, context)) {
 				continue;
 			}
-			if (interface->ParseOption(context, kv.first.GetIdentifierName(), kv.second, file_options, *options)) {
+			if (interface->ParseOption(context, kv.first.GetIdentifierName(), kv.second.GetValueOrNull(), file_options,
+			                           *options)) {
 				continue;
 			}
 			throw NotImplementedException("Unimplemented option %s", kv.first);

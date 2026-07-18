@@ -62,7 +62,11 @@ static unique_ptr<FunctionData> CSVSniffBind(ClientContext &context, TableFuncti
 		input.named_parameters.erase("force_match");
 	}
 	MultiFileOptions file_options;
-	result->options.FromNamedParameters(input.named_parameters, context, file_options);
+	named_parameter_map_t named_parameters;
+	for (auto &entry : input.named_parameters) {
+		named_parameters.emplace(entry.first, entry.second.GetValueOrNull());
+	}
+	result->options.FromNamedParameters(named_parameters, context, file_options);
 	result->options.Verify(file_options);
 
 	// We want to return the whole CSV Configuration

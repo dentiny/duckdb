@@ -71,11 +71,11 @@ static unique_ptr<FunctionData> BindEnableLogging(ClientContext &context, TableF
 				    children[i];
 			}
 		} else if (key == "storage_path") {
-			result->storage_config["path"] = param.second;
+			result->storage_config["path"] = param.second.GetValueOrNull();
 		} else if (key == "storage_normalize") {
-			result->storage_config["normalize"] = param.second;
+			result->storage_config["normalize"] = param.second.GetValueOrNull();
 		} else if (key == "storage_buffer_size") {
-			result->storage_config["buffer_size"] = param.second;
+			result->storage_config["buffer_size"] = param.second.GetValueOrNull();
 		} else {
 			throw InvalidInputException("EnableLogging: unknown named parameter: %s", param.first.c_str());
 		}

@@ -15,6 +15,11 @@ NULL
 NULL
 
 statement error
+FROM repeat_row(42, num_rows=NULL)
+----
+Invalid Input Error: Named parameter "num_rows" for table function "repeat_row" cannot be NULL
+
+statement error
 FROM repeat_row(num_rows=3)
 ----
 requires at least one column to be specified

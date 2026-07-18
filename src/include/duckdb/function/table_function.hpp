@@ -111,14 +111,11 @@ struct TableFunctionBindInput {
 	                       vector<LogicalType> &input_table_types, vector<Identifier> &input_table_names,
 	                       optional_ptr<TableFunctionInfo> info, optional_ptr<Binder> binder,
 	                       TableFunction &table_function, const TableFunctionRef &ref,
-	                       optional_ptr<unique_ptr<LogicalOperator>> input_plan = nullptr)
-	    : inputs(inputs), named_parameters(named_parameters), input_table_types(input_table_types),
-	      input_table_names(input_table_names), info(info), binder(binder), table_function(table_function), ref(ref),
-	      input_plan(input_plan) {
-	}
+	                       optional_ptr<unique_ptr<LogicalOperator>> input_plan = nullptr);
 
 	vector<Value> &inputs;
-	named_parameter_map_t &named_parameters;
+	bound_named_parameter_map_t bound_named_parameters;
+	bound_named_parameter_map_t &named_parameters;
 	vector<LogicalType> &input_table_types;
 	vector<Identifier> &input_table_names;
 	optional_ptr<TableFunctionInfo> info;
@@ -543,5 +540,20 @@ public:
 	DUCKDB_API bool operator==(const TableFunction &rhs) const;
 	DUCKDB_API bool operator!=(const TableFunction &rhs) const;
 };
+
+inline TableFunctionBindInput::TableFunctionBindInput(vector<Value> &inputs, named_parameter_map_t &named_parameters,
+                                                      vector<LogicalType> &input_table_types,
+                                                      vector<Identifier> &input_table_names,
+                                                      optional_ptr<TableFunctionInfo> info, optional_ptr<Binder> binder,
+                                                      TableFunction &table_function, const TableFunctionRef &ref,
+                                                      optional_ptr<unique_ptr<LogicalOperator>> input_plan)
+    : inputs(inputs), named_parameters(bound_named_parameters), input_table_types(input_table_types),
+      input_table_names(input_table_names), info(info), binder(binder), table_function(table_function), ref(ref),
+      input_plan(input_plan) {
+	for (auto &entry : named_parameters) {
+		bound_named_parameters.emplace(entry.first,
+		                               BoundNamedParameterValue(entry.second, table_function.name, entry.first));
+	}
+}
 
 } // namespace duckdb
