@@ -4,29 +4,45 @@
 
 require tpch
 
+# sf is an exact DOUBLE option: callers must make the intended type explicit.
+statement error
+CALL dbgen(sf=CAST(1 AS INTEGER));
+----
+<REGEX>:Invalid Input Error:.*sf.*DOUBLE.*INTEGER
+
+statement error
+CALL dbgen(sf=CAST(1.0 AS DECIMAL(2,1)));
+----
+<REGEX>:Invalid Input Error:.*sf.*DOUBLE.*DECIMAL
+
+statement error
+CALL dbgen(sf='1');
+----
+<REGEX>:Invalid Input Error:.*sf.*DOUBLE.*VARCHAR
+
 #Test wrong parameters
 statement error
-CALL dbgen(sf=0.01, children=-1);
+CALL dbgen(sf=0.01::DOUBLE, children=-1);
 ----
 Invalid Input Error: Failed to cast value: Type INT32 with value -1 can't be cast because the value is out of range for the destination type UINT32
 
 statement error
-CALL dbgen(sf=0.01, children=2);
+CALL dbgen(sf=0.01::DOUBLE, children=2);
 ----
 Step must be defined when children are defined
 
 statement error
 call dbgen(sf=NULL);
 ----
-<REGEX>:.*Cannot use NULL.*
+<REGEX>:Invalid Input Error:.*dbgen.*NULL.*sf
 
 statement error
-call dbgen(sf=1, catalog=NULL);
+call dbgen(sf=1::DOUBLE, catalog=NULL);
 ----
-<REGEX>:.*Cannot use NULL.*
+<REGEX>:Invalid Input Error:.*dbgen.*NULL.*catalog
 
 statement ok
-CALL dbgen(sf=1, children =100, step = 0);
+CALL dbgen(sf=1::DOUBLE, children =100, step = 0);
 
 query IIII
 select * from nation
@@ -69,7 +85,7 @@ select count(*) from supplier
 100
 
 statement ok
-CALL dbgen(sf=1, children =100, step = 1);
+CALL dbgen(sf=1::DOUBLE, children =100, step = 1);
 
 
 
@@ -82,7 +98,7 @@ select n_nationkey, n_name, n_regionkey from nation
 loop i 2 50
 
 statement ok
-CALL dbgen(sf=1, children =100, step = {i});
+CALL dbgen(sf=1::DOUBLE, children =100, step = {i});
 
 endloop
 
@@ -120,12 +136,12 @@ select n_nationkey, n_name, n_regionkey from nation
 loop i 50 110
 
 statement ok
-CALL dbgen(sf=1, children =100, step = {i});
+CALL dbgen(sf=1::DOUBLE, children =100, step = {i});
 
 endloop
 
 statement ok
-CALL dbgen(sf=1, suffix='_og');
+CALL dbgen(sf=1::DOUBLE, suffix='_og');
 
 foreach tpch_tbl orders customer lineitem nation part partsupp region supplier
 
@@ -145,7 +161,7 @@ statement ok
 ATTACH DATABASE ':memory:' AS db1;
 
 statement ok
-CALL dbgen(sf=1, catalog='db1');
+CALL dbgen(sf=1::DOUBLE, catalog='db1');
 
 foreach tpch_tbl orders customer lineitem nation part partsupp region supplier
 
@@ -165,7 +181,7 @@ statement ok
 CREATE SCHEMA db1.test_schema
 
 statement ok
-CALL dbgen(sf=1, catalog='db1', schema='test_schema');
+CALL dbgen(sf=1::DOUBLE, catalog='db1', schema='test_schema');
 
 foreach tpch_tbl orders customer lineitem nation part partsupp region supplier
 
@@ -180,5 +196,3 @@ select count (*) from (SELECT * FROM db1.test_schema.{tpch_tbl} EXCEPT SELECT * 
 0
 
 endloop
-
-

@@ -22,7 +22,7 @@ SELECT * FROM dbgen();
 tpch
 
 statement error
-CALL dbgen(sf=0.1);
+CALL dbgen(sf=0.1::DOUBLE);
 ----
 tpch
 

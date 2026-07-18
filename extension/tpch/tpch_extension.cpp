@@ -57,23 +57,20 @@ static unique_ptr<FunctionData> DbgenBind(ClientContext &context, TableFunctionB
 	result->schema = current_schema;
 
 	for (auto &kv : input.named_parameters) {
-		if (kv.second.IsNull()) {
-			throw BinderException("Cannot use NULL as function argument");
-		}
 		if (kv.first == "sf") {
-			result->sf = DoubleValue::Get(kv.second);
+			result->sf = kv.second.GetValue<double>();
 		} else if (kv.first == "catalog") {
-			result->catalog = Identifier(StringValue::Get(kv.second));
+			result->catalog = Identifier(kv.second.GetValue<string>());
 		} else if (kv.first == "schema") {
-			result->schema = Identifier(StringValue::Get(kv.second));
+			result->schema = Identifier(kv.second.GetValue<string>());
 		} else if (kv.first == "suffix") {
-			result->suffix = StringValue::Get(kv.second);
+			result->suffix = kv.second.GetValue<string>();
 		} else if (kv.first == "overwrite") {
-			result->overwrite = BooleanValue::Get(kv.second);
+			result->overwrite = kv.second.GetValue<bool>();
 		} else if (kv.first == "children") {
-			result->children = UIntegerValue::Get(kv.second);
+			result->children = kv.second.GetValue<uint32_t>();
 		} else if (kv.first == "step") {
-			result->step = UIntegerValue::Get(kv.second);
+			result->step = kv.second.GetValue<uint32_t>();
 		}
 	}
 	if (result->children != 1 && result->step == -1) {

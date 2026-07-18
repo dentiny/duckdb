@@ -10,7 +10,7 @@ require tpch
 cache tpch_sf1.duckdb
 
 load
-CALL dbgen(sf=1);
+CALL dbgen(sf=1::DOUBLE);
 
 run
 SELECT COUNT(*) FROM lineitem WHERE l_comment ILIKE '%REGULAR%'

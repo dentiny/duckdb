@@ -5,7 +5,7 @@
 require tpcds
 
 statement ok
-CALL dsdgen(sf=0.01);
+CALL dsdgen(sf=0.01::DOUBLE);
 
 statement ok
 WITH cs_ui AS

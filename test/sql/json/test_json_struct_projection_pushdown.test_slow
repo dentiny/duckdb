@@ -7,7 +7,7 @@ require json
 require tpch
 
 statement ok
-call dbgen(sf=1)
+call dbgen(sf=1::DOUBLE)
 
 statement ok
 export database '{TEST_DIR}/tpch_json' (format json)

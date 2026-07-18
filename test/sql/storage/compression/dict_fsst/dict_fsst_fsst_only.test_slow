@@ -11,7 +11,7 @@ statement ok
 SET force_compression='uncompressed'
 
 statement ok
-CALL dbgen(sf=1);
+CALL dbgen(sf=1::DOUBLE);
 
 statement ok
 SET force_compression='dict_fsst'

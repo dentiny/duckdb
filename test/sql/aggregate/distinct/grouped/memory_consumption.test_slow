@@ -15,7 +15,7 @@ statement ok
 pragma memory_limit='4gb'
 
 statement ok
-CALL dbgen(sf=1);
+CALL dbgen(sf=1::DOUBLE);
 
 query II
 select

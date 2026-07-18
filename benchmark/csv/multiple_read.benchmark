@@ -7,7 +7,7 @@ group csv
 
 require tpch
 load
-CALL dbgen(sf=0.5, suffix='_normal');
+CALL dbgen(sf=0.5::DOUBLE, suffix='_normal');
 COPY lineitem_normal TO '${BENCHMARK_DIR}/lineitem_0.csv' (FORMAT CSV, DELIMITER '|', HEADER);
 COPY lineitem_normal TO '${BENCHMARK_DIR}/lineitem_1.csv' (FORMAT CSV, DELIMITER '|', HEADER);
 COPY lineitem_normal TO '${BENCHMARK_DIR}/lineitem_2.csv' (FORMAT CSV, DELIMITER '|', HEADER);

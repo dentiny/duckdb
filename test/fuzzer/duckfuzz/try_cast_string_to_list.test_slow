@@ -5,7 +5,7 @@
 require tpch
 
 statement ok
-call dbgen(sf=0.1);
+call dbgen(sf=0.1::DOUBLE);
 
 query I
 SELECT DISTINCT TRY_CAST(c_name AS TIMESTAMP[]) FROM customer USING SAMPLE 63.0% (Reservoir);

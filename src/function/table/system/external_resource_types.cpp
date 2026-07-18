@@ -38,7 +38,7 @@ static unique_ptr<FunctionData> RegisterExternalResourceTypeBind(ClientContext &
 
 	for (auto &np : input.named_parameters) {
 		auto key = StringUtil::Lower(np.first.GetIdentifierName());
-		auto value = np.second.IsNull() ? string() : StringValue::Get(np.second);
+		auto value = np.second.GetOptionalValue<string>().value_or(string());
 		if (key == "kind") {
 			type.kind = value;
 		} else if (key == "create_function") {
@@ -153,6 +153,7 @@ void RegisterExternalResourceTypeFun::RegisterFunction(BuiltinFunctions &set) {
 	fn.named_parameters["status_function"] = LogicalType::VARCHAR;
 	fn.named_parameters["destroy_function"] = LogicalType::VARCHAR;
 	fn.named_parameters["resolve_function"] = LogicalType::VARCHAR;
+	fn.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	set.AddFunction(fn);
 }
 

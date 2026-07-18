@@ -25,7 +25,7 @@ select (-100)::DOUBLE::DECIMAL(3,0);
 require tpch
 
 statement ok
-call dbgen(sf=0.1)
+call dbgen(sf=0.1::DOUBLE)
 
 statement ok
 pragma threads=1

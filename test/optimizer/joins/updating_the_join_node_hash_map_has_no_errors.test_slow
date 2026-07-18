@@ -5,7 +5,7 @@
 require tpch
 
 statement ok
-call dbgen(sf=0.05);
+call dbgen(sf=0.05::DOUBLE);
 
 statement error
 SELECT NULL

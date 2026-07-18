@@ -5,7 +5,7 @@
 require tpch
 
 statement ok
-CALL dbgen(sf=1);
+CALL dbgen(sf=1::DOUBLE);
 
 query IIIIIIIIIIIIIIII
 select * from lineitem order by l_extendedprice desc, l_shipdate limit 2;

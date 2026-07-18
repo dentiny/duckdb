@@ -9,7 +9,7 @@ subgroup window
 require tpch
 
 load
-CALL dbgen(sf=0.1);
+CALL dbgen(sf=0.1::DOUBLE);
 
 run
 SELECT 

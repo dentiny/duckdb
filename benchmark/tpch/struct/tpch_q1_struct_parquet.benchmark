@@ -9,7 +9,7 @@ subgroup sf1
 require tpch
 
 load
-CALL dbgen(sf=1, suffix='_normalized');
+CALL dbgen(sf=1::DOUBLE, suffix='_normalized');
 COPY (SELECT lineitem_normalized AS struct_val FROM lineitem_normalized) TO '${BENCHMARK_DIR}/lineitem_struct.parquet';
 CREATE VIEW lineitem AS SELECT UNNEST(struct_val) FROM read_parquet('${BENCHMARK_DIR}/lineitem_struct.parquet');
 

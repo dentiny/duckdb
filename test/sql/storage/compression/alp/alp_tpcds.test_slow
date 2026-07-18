@@ -13,7 +13,7 @@ statement ok
 PRAGMA force_compression='alp';
 
 statement ok
-call dsdgen(sf=1, suffix='_original');
+call dsdgen(sf=1::DOUBLE, suffix='_original');
 
 statement ok
 PRAGMA default_null_order='NULLS LAST'

@@ -9,4 +9,4 @@ require tpch
 cache tpch_sf${sf}.duckdb
 
 load
-CALL dbgen(sf=${sf});
+CALL dbgen(sf=${sf}::DOUBLE);

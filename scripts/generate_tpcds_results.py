@@ -53,7 +53,7 @@ if not args.skip_load:
     tpcds_dir = f'tpcds_sf{args.sf}'
 
     q = f"""
-    CALL dsdgen(sf={args.sf});
+    CALL dsdgen(sf={args.sf}::DOUBLE);
     EXPORT DATABASE '{tpcds_dir}' (DELIMITER '|');
     """
     proc = subprocess.Popen([args.duckdb_path, "-c", q])

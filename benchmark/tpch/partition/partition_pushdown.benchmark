@@ -11,7 +11,7 @@ require parquet
 require tpch
 
 load
-CALL dbgen(sf=1);
+CALL dbgen(sf=1::DOUBLE);
 COPY (FROM lineitem ORDER BY l_shipdate) TO '${BENCHMARK_DIR}/lineitem_partitioned_shipdate' (FORMAT PARQUET, PARTITION_BY l_shipdate);
 
 run

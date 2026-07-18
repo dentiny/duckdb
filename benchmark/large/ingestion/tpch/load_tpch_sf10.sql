@@ -1,4 +1,4 @@
-CALL dbgen(sf=10);
+CALL dbgen(sf=10::DOUBLE);
 EXPORT DATABASE 'duckdb_benchmark_data/tpch_parquet_sf10' (FORMAT PARQUET);
 EXPORT DATABASE 'duckdb_benchmark_data/tpch_csv_sf10' (FORMAT CSV);
 

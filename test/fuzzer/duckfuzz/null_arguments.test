@@ -44,7 +44,7 @@ SELECT NULL FROM read_csv('{TEST_DIR}/test_null_args.csv', names=NULL);
 <REGEX>:.*read_csv names cannot be NULL.*
 
 statement ok
-call dbgen(sf=0.01);
+call dbgen(sf=0.01::DOUBLE);
 
 #https://github.com/duckdb/duckdb-fuzzer/issues/2703
 statement ok

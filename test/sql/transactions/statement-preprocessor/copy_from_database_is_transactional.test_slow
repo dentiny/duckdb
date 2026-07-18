@@ -10,7 +10,7 @@ statement ok
 use db1;
 
 statement ok
-call dbgen(sf=1);
+call dbgen(sf=1::DOUBLE);
 
 statement ok
 attach ':memory:' as db2;

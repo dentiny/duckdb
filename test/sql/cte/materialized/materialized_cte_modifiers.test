@@ -8,7 +8,7 @@ SET profiling_renderer_settings = MAP {'operator_casing': 'upper'};
 require tpcds
 
 statement ok
-call dsdgen(sf=0)
+call dsdgen(sf=0::DOUBLE)
 
 # q01
 query II

@@ -383,17 +383,14 @@ static duckdb::unique_ptr<SQLAutoCompleteFunctionData> GenerateSuggestions(Clien
 
 static duckdb::unique_ptr<FunctionData> SQLAutoCompleteBind(ClientContext &context, TableFunctionBindInput &input,
                                                             vector<LogicalType> &return_types, vector<string> &names) {
-	if (input.inputs[0].IsNull()) {
-		throw BinderException("sql_auto_complete first parameter cannot be NULL");
-	}
 	AutoCompleteParameters parameters;
 	for (auto &param : input.named_parameters) {
 		if (param.first == "max_suggestion_count") {
-			parameters.max_suggestion_count = UBigIntValue::Get(param.second);
+			parameters.max_suggestion_count = param.second.GetValue<uint64_t>();
 		} else if (param.first == "max_file_suggestion_count") {
-			parameters.max_file_suggestion_count = UBigIntValue::Get(param.second);
+			parameters.max_file_suggestion_count = param.second.GetValue<uint64_t>();
 		} else if (param.first == "max_exact_suggestion_count") {
-			parameters.max_exact_suggestion_count = UBigIntValue::Get(param.second);
+			parameters.max_exact_suggestion_count = param.second.GetValue<uint64_t>();
 		} else {
 			throw InternalException("Unsupported parameter for SQL auto complete");
 		}
@@ -477,10 +474,6 @@ unique_ptr<GlobalTableFunctionState> SQLTokenizeInit(ClientContext &context, Tab
 
 static unique_ptr<FunctionData> SQLTokenizeBind(ClientContext &context, TableFunctionBindInput &input,
                                                 vector<LogicalType> &return_types, vector<string> &names) {
-	if (input.inputs[0].IsNull()) {
-		throw BinderException("sql_auto_complete first parameter cannot be NULL");
-	}
-
 	names.emplace_back("start");
 	return_types.emplace_back(LogicalType::INTEGER);
 
@@ -527,9 +520,6 @@ void SQLTokenizeFunction(ClientContext &context, TableFunctionInput &data_p, Dat
 
 static duckdb::unique_ptr<FunctionData> CheckPEGParserBind(ClientContext &context, TableFunctionBindInput &input,
                                                            vector<LogicalType> &return_types, vector<string> &names) {
-	if (input.inputs[0].IsNull()) {
-		throw BinderException("sql_auto_complete first parameter cannot be NULL");
-	}
 	names.emplace_back("success");
 	return_types.emplace_back(LogicalType::BOOLEAN);
 

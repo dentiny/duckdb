@@ -14,7 +14,7 @@ statement ok
 PRAGMA force_compression='alprd';
 
 statement ok
-call dbgen(sf=1, suffix='_original');
+call dbgen(sf=1::DOUBLE, suffix='_original');
 
 # Test both DOUBLE and FLOAT
 

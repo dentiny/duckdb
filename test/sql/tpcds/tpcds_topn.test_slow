@@ -5,7 +5,7 @@
 require tpcds
 
 statement ok
-CALL dsdgen(sf=1);
+CALL dsdgen(sf=1::DOUBLE);
 
 query IIIIIIIIIIIIIIIIII
 SELECT * FROM customer ORDER BY c_customer_sk DESC, c_customer_id DESC LIMIT 5;

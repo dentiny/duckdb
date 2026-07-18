@@ -7,7 +7,7 @@ require parquet
 require tpch
 
 statement ok
-CALL dbgen(sf=1);
+CALL dbgen(sf=1::DOUBLE);
 
 # test writing with a very low partition threshold
 statement ok

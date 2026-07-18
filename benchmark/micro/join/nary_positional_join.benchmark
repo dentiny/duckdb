@@ -10,7 +10,7 @@ require tpch
 cache tpch_sf1_positional.duckdb
 
 load
-CALL dbgen(sf=1, suffix='_positional');
+CALL dbgen(sf=1::DOUBLE, suffix='_positional');
 CREATE VIEW lineitem AS (SELECT * FROM
 	(SELECT l_returnflag FROM lineitem_positional)
 	POSITIONAL JOIN

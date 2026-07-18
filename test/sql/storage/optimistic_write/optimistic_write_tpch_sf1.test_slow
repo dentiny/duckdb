@@ -7,7 +7,7 @@ require parquet
 require tpch
 
 statement ok
-CALL dbgen(sf=1);
+CALL dbgen(sf=1::DOUBLE);
 
 foreach tbl lineitem orders partsupp part customer supplier nation region
 

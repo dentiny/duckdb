@@ -1011,9 +1011,6 @@ unique_ptr<FunctionData> ParquetMetaDataOperator::Bind(ClientContext &context, T
 	if (OP_TYPE == ParquetMetadataOperatorType::BLOOM_PROBE) {
 		auto probe_bind_data = make_uniq<ParquetBloomProbeBindData>();
 		D_ASSERT(input.inputs.size() == 3);
-		if (input.inputs[1].IsNull() || input.inputs[2].IsNull()) {
-			throw InvalidInputException("Can't have NULL parameters for parquet_bloom_probe");
-		}
 		probe_bind_data->probe_column_name = input.inputs[1].CastAs(context, LogicalType::VARCHAR).GetValue<string>();
 		probe_bind_data->probe_constant = input.inputs[2];
 		result = std::move(probe_bind_data);

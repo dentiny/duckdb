@@ -9,7 +9,7 @@ subgroup tpch
 require tpch
 
 load
-CALL dbgen(sf=1, suffix='_normal');
+CALL dbgen(sf=1::DOUBLE, suffix='_normal');
 CREATE TABLE lineitem AS SELECT * REPLACE (l_orderkey::DOUBLE AS l_orderkey) FROM lineitem_normal;
 CREATE TABLE orders AS SELECT * REPLACE (o_orderkey::DOUBLE AS o_orderkey) FROM orders_normal;
 

@@ -10,7 +10,7 @@ statement ok
 CREATE SCHEMA tpch
 
 statement ok
-CALL dbgen(sf=0.01, schema='tpch');
+CALL dbgen(sf=0.01::DOUBLE, schema='tpch');
 
 statement ok
 COPY (

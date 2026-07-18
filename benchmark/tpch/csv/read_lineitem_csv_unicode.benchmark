@@ -9,10 +9,10 @@ require tpch
 
 # create the CSV file
 load
-CALL dbgen(sf=0.1, suffix='_normal');
+CALL dbgen(sf=0.1::DOUBLE, suffix='_normal');
 COPY lineitem_normal TO '${BENCHMARK_DIR}/lineitem.csv' (FORMAT CSV, DELIMITER '🦆', HEADER);
 CREATE SCHEMA tpch;
-CALL dbgen(sf=0, schema='tpch');
+CALL dbgen(sf=0::DOUBLE, schema='tpch');
 
 run
 COPY tpch.lineitem FROM '${BENCHMARK_DIR}/lineitem.csv' (FORMAT CSV, DELIMITER '🦆', HEADER);
@@ -21,7 +21,7 @@ COPY tpch.lineitem FROM '${BENCHMARK_DIR}/lineitem.csv' (FORMAT CSV, DELIMITER '
 cleanup
 DROP SCHEMA tpch CASCADE;
 CREATE SCHEMA tpch;
-CALL dbgen(sf=0, schema='tpch');
+CALL dbgen(sf=0::DOUBLE, schema='tpch');
 
 result I
 600572

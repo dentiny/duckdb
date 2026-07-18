@@ -14,7 +14,7 @@ struct_def = '''struct $STRUCT_NAME {
 '''
 
 initcode = '''
-call dsdgen(sf=0);
+call dsdgen(sf=0::DOUBLE);
 .mode csv
 .header 0
 '''

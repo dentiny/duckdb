@@ -17,7 +17,7 @@ statement ok
 pragma memory_limit='-1'
 
 statement ok
-call dbgen(sf=1);
+call dbgen(sf=1::DOUBLE);
 
 # Partition by 2 columns
 statement ok

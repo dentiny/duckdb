@@ -9,7 +9,7 @@ subgroup sf1
 require tpch
 
 load
-CALL dbgen(sf=1, suffix='_normalized');
+CALL dbgen(sf=1::DOUBLE, suffix='_normalized');
 CREATE TABLE lineitem_struct AS SELECT {'id': rowid, 'values': lineitem_normalized} AS struct_val FROM lineitem_normalized;
 CREATE VIEW lineitem AS SELECT UNNEST(struct_val, recursive := true) FROM lineitem_struct;
 

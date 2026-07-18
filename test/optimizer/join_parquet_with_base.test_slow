@@ -7,7 +7,7 @@ require parquet
 require tpch
 
 statement ok
-CALL DBGEN(sf=0.1);
+CALL DBGEN(sf=0.1::DOUBLE);
 
 statement ok
 COPY orders TO '{TEST_DIR}/orders.parquet';

@@ -192,7 +192,7 @@ physical_plan	<REGEX>:.*FILTER.*
 require tpch
 
 statement ok
-CALL dbgen(sf=0.01)
+CALL dbgen(sf=0.01::DOUBLE)
 
 # there should be 3 filter operators instead of just one, because we derived two
 query II

@@ -5,7 +5,7 @@
 require tpch
 
 statement ok
-CALL dbgen(sf=1, suffix='_original');
+CALL dbgen(sf=1::DOUBLE, suffix='_original');
 
 statement ok
 SET preserve_insertion_order=false;

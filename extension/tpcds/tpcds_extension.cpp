@@ -56,17 +56,14 @@ static unique_ptr<FunctionData> DsdgenBind(ClientContext &context, TableFunction
 	result->schema = current_schema;
 
 	for (auto &kv : input.named_parameters) {
-		if (kv.second.IsNull()) {
-			throw BinderException("Cannot use NULL as function argument");
-		}
 		if (kv.first == "sf") {
 			result->sf = kv.second.GetValue<double>();
 		} else if (kv.first == "catalog") {
-			result->catalog = Identifier(StringValue::Get(kv.second));
+			result->catalog = Identifier(kv.second.GetValue<string>());
 		} else if (kv.first == "schema") {
-			result->schema = Identifier(StringValue::Get(kv.second));
+			result->schema = Identifier(kv.second.GetValue<string>());
 		} else if (kv.first == "suffix") {
-			result->suffix = StringValue::Get(kv.second);
+			result->suffix = kv.second.GetValue<string>();
 		} else if (kv.first == "overwrite") {
 			result->overwrite = kv.second.GetValue<bool>();
 		} else if (kv.first == "keys") {

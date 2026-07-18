@@ -7,7 +7,7 @@ require tpch
 load {TEST_DIR}/out_of_core_window.db
 
 statement ok
-CALL dbgen(sf=1);
+CALL dbgen(sf=1::DOUBLE);
 
 query I
 SELECT bit_xor(hash(*COLUMNS(*)))

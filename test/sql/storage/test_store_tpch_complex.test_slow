@@ -11,7 +11,7 @@ statement ok
 PRAGMA force_checkpoint;
 
 statement ok
-CALL dbgen(sf=0.01);
+CALL dbgen(sf=0.01::DOUBLE);
 
 query I
 select count(*) from lineitem;

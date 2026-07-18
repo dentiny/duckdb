@@ -11,6 +11,6 @@ statement ok
 SET temp_directory = '.unrecognized_folder/folder2'
 
 statement error
-CALL dbgen(sf=1);
+CALL dbgen(sf=1::DOUBLE);
 ----
 <REGEX>:.*IO Error.*Failed to create directory.*

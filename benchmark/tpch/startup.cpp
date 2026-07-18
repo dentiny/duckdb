@@ -13,7 +13,7 @@ using namespace duckdb;
 		{                                                                                                              \
 			DuckDB db(db_path);                                                                                        \
 			Connection con(db);                                                                                        \
-			con.Query("CALL dbgen(sf=" + std::to_string(SF) + ")");                                                    \
+			con.Query("CALL dbgen(sf=" + std::to_string(SF) + "::DOUBLE)");                                            \
 		}                                                                                                              \
 		{                                                                                                              \
 			auto config = GetConfig();                                                                                 \

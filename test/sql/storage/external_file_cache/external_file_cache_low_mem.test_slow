@@ -11,7 +11,7 @@ statement ok
 set cache_local_files=true;
 
 statement ok
-call dbgen(sf=1);
+call dbgen(sf=1::DOUBLE);
 
 statement ok
 export database '{TEST_DIR}/efc_tpch_sf1' (format parquet)

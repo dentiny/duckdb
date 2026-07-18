@@ -9,7 +9,7 @@ require tpcds
 
 load
 BEGIN TRANSACTION;
-CALL dsdgen(sf=0.1);
+CALL dsdgen(sf=0.1::DOUBLE);
 pragma threads=8;
 EXPORT DATABASE '${BENCHMARK_DIR}/sf1data';
 ROLLBACK;

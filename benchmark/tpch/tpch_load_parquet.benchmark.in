@@ -11,7 +11,7 @@ require parquet
 cache tpch_sf${sf}_parquet.duckdb
 
 load
-call dbgen(sf=${sf});
+call dbgen(sf=${sf}::DOUBLE);
 EXPORT DATABASE '${BENCHMARK_DIR}/tpch_sf${sf}_parquet/' (FORMAT PARQUET);
 drop table lineitem;
 drop table customer;

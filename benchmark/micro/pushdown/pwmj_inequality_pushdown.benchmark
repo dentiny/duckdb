@@ -13,7 +13,7 @@ argument sf 10
 cache tpch_sf${sf}.duckdb
 
 load
-CALL dbgen(sf=${sf});
+CALL dbgen(sf=${sf}::DOUBLE);
 
 run
 SELECT lhs.l_orderkey as l, rhs.l_orderkey as r

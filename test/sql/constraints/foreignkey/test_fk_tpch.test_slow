@@ -5,7 +5,7 @@
 require tpch
 
 statement ok
-CALL dbgen(sf=0.1, suffix='_original');
+CALL dbgen(sf=0.1::DOUBLE, suffix='_original');
 
 statement ok
 CREATE TABLE region  ( R_REGIONKEY  INTEGER NOT NULL PRIMARY KEY,

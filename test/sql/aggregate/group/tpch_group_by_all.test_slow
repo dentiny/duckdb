@@ -5,7 +5,7 @@
 require tpch
 
 statement ok
-CALL dbgen(sf=0.01);
+CALL dbgen(sf=0.01::DOUBLE);
 
 statement ok
 SET debug_force_external=true;

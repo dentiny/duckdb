@@ -5,20 +5,20 @@
 require tpcds
 
 statement ok
-CALL dsdgen(sf=0)
+CALL dsdgen(sf=0::DOUBLE)
 
 # tables already exist
 statement error
-CALL dsdgen(sf=0)
+CALL dsdgen(sf=0::DOUBLE)
 ----
 
 # overwrite should work
 statement ok
-CALL dsdgen(sf=0, overwrite=true)
+CALL dsdgen(sf=0::DOUBLE, overwrite=true)
 
 # suffix
 statement ok
-CALL dsdgen(sf=0.01, suffix='_bla')
+CALL dsdgen(sf=0.01::DOUBLE, suffix='_bla')
 
 statement ok
 SELECT COUNT(*) FROM call_center_bla
@@ -27,7 +27,7 @@ statement ok
 create schema tpcds
 
 statement ok
-CALL dsdgen(sf=0.01, schema='tpcds')
+CALL dsdgen(sf=0.01::DOUBLE, schema='tpcds')
 
 statement ok
 SELECT COUNT(*) FROM tpcds.call_center
@@ -36,7 +36,7 @@ statement ok
 ATTACH DATABASE ':memory:' AS db1;
 
 statement ok
-CALL dsdgen(sf=0.01, catalog='db1');
+CALL dsdgen(sf=0.01::DOUBLE, catalog='db1');
 
 statement ok
 SELECT COUNT(*) FROM db1.call_center
@@ -45,7 +45,7 @@ statement ok
 CREATE SCHEMA db1.test_schema
 
 statement ok
-CALL dsdgen(sf=0.01, catalog='db1', schema='test_schema');
+CALL dsdgen(sf=0.01::DOUBLE, catalog='db1', schema='test_schema');
 
 statement ok
 SELECT COUNT(*) FROM db1.test_schema.call_center
@@ -53,14 +53,14 @@ SELECT COUNT(*) FROM db1.test_schema.call_center
 statement error
 Call dsdgen(sf=NULL);
 ----
-<REGEX>:.*Cannot use NULL.*
+<REGEX>:Invalid Input Error:.*dsdgen.*NULL.*sf
 
 statement error
 Call dsdgen(catalog=NULL);
 ----
-<REGEX>:.*Cannot use NULL.*
+<REGEX>:Invalid Input Error:.*dsdgen.*NULL.*catalog
 
 statement error
-Call dsdgen(sf=1, suffix=NULL);
+Call dsdgen(sf=1::DOUBLE, suffix=NULL);
 ----
-<REGEX>:.*Cannot use NULL.*
+<REGEX>:Invalid Input Error:.*dsdgen.*NULL.*suffix

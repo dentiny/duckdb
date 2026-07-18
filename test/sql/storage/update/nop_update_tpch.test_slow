@@ -8,7 +8,7 @@ require tpch
 load {TEST_DIR}/nop_updates_sf1.db
 
 statement ok
-CALL dbgen(sf=1);
+CALL dbgen(sf=1::DOUBLE);
 
 query I nosort expected_blocks
 SELECT total_blocks FROM pragma_database_size();

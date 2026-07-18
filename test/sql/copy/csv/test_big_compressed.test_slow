@@ -10,7 +10,7 @@ require tpch
 
 
 statement ok
-CALL dbgen(sf=100);
+CALL dbgen(sf=100::DOUBLE);
 
 statement ok
 copy lineitem to '{TEST_DIR}/lineitem_100.csv.gz';

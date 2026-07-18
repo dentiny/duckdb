@@ -5,7 +5,7 @@
 require tpch
 
 statement ok
-CALL dbgen(sf=0.01, suffix='_org')
+CALL dbgen(sf=0.01::DOUBLE, suffix='_org')
 
 statement ok
 CREATE VIEW lineitem AS

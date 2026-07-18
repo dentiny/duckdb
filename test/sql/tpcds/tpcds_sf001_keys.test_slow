@@ -10,7 +10,7 @@ statement ok
 PRAGMA default_null_order='NULLS LAST'
 
 statement ok
-CALL dsdgen(sf=0.01, keys=true)
+CALL dsdgen(sf=0.01::DOUBLE, keys=true)
 
 query T
 SELECT COUNT(*) FROM call_center

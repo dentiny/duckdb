@@ -7,7 +7,7 @@ require parquet
 require tpch
 
 statement ok
-CALL dbgen(sf=1);
+CALL dbgen(sf=1::DOUBLE);
 
 statement ok
 COPY lineitem TO '{TEST_DIR}/lineitem_aggregate_partitioned' (FORMAT parquet, PARTITION_BY (l_returnflag, l_linestatus));

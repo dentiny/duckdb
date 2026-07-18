@@ -150,14 +150,30 @@ select * from read_json_auto('{DATA_DIR}/json/different_schemas.ndjson', sample_
 4	NULL
 5	Raising Arizona
 
+# Exact DOUBLE options reject other logical types before the callback.
+statement error
+select * from read_json_auto('{DATA_DIR}/json/different_schemas.ndjson', field_appearance_threshold=1)
+----
+<REGEX>:Invalid Input Error:.*field_appearance_threshold.*DOUBLE.*INTEGER
+
+statement error
+select * from read_json_auto('{DATA_DIR}/json/different_schemas.ndjson', field_appearance_threshold=1.0)
+----
+<REGEX>:Invalid Input Error:.*field_appearance_threshold.*DOUBLE.*DECIMAL
+
+statement error
+select * from read_json_auto('{DATA_DIR}/json/different_schemas.ndjson', field_appearance_threshold='1')
+----
+<REGEX>:Invalid Input Error:.*field_appearance_threshold.*DOUBLE.*VARCHAR
+
 # if we require fields to appear in all objects by setting field_appearance_threshold=1, we default to MAP
 query I
-select typeof(COLUMNS(*)) from read_json_auto('{DATA_DIR}/json/different_schemas.ndjson', field_appearance_threshold=1) limit 1
+select typeof(COLUMNS(*)) from read_json_auto('{DATA_DIR}/json/different_schemas.ndjson', field_appearance_threshold=1::DOUBLE) limit 1
 ----
 MAP(VARCHAR, JSON)
 
 query I
-select * from read_json_auto('{DATA_DIR}/json/different_schemas.ndjson', field_appearance_threshold=1)
+select * from read_json_auto('{DATA_DIR}/json/different_schemas.ndjson', field_appearance_threshold=1::DOUBLE)
 ----
 {id=1, name='"O Brother, Where Art Thou?"'}
 {id=2}
@@ -167,7 +183,7 @@ select * from read_json_auto('{DATA_DIR}/json/different_schemas.ndjson', field_a
 
 # if we set it to 0.5 it should work already since "name" appears in 3/5 objects, which is greater than 0.5
 query II
-select * from read_json_auto('{DATA_DIR}/json/different_schemas.ndjson', field_appearance_threshold=0.5)
+select * from read_json_auto('{DATA_DIR}/json/different_schemas.ndjson', field_appearance_threshold=0.5::DOUBLE)
 ----
 1	O Brother, Where Art Thou?
 2	NULL
@@ -177,12 +193,12 @@ select * from read_json_auto('{DATA_DIR}/json/different_schemas.ndjson', field_a
 
 # can't set it to less than 0 or more than 1
 statement error
-select * from read_json_auto('{DATA_DIR}/json/different_schemas.ndjson', field_appearance_threshold=-1)
+select * from read_json_auto('{DATA_DIR}/json/different_schemas.ndjson', field_appearance_threshold=(-1)::DOUBLE)
 ----
 Binder Error: read_json_auto "field_appearance_threshold" parameter must be between 0 and 1
 
 statement error
-select * from read_json_auto('{DATA_DIR}/json/different_schemas.ndjson', field_appearance_threshold=2)
+select * from read_json_auto('{DATA_DIR}/json/different_schemas.ndjson', field_appearance_threshold=2::DOUBLE)
 ----
 Binder Error: read_json_auto "field_appearance_threshold" parameter must be between 0 and 1
 
@@ -237,7 +253,7 @@ MAP(VARCHAR, BIGINT)
 
 # Map inference can be disabled
 query T
-select distinct typeof(a) from read_json_auto('{DATA_DIR}/json/simple_map.jsonl', map_inference_threshold=-1, field_appearance_threshold=0)
+select distinct typeof(a) from read_json_auto('{DATA_DIR}/json/simple_map.jsonl', map_inference_threshold=-1, field_appearance_threshold=0::DOUBLE)
 ----
 STRUCT("1" "NULL", "2" BIGINT, "3" BIGINT, "4" BIGINT, "5" BIGINT, "6" BIGINT, "7" BIGINT, "8" BIGINT, "9" BIGINT, "10" BIGINT, "11" BIGINT, "12" BIGINT, "13" BIGINT, "14" BIGINT, "15" BIGINT, "16" "NULL", "17" BIGINT, "18" BIGINT, "19" BIGINT, "20" BIGINT, "21" BIGINT, "22" BIGINT, "23" BIGINT, "24" BIGINT, "25" BIGINT, "26" BIGINT, "27" BIGINT, "28" BIGINT, "29" BIGINT, "30" BIGINT, "31" BIGINT, "32" BIGINT, "33" BIGINT, "34" BIGINT, "35" BIGINT, "36" BIGINT, "37" BIGINT, "38" BIGINT, "39" BIGINT, "40" BIGINT, "41" BIGINT, "42" BIGINT, "43" BIGINT, "44" BIGINT, "45" BIGINT, "46" BIGINT, "47" BIGINT, "48" BIGINT, "49" BIGINT, "50" BIGINT, "51" BIGINT, "52" BIGINT, "53" BIGINT, "54" BIGINT, "55" BIGINT, "56" BIGINT, "57" BIGINT, "58" BIGINT, "59" BIGINT, "60" BIGINT, "61" BIGINT, "62" BIGINT, "63" BIGINT, "64" BIGINT, "65" BIGINT, "66" BIGINT, "67" BIGINT, "68" BIGINT, "69" BIGINT, "70" BIGINT, "71" BIGINT, "72" BIGINT, "73" BIGINT, "74" BIGINT, "75" BIGINT, "76" BIGINT, "77" BIGINT, "78" BIGINT, "79" BIGINT, "80" BIGINT, "81" BIGINT, "82" BIGINT, "83" BIGINT, "84" BIGINT, "85" BIGINT, "86" BIGINT, "87" BIGINT, "88" BIGINT, "89" BIGINT, "90" BIGINT, "91" BIGINT, "92" BIGINT, "93" BIGINT, "94" BIGINT, "95" BIGINT, "96" BIGINT, "97" BIGINT, "98" BIGINT, "99" BIGINT, "100" BIGINT)
 
@@ -348,4 +364,4 @@ Binder Error
 statement error
 select * from read_json_auto(['{DATA_DIR}/json/empty_array.json', '{DATA_DIR}/json/example_n.ndjson'], maximum_sample_files=NULL);
 ----
-Binder Error
+<REGEX>:Invalid Input Error:.*read_json_auto.*NULL.*maximum_sample_files

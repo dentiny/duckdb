@@ -10,7 +10,7 @@ require tpch
 cache lineitem_sf1.csv
 
 load
-CALL dbgen(sf=1);
+CALL dbgen(sf=1::DOUBLE);
 COPY lineitem TO '${BENCHMARK_DIR}/lineitem_sf1.csv' (FORMAT CSV, DELIMITER '|', HEADER);
 
 run

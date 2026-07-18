@@ -317,7 +317,7 @@ ORDER BY 1;
 require tpcds
 
 statement ok
-CALL dsdgen(sf=0.01);
+CALL dsdgen(sf=0.01::DOUBLE);
 
 # TPC-DS Q93
 query II

@@ -1,4 +1,4 @@
-call dsdgen(sf=1);
+call dsdgen(sf=1::DOUBLE);
 
 create view call_center_native as select * from call_center;
 create view household_demographics_native as select * from household_demographics;

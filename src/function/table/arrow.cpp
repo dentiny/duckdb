@@ -58,9 +58,6 @@ unique_ptr<FunctionData> ArrowTableFunction::ArrowScanBindDumb(ClientContext &co
 
 unique_ptr<FunctionData> ArrowTableFunction::ArrowScanBind(ClientContext &context, TableFunctionBindInput &input,
                                                            vector<LogicalType> &return_types, vector<string> &names) {
-	if (input.inputs[0].IsNull() || input.inputs[1].IsNull() || input.inputs[2].IsNull()) {
-		throw BinderException("arrow_scan: pointers cannot be null");
-	}
 	auto &ref = input.ref;
 
 	shared_ptr<DependencyItem> dependency;

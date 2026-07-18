@@ -5,7 +5,7 @@
 require tpch
 
 statement ok
-call dbgen(sf=0.1);
+call dbgen(sf=0.1::DOUBLE);
 
 # this should run quickly
 statement ok

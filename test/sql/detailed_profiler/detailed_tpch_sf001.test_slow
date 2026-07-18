@@ -14,7 +14,7 @@ statement ok
 PRAGMA profiling_mode = detailed
 
 statement ok
-CALL dbgen(sf=0.01);
+CALL dbgen(sf=0.01::DOUBLE);
 
 loop i 1 9
 

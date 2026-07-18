@@ -11,7 +11,7 @@ require tpch
 require json
 
 load
-CALL dbgen(sf=1);
+CALL dbgen(sf=1::DOUBLE);
 CREATE TABLE lineitem_struct AS SELECT lineitem lineitem_struct FROM lineitem;
 CREATE TABLE lineitem_json AS SELECT lineitem::JSON lineitem_json FROM lineitem;
 

@@ -12,10 +12,10 @@ SET threads = 1;
 # Both in the same catalog + schema: expect conflict.
 
 statement ok
-CALL dbgen(sf = 0.000001);
+CALL dbgen(sf = 0.000001::DOUBLE);
 
 statement error
-CALL dsdgen(sf = 0.000001);
+CALL dsdgen(sf = 0.000001::DOUBLE);
 ----
 already exists
 
@@ -28,7 +28,7 @@ statement ok
 USE s1;
 
 statement ok
-CALL dbgen(sf = 0.000001);
+CALL dbgen(sf = 0.000001::DOUBLE);
 
 statement ok
 CREATE SCHEMA s2;
@@ -37,7 +37,7 @@ statement ok
 USE s2;
 
 statement ok
-CALL dsdgen(sf = 0.000001);
+CALL dsdgen(sf = 0.000001::DOUBLE);
 
 # Different catalogs but same schema: success.
 
@@ -54,4 +54,4 @@ statement ok
 USE s1;
 
 statement ok
-CALL dsdgen(sf = 0.000001);
+CALL dsdgen(sf = 0.000001::DOUBLE);

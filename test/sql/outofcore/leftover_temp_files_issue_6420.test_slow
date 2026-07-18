@@ -13,7 +13,7 @@ statement ok
 SET memory_limit='1GB';
 
 statement ok
-CALL dbgen(sf=1);
+CALL dbgen(sf=1::DOUBLE);
 
 statement ok
 ALTER TABLE lineitem RENAME TO lineitem1

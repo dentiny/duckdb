@@ -8,7 +8,7 @@ require tpch
 load {TEST_DIR}/test_csv_tpch.db
 
 statement ok
-CALL dbgen(sf=1)
+CALL dbgen(sf=1::DOUBLE)
 
 restart
 

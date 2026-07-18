@@ -75,24 +75,24 @@ static unique_ptr<FunctionData> BindEnableProfiling(ClientContext &context, Tabl
 		const auto key = EnumUtil::FromString<ProfilingParameterNames>(named_param.first.GetIdentifierName());
 		switch (key) {
 		case ProfilingParameterNames::FORMAT:
-			bind_data->format = StringUtil::Lower(named_param.second.ToString());
+			bind_data->format = StringUtil::Lower(named_param.second.GetValue<string>());
 			break;
 		case ProfilingParameterNames::COVERAGE:
-			bind_data->coverage = StringUtil::Lower(named_param.second.ToString());
+			bind_data->coverage = StringUtil::Lower(named_param.second.GetValue<string>());
 			break;
 		case ProfilingParameterNames::SAVE_LOCATION:
-			bind_data->save_location = named_param.second.ToString();
+			bind_data->save_location = named_param.second.GetValue<string>();
 			break;
 		case ProfilingParameterNames::MODE:
-			bind_data->mode = StringUtil::Lower(named_param.second.ToString());
+			bind_data->mode = StringUtil::Lower(named_param.second.GetValue<string>());
 			break;
 		case ProfilingParameterNames::METRICS: {
-			if (named_param.second.type() != LogicalType::LIST(LogicalType::VARCHAR) &&
-			    named_param.second.type() != LogicalType::VARCHAR) {
+			auto value = named_param.second.GetValue<Value>();
+			if (value.type() != LogicalType::LIST(LogicalType::VARCHAR) && value.type() != LogicalType::VARCHAR) {
 				throw InvalidInputException("EnableProfiling: metrics must be a list of strings or a VARCHAR pattern");
 			}
 
-			bind_data->metrics = named_param.second;
+			bind_data->metrics = std::move(value);
 			metrics_set = true;
 		}
 		}

@@ -16,7 +16,7 @@ statement ok
 PRAGMA default_null_order='postgres'
 
 statement ok
-CALL dsdgen(sf=0.01)
+CALL dsdgen(sf=0.01::DOUBLE)
 
 query T
 SELECT COUNT(*) FROM call_center

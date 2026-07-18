@@ -7,7 +7,7 @@ require json
 require tpch
 
 statement ok
-call dbgen(sf=0.01)
+call dbgen(sf=0.01::DOUBLE)
 
 query IIIIIIIIIIIII nosort q0
 select * from lineitem order by all

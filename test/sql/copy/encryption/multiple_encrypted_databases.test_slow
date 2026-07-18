@@ -24,25 +24,25 @@ statement ok
 USE encrypted;
 
 statement ok
-CALL dbgen(sf=0.01);
+CALL dbgen(sf=0.01::DOUBLE);
 
 statement ok
 USE encrypted2;
 
 statement ok
-CALL dbgen(sf=0.01);
+CALL dbgen(sf=0.01::DOUBLE);
 
 statement ok
 USE encrypted3;
 
 statement ok
-CALL dbgen(sf=0.01);
+CALL dbgen(sf=0.01::DOUBLE);
 
 statement ok
 USE encrypted4;
 
 statement ok
-CALL dbgen(sf=0.01);
+CALL dbgen(sf=0.01::DOUBLE);
 
 statement ok
 USE memory;

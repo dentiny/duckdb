@@ -13,7 +13,7 @@ statement ok
 pragma disable_optimizer;
 
 statement ok
-call dbgen(sf=0.001);
+call dbgen(sf=0.001::DOUBLE);
 
 statement ok
 copy (select date_trunc('month', l_shipdate) as partition_shipdate, [l_returnflag, l_linestatus] as string_list, * from lineitem) to '{TEST_DIR}/lineitem_partitioned_test' (format parquet, partition_by(partition_shipdate, l_returnflag));

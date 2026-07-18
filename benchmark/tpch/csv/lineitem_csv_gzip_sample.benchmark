@@ -10,7 +10,7 @@ require tpch
 # create the CSV file
 load
 CREATE SCHEMA tpch_schema;
-CALL dbgen(sf=1, schema='tpch_schema');
+CALL dbgen(sf=1::DOUBLE, schema='tpch_schema');
 COPY tpch_schema.lineitem TO '${BENCHMARK_DIR}/lineitem.csv.gz' (FORMAT CSV, DELIMITER '|', HEADER);
 DROP SCHEMA tpch_schema CASCADE;
 

@@ -73,8 +73,8 @@ def run_benchmark(load_script, benchmark_name):
     return True
 
 
-tpch_load = 'CALL dbgen(sf=1);'
-tpcds_load = 'CALL dsdgen(sf=1);'
+tpch_load = 'CALL dbgen(sf=1::DOUBLE);'
+tpcds_load = 'CALL dsdgen(sf=1::DOUBLE);'
 
 
 benchmarks = [[tpch_load, 'TPC-H SF1'], [tpcds_load, 'TPC-DS SF1']]

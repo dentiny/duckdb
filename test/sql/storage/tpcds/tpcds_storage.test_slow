@@ -12,7 +12,7 @@ statement ok
 PRAGMA force_compression='{compression}'
 
 statement ok
-call dsdgen(sf=1);
+call dsdgen(sf=1::DOUBLE);
 
 statement ok
 CHECKPOINT

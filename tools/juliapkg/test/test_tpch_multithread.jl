@@ -8,7 +8,7 @@ function test_tpch_multithread()
     # load TPC-H into DuckDB
     native_con = DBInterface.connect(DuckDB.DB)
     try
-        DBInterface.execute(native_con, "CALL dbgen(sf=$sf)")
+        DBInterface.execute(native_con, "CALL dbgen(sf=$(sf)::DOUBLE)")
     catch
         @info "TPC-H extension not available; skipping"
         return

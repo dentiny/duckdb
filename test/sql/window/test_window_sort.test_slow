@@ -8,7 +8,7 @@ statement ok
 PRAGMA threads=4
 
 statement ok
-CALL dbgen(sf=1);
+CALL dbgen(sf=1::DOUBLE);
 
 statement ok
 pragma verify_parallelism

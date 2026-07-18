@@ -7,7 +7,7 @@ require parquet
 require tpch
 
 statement ok
-CALL dbgen(sf=0.1)
+CALL dbgen(sf=0.1::DOUBLE)
 
 statement ok
 copy lineitem TO '{TEST_DIR}/progress_bar_lineitem.parquet' (FORMAT 'parquet');

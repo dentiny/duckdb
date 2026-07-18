@@ -10,7 +10,7 @@ require parquet
 require tpch
 
 load
-CALL dbgen(sf=1);
+CALL dbgen(sf=1::DOUBLE);
 COPY lineitem TO '${BENCHMARK_DIR}/lineitem.parquet' (FORMAT PARQUET);
 SET preserve_insertion_order=false;
 DROP TABLE lineitem;

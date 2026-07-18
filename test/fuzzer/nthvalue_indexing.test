@@ -5,7 +5,7 @@
 require tpch
 
 statement ok
-call dbgen(sf=0.1);
+call dbgen(sf=0.1::DOUBLE);
 
 statement ok
 SELECT DISTINCT nth_value(NULL, (c2 IS NOT NULL)::BIGINT) OVER (PARTITION BY 1585 ROWS BETWEEN CURRENT ROW AND CURRENT ROW) 

@@ -10,7 +10,7 @@ require parquet
 require tpch
 
 load
-CALL dbgen(sf=1);
+CALL dbgen(sf=1::DOUBLE);
 CALL enable_logging(storage_path='${BENCHMARK_DIR}/duckdb_persistent_q1_with_default_logging')
 
 run

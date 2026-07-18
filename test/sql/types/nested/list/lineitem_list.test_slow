@@ -5,7 +5,7 @@
 require tpch
 
 statement ok
-CALL dbgen(sf=0.01, suffix='_org')
+CALL dbgen(sf=0.01::DOUBLE, suffix='_org')
 
 # TODO this has a small limit in it right now because of performance issues. Fix this.
 statement ok

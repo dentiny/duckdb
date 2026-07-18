@@ -15,7 +15,7 @@ statement ok
 CREATE SCHEMA tpcds;
 
 statement ok
-CALL dsdgen(sf=1, schema='tpcds');
+CALL dsdgen(sf=1::DOUBLE, schema='tpcds');
 
 foreach tpcds_tbl call_center household_demographics store_returns catalog_page income_band store_sales catalog_returns inventory time_dim catalog_sales item warehouse customer promotion web_page customer_address reason web_returns customer_demographics ship_mode web_sales date_dim store web_site
 

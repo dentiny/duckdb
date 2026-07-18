@@ -11,7 +11,7 @@ require tpch
 require httpfs
 
 load
-CALL dbgen(sf=1);
+CALL dbgen(sf=1::DOUBLE);
 PRAGMA add_parquet_key('key128', '0123456789112345');
 COPY lineitem TO '${BENCHMARK_DIR}/lineitem_encrypted.parquet' (ENCRYPTION_CONFIG {footer_key: 'key128'});
 DROP TABLE lineitem;

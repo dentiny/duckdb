@@ -169,7 +169,7 @@ logical_opt	<REGEX>:(?:.*CTE){2}.*(?:.*CTE_SCAN){3}.*
 require tpcds
 
 statement ok
-call dsdgen(sf=0.01)
+call dsdgen(sf=0.01::DOUBLE)
 
 # q27
 query II
@@ -435,7 +435,7 @@ statement ok
 use tpch;
 
 statement ok
-call dbgen(sf=0.01, schema='tpch');
+call dbgen(sf=0.01::DOUBLE, schema='tpch');
 
 # q11
 query II

@@ -5,7 +5,7 @@
 require tpch
 
 statement ok
-call dbgen(sf=0.1);
+call dbgen(sf=0.1::DOUBLE);
 
 statement ok
 SELECT

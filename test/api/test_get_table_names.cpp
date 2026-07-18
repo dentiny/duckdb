@@ -265,6 +265,6 @@ TEST_CASE("Test GetTableNames", "[api]") {
 		REQUIRE(table_names.count("customer"));
 		REQUIRE(table_names.count("orders"));
 
-		REQUIRE_NO_FAIL(con.Query("CALL dbgen(sf=0)"));
+		REQUIRE_NO_FAIL(con.Query("CALL dbgen(sf=0::DOUBLE)"));
 	}
 }

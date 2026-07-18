@@ -39,15 +39,9 @@ static unique_ptr<GlobalTableFunctionState> CSVSniffInitGlobal(ClientContext &co
 static unique_ptr<FunctionData> CSVSniffBind(ClientContext &context, TableFunctionBindInput &input,
                                              vector<LogicalType> &return_types, vector<string> &names) {
 	auto result = make_uniq<CSVSniffFunctionData>();
-	if (input.inputs[0].IsNull()) {
-		throw BinderException("sniff_csv cannot take NULL as a file path parameter");
-	}
 	result->path = input.inputs[0].ToString();
 	auto it = input.named_parameters.find("auto_detect");
 	if (it != input.named_parameters.end()) {
-		if (it->second.IsNull()) {
-			throw BinderException("\"%s\" expects a non-null boolean value (e.g. TRUE or 1)", it->first);
-		}
 		if (!it->second.GetValue<bool>()) {
 			throw InvalidInputException("sniff_csv function does not accept auto_detect variable set to false");
 		}

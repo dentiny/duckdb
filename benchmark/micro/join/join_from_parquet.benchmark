@@ -10,7 +10,7 @@ require tpch
 cache tpch_sf1_join_from_parquet.duckdb
 
 load
-call dbgen(sf=1);
+call dbgen(sf=1::DOUBLE);
 COPY lineitem TO 'lineitem.parquet';
 COPY (SELECT 42) TO 'singlerow.parquet';
 

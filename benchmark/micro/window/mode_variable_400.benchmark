@@ -9,7 +9,7 @@ subgroup window
 require tpch
 
 load
-CALL dbgen(sf=1);
+CALL dbgen(sf=1::DOUBLE);
 
 run
 SELECT l_orderkey, l_shipdate, l_linenumber, mode(l_linenumber) over w AS l_mode

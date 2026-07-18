@@ -11,7 +11,7 @@ require tpch
 cache tpch_sf1_lineitem_parquet.duckdb
 
 load
-call dbgen(sf=1);
+call dbgen(sf=1::DOUBLE);
 COPY lineitem TO '${BENCHMARK_DIR}/lineitem.parquet';
 
 run

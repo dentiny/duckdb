@@ -5,7 +5,7 @@
 require tpch
 
 statement ok
-CALL dbgen(sf=1, suffix='_positional');
+CALL dbgen(sf=1::DOUBLE, suffix='_positional');
 
 statement ok
 CREATE VIEW lineitem AS (SELECT * FROM

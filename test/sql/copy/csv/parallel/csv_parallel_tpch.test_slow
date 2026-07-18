@@ -8,7 +8,7 @@ statement ok
 pragma threads=4
 
 statement ok
-CALL dbgen(sf=1, suffix='_og');
+CALL dbgen(sf=1::DOUBLE, suffix='_og');
 
 foreach tpch_tbl orders customer lineitem nation part partsupp region supplier
 

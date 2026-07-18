@@ -292,9 +292,6 @@ struct ExecuteSqlTableFunction {
 		auto result = make_uniq<BindData>();
 
 		result->con = make_uniq<Connection>(*context.db);
-		if (input.inputs[0].IsNull()) {
-			throw BinderException("json_execute_serialized_sql cannot execute NULL plan");
-		}
 		auto serialized = input.inputs[0].GetValueUnsafe<string>();
 		auto stmts = DeserializeSelectStatement(serialized, alc);
 		if (stmts.size() != 1) {

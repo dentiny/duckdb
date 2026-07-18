@@ -5,7 +5,7 @@
 require tpcds
 
 statement ok
-CALL dsdgen(sf=1);
+CALL dsdgen(sf=1::DOUBLE);
 
 # Issue #7225 - TPC-DS extension has incorrect name for s_tax_percentage column in store table
 statement ok

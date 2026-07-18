@@ -11,4 +11,4 @@ storage persistent
 cache tpcds_sf${sf}.duckdb
 
 load
-CALL dsdgen(sf=${sf});
+CALL dsdgen(sf=${sf}::DOUBLE);

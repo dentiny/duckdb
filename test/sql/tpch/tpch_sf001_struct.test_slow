@@ -7,7 +7,7 @@ require tpch
 load {TEST_DIR}/tpch_sf001_struct.db
 
 statement ok
-CALL dbgen(sf=0.01, suffix='_normal');
+CALL dbgen(sf=0.01::DOUBLE, suffix='_normal');
 
 statement ok
 CREATE TABLE lineitem_struct AS SELECT {

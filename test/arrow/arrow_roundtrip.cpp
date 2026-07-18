@@ -331,7 +331,7 @@ TEST_CASE("Test TPCH arrow roundtrip", "[arrow][.]") {
 	if (!db.ExtensionIsLoaded("tpch")) {
 		return;
 	}
-	con.SendQuery("CALL dbgen(sf=0.5)");
+	con.SendQuery("CALL dbgen(sf=0.5::DOUBLE)");
 
 	// REQUIRE(ArrowTestHelper::RunArrowComparison(con, "SELECT * FROM lineitem;", false));
 	// REQUIRE(ArrowTestHelper::RunArrowComparison(con, "SELECT l_orderkey, l_shipdate, l_comment FROM lineitem ORDER BY

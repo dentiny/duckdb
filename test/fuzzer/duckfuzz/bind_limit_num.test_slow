@@ -5,7 +5,7 @@
 require tpch
 
 statement ok
-call dbgen(sf=0.001);
+call dbgen(sf=0.001::DOUBLE);
 
 statement ok
 SELECT subq_2.c0 AS c2

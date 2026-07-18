@@ -11,7 +11,7 @@ require tpch
 cache tpch_partition_lineitem.duckdb
 
 load
-CALL dbgen(sf=1);
+CALL dbgen(sf=1::DOUBLE);
 COPY lineitem to '${BENCHMARK_DIR}/lineitem_partitioned' (FORMAT PARQUET, PARTITION_BY l_shipmode);
 
 run

@@ -76,7 +76,7 @@ class TPCHData:
 
     def __init__(self, scale_factor):
         self.conn = duckdb.connect()
-        self.conn.execute(f'CALL dbgen(sf={scale_factor})')
+        self.conn.execute(f'CALL dbgen(sf={scale_factor}::DOUBLE)')
 
     def get_tables(self, convertor) -> Dict[str, Any]:
         res = {}
@@ -298,7 +298,7 @@ class PandasDFLoadBenchmark:
         self.con.execute(f"SET threads={threads}")
 
     def generate(self):
-        self.con.execute("call dbgen(sf=0.1)")
+        self.con.execute("call dbgen(sf=0.1::DOUBLE)")
         new_table = "*, " + ", ".join(["l_shipdate"] * 300)
         self.con.execute(f"create table wide as select {new_table} from lineitem limit 500")
         self.con.execute(f"copy wide to 'wide_table.csv' (FORMAT CSV)")

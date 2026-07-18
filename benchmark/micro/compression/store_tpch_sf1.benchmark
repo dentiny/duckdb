@@ -13,6 +13,5 @@ load
 PRAGMA force_compression='none';
 
 run
-call DBGEN(sf=1);
+call DBGEN(sf=1::DOUBLE);
 checkpoint;
-

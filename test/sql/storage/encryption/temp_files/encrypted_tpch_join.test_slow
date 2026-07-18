@@ -19,7 +19,7 @@ statement ok
 ATTACH '{TEST_DIR}/tpch_enc_{cipher}.db' as enc (ENCRYPTION_KEY 'asdf', ENCRYPTION_CIPHER '{cipher}');
 
 statement ok
-CALL dbgen(sf = 1, catalog = 'enc');
+CALL dbgen(sf = 1::DOUBLE, catalog = 'enc');
 
 statement ok
 ALTER TABLE enc.lineitem RENAME TO lineitem1;

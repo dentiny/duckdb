@@ -5,7 +5,7 @@
 require tpcds
 
 statement ok
-CALL dsdgen(sf=0.01);
+CALL dsdgen(sf=0.01::DOUBLE);
 
 query I nosort call_center_sf0001
 SELECT * FROM call_center
@@ -176,7 +176,7 @@ statement ok
 DROP TABLE web_site;
 
 statement ok
-CALL dsdgen(sf=0.1);
+CALL dsdgen(sf=0.1::DOUBLE);
 
 statement ok
 DROP TABLE call_center;
@@ -251,7 +251,7 @@ statement ok
 DROP TABLE web_site;
 
 statement ok
-CALL dsdgen(sf=0.01);
+CALL dsdgen(sf=0.01::DOUBLE);
 
 query I nosort call_center_sf0001
 SELECT * FROM call_center

@@ -24,7 +24,7 @@ select a from t1 where a = 30000 or a = 50000 or a = 500;
 
 
 statement ok
-call dbgen(sf=1);
+call dbgen(sf=1::DOUBLE);
 
 query I
 select l_orderkey from lineitem where l_orderkey = 6 or l_orderkey = 5999971;

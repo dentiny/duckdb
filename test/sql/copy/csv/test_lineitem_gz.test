@@ -9,7 +9,7 @@ mode skip instable
 require tpch
 
 statement ok
-CALL dbgen(sf=10);
+CALL dbgen(sf=10::DOUBLE);
 
 statement ok
 copy lineitem to '{TEST_DIR}/lineitem1.csv.gz'

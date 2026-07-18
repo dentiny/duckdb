@@ -5,7 +5,7 @@
 require tpch
 
 statement ok
-CALL dbgen(sf=0.1);
+CALL dbgen(sf=0.1::DOUBLE);
 
 statement ok
 COPY (SELECT l_orderkey, l_partkey, l_suppkey FROM lineitem) TO '{TEST_DIR}/union_by_name_lineitem1.csv' (HEADER);

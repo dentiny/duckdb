@@ -8,7 +8,7 @@ statement ok
 SET debug_physical_table_scan_execution_strategy=SYNCHRONOUS;
 
 statement ok
-CALL dsdgen(sf=0.01, suffix='_sync_scan');
+CALL dsdgen(sf=0.01::DOUBLE, suffix='_sync_scan');
 
 statement ok
 SET debug_physical_table_scan_execution_strategy=DEFAULT;

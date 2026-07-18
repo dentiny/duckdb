@@ -5,7 +5,7 @@
 require tpcds
 
 statement ok
-call dsdgen(sf=0.01)
+call dsdgen(sf=0.01::DOUBLE)
 
 # tpcds q14 was giving some issues before
 statement ok

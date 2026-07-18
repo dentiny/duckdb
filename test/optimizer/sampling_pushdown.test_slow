@@ -8,7 +8,7 @@ SET profiling_renderer_settings = MAP {'operator_casing': 'upper'};
 require tpch
 
 statement ok
-CALL DBGEN(sf=0.1);
+CALL DBGEN(sf=0.1::DOUBLE);
 
 # tablesample system + seq scan becomes sample scan
 query II

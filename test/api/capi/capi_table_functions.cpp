@@ -236,7 +236,8 @@ TEST_CASE("Test Table Function named parameters in C API", "[capi]") {
 	REQUIRE(result->Fetch<int64_t>(0, 0) == 84);
 	REQUIRE(result->Fetch<int64_t>(0, 1) == 168);
 
-	result = tester.Query("SELECT * FROM my_multiplier_function(2, my_parameter=3)");
+	// C registrations retain historical binder casts through their internal Castable declaration.
+	result = tester.Query("SELECT * FROM my_multiplier_function(2, my_parameter=3::INTEGER)");
 	REQUIRE_NO_FAIL(*result);
 	REQUIRE(result->Fetch<int64_t>(0, 0) == 126);
 	REQUIRE(result->Fetch<int64_t>(0, 1) == 252);
@@ -245,6 +246,10 @@ TEST_CASE("Test Table Function named parameters in C API", "[capi]") {
 	REQUIRE_NO_FAIL(*result);
 	REQUIRE(result->Fetch<int64_t>(0, 0) == 0);
 	REQUIRE(result->Fetch<int64_t>(0, 1) == 0);
+
+	result = tester.Query("SELECT * FROM my_multiplier_function(2, my_parameter='not a bigint')");
+	REQUIRE(result->HasError());
+	REQUIRE(StringUtil::Contains(result->ErrorMessage(), "Invalid Input Error"));
 }
 
 struct my_bind_connection_id_data {

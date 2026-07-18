@@ -16,7 +16,7 @@ mkdir -p data/parquet-testing/presigned
 
 generate_large_parquet_query=$(cat <<EOF
 
-CALL DBGEN(sf=1);
+CALL DBGEN(sf=1::DOUBLE);
 COPY lineitem TO 'data/parquet-testing/presigned/presigned-url-lineitem.parquet' (FORMAT 'parquet');
 
 EOF
@@ -27,4 +27,4 @@ mkdir -p data/attach_test/
 
 # Generate Storage Version
 $DUCKDB_PATH  data/attach_test/attach.db < test/sql/storage_version/generate_storage_version.sql
-$DUCKDB_PATH  data/attach_test/lineitem_sf1.db -c "CALL dbgen(sf=1)"
+$DUCKDB_PATH  data/attach_test/lineitem_sf1.db -c "CALL dbgen(sf=1::DOUBLE)"

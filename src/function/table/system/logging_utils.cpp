@@ -57,25 +57,26 @@ static unique_ptr<FunctionData> BindEnableLogging(ClientContext &context, TableF
 	for (const auto &param : input.named_parameters) {
 		auto &key = param.first;
 		if (key == "level") {
-			result->config.level = EnumUtil::FromString<LogLevel>(param.second.ToString());
+			result->config.level = EnumUtil::FromString<LogLevel>(param.second.GetValue<string>());
 		} else if (key == "storage") {
 			storage_isset = true;
-			result->config.storage = param.second.ToString();
+			result->config.storage = param.second.GetValue<string>();
 		} else if (key == "storage_config") {
-			if (param.second.type().id() != LogicalTypeId::STRUCT) {
+			auto value = param.second.GetValue<Value>();
+			if (value.type().id() != LogicalTypeId::STRUCT) {
 				throw InvalidInputException("EnableLogging: storage_config must be a struct");
 			}
-			auto &children = StructValue::GetChildren(param.second);
+			auto &children = StructValue::GetChildren(value);
 			for (idx_t i = 0; i < children.size(); i++) {
-				result->storage_config[StructType::GetChildName(param.second.type(), i).GetIdentifierName()] =
+				result->storage_config[StructType::GetChildName(value.type(), i).GetIdentifierName()] =
 				    children[i];
 			}
 		} else if (key == "storage_path") {
-			result->storage_config["path"] = param.second;
+			result->storage_config["path"] = param.second.GetValue<Value>();
 		} else if (key == "storage_normalize") {
-			result->storage_config["normalize"] = param.second;
+			result->storage_config["normalize"] = param.second.GetValue<Value>();
 		} else if (key == "storage_buffer_size") {
-			result->storage_config["buffer_size"] = param.second;
+			result->storage_config["buffer_size"] = param.second.GetValue<Value>();
 		} else {
 			throw InvalidInputException("EnableLogging: unknown named parameter: %s", param.first.c_str());
 		}

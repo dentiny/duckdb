@@ -83,8 +83,7 @@ static string QualifyTableCallback(ClientContext &context, const string &name) {
 
 //! Read a seconds-valued named parameter, rejecting anything outside [minimum, MAX_READINESS_SECONDS]. The
 //! upper bound keeps the poll loop's steady_clock arithmetic from overflowing.
-static int64_t ReadSecondsParameter(const string &key, const Value &value, int64_t minimum) {
-	auto seconds = value.GetValue<int64_t>();
+static int64_t ReadSecondsParameter(const string &key, int64_t seconds, int64_t minimum) {
 	if (seconds < minimum || seconds > MAX_READINESS_SECONDS) {
 		throw InvalidInputException("create_external_resource: '%s' must be between %lld and %lld, got %lld", key,
 		                            minimum, MAX_READINESS_SECONDS, seconds);
@@ -114,14 +113,26 @@ static unique_ptr<FunctionData> CreateExternalResourceBind(ClientContext &contex
 	result->params = Value::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR, vector<Value>(), vector<Value>());
 	for (auto &np : input.named_parameters) {
 		auto key = StringUtil::Lower(np.first.GetIdentifierName());
-		if (key == "params" && !np.second.IsNull()) {
-			result->params = np.second;
-		} else if (key == "teardown_on_failure" && !np.second.IsNull()) {
-			result->teardown_on_failure = BooleanValue::Get(np.second);
-		} else if (key == "timeout_seconds" && !np.second.IsNull()) {
-			result->timeout_seconds = ReadSecondsParameter(key, np.second, 0);
-		} else if (key == "poll_interval_seconds" && !np.second.IsNull()) {
-			result->poll_interval_seconds = ReadSecondsParameter(key, np.second, 1);
+		if (key == "params") {
+			auto value = np.second.GetOptionalValue<Value>();
+			if (value) {
+				result->params = std::move(*value);
+			}
+		} else if (key == "teardown_on_failure") {
+			auto value = np.second.GetOptionalValue<bool>();
+			if (value) {
+				result->teardown_on_failure = *value;
+			}
+		} else if (key == "timeout_seconds") {
+			auto value = np.second.GetOptionalValue<int64_t>();
+			if (value) {
+				result->timeout_seconds = ReadSecondsParameter(key, *value, 0);
+			}
+		} else if (key == "poll_interval_seconds") {
+			auto value = np.second.GetOptionalValue<int64_t>();
+			if (value) {
+				result->poll_interval_seconds = ReadSecondsParameter(key, *value, 1);
+			}
 		}
 	}
 
@@ -312,6 +323,7 @@ void CreateExternalResourceFun::RegisterFunction(BuiltinFunctions &set) {
 	fn.named_parameters["teardown_on_failure"] = LogicalType::BOOLEAN;
 	fn.named_parameters["timeout_seconds"] = NamedParameterType::Castable(LogicalType::BIGINT);
 	fn.named_parameters["poll_interval_seconds"] = NamedParameterType::Castable(LogicalType::BIGINT);
+	fn.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	set.AddFunction(fn);
 }
 
@@ -334,8 +346,8 @@ struct DestroyExternalResourceState : public GlobalTableFunctionState {
 static unique_ptr<FunctionData> DestroyExternalResourceBind(ClientContext &context, TableFunctionBindInput &input,
                                                             vector<LogicalType> &return_types, vector<string> &names) {
 	auto result = make_uniq<DestroyExternalResourceBindData>();
-	if (input.inputs[0].IsNull() || StringValue::Get(input.inputs[0]).empty()) {
-		throw InvalidInputException("destroy_external_resource: the deleter function must not be NULL or empty");
+	if (StringValue::Get(input.inputs[0]).empty()) {
+		throw InvalidInputException("destroy_external_resource: the deleter function must not be empty");
 	}
 	result->deleter_function = StringValue::Get(input.inputs[0]);
 	result->deleter_payload = input.inputs[1];

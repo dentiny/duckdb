@@ -18,7 +18,7 @@ statement ok
 USE unencrypted;
 
 statement ok
-CALL dbgen(sf=0.01);
+CALL dbgen(sf=0.01::DOUBLE);
 
 statement ok
 COPY FROM DATABASE unencrypted to encrypted;

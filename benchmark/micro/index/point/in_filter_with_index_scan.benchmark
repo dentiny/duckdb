@@ -8,7 +8,7 @@ group art
 require tpch
 
 load
-CALL dbgen(sf=1);
+CALL dbgen(sf=1::DOUBLE);
 SET index_scan_percentage = 1.0;
 CREATE TABLE random_orders AS (
 	(SELECT o_orderkey FROM orders OFFSET 100 LIMIT 3)

@@ -14,7 +14,7 @@ CREATE TABLE tbl (i INTEGER);
 load {TEST_DIR}/test_dbgen_ro.db readonly
 
 statement error
-CALL dbgen(sf=0);
+CALL dbgen(sf=0::DOUBLE);
 ----
 read-only
 
@@ -24,9 +24,9 @@ statement ok
 ATTACH '{TEST_DIR}/test_dbgen_ro.db' AS dbgentest (READ_ONLY)
 
 statement error
-CALL dbgen(sf=0, catalog='dbgentest');
+CALL dbgen(sf=0::DOUBLE, catalog='dbgentest');
 ----
 read-only
 
 statement ok
-CALL dbgen(sf=0);
+CALL dbgen(sf=0::DOUBLE);

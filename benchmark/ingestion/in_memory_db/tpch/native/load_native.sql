@@ -1,4 +1,4 @@
-call dbgen(sf=1);
+call dbgen(sf=1::DOUBLE);
 
 create view customer_native as select * from customer;
 create view lineitem_native as select * from lineitem;

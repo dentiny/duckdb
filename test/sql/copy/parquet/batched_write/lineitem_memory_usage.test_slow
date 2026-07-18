@@ -9,7 +9,7 @@ require tpch
 load {TEST_DIR}/lineitem_memory_test.db
 
 statement ok
-CALL dbgen(sf=1)
+CALL dbgen(sf=1::DOUBLE)
 
 statement ok
 COPY lineitem TO '{TEST_DIR}/lineitem_memory_usage.parquet'

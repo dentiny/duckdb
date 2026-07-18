@@ -5,7 +5,7 @@
 require tpch
 
 statement ok
-CALL dbgen(sf=0.01, suffix='_normalized');
+CALL dbgen(sf=0.01::DOUBLE, suffix='_normalized');
 
 statement ok
 CREATE TABLE lineitem_struct AS SELECT lineitem_normalized AS struct_val FROM lineitem_normalized;

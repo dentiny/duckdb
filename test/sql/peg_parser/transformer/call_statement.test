@@ -15,12 +15,12 @@ statement ok
 CALL enable_logging(['QueryLog', 'FileSystem']);
 
 statement error
-CALL dbgen(sf=0.01, children=-1);
+CALL dbgen(sf=0.01::DOUBLE, children=-1);
 ----
 <REGEX>:Invalid Input Error.*Failed to cast value.*
 
 statement ok
-CALL dbgen(sf=0.1);
+CALL dbgen(sf=0.1::DOUBLE);
 
 statement ok
-CALL dbgen(sf=0.1, suffix='_original');
+CALL dbgen(sf=0.1::DOUBLE, suffix='_original');

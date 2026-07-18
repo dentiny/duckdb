@@ -5,7 +5,7 @@
 require tpch
 
 statement ok
-CALL dbgen(sf=1);
+CALL dbgen(sf=1::DOUBLE);
 
 query II
 select l_returnflag, mode(l_comment) from lineitem where l_returnflag <> 'N' group by l_returnflag;

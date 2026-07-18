@@ -58,7 +58,7 @@ select (uncompressed::FLOAT / compressed::FLOAT) > 5, (uncompressed::FLOAT / com
 True	True
 
 statement ok
-CALL dbgen(sf=0.1)
+CALL dbgen(sf=0.1::DOUBLE)
 
 statement ok
 PRAGMA force_compression='uncompressed'

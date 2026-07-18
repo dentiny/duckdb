@@ -8,7 +8,7 @@ statement ok
 pragma threads=4
 
 statement ok
-CALL dsdgen(sf=1, suffix='_og');
+CALL dsdgen(sf=1::DOUBLE, suffix='_og');
 
 
 foreach tpcds_tbl call_center catalog_page catalog_returns catalog_sales customer customer_address customer_demographics date_dim household_demographics income_band inventory item promotion reason ship_mode store store_returns store_sales time_dim warehouse web_page web_returns web_sales web_site

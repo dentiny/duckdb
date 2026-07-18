@@ -1,4 +1,4 @@
-call dbgen(sf=100);
+call dbgen(sf=100::DOUBLE);
 create or replace table lineitem_sf1 as from lineitem limit 6001215;
 create or replace table lineitem_sf1_random as (select * from lineitem_sf1 order by hash(rowid + 42));
 create or replace table lineitem_sf10 as from lineitem limit 59986052;

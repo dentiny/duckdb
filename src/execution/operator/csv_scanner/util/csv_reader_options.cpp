@@ -651,6 +651,15 @@ void CSVReaderOptions::FromNamedParameters(const named_parameter_map_t &in, Clie
 	}
 }
 
+void CSVReaderOptions::FromNamedParameters(const bound_named_parameter_map_t &in, ClientContext &context,
+                                           MultiFileOptions &file_options) {
+	named_parameter_map_t values;
+	for (auto &kv : in) {
+		values.emplace(kv.first, kv.second.GetOptionalValue<Value>().value_or(Value(kv.second.GetType())));
+	}
+	FromNamedParameters(values, context, file_options);
+}
+
 void CSVReaderOptions::ParseOption(ClientContext &context, const string &key, const Value &val) {
 	auto loption = StringUtil::Lower(key);
 	// skip variables that are specific to auto-detection

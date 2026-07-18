@@ -17,7 +17,7 @@ statement ok
 USE encrypted;
 
 statement ok
-CALL dbgen(sf=1);
+CALL dbgen(sf=1::DOUBLE);
 
 statement ok
 CHECKPOINT;

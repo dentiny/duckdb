@@ -58,7 +58,7 @@ FROM (
 NULL
 
 statement ok
-CALL dbgen(sf=0.1)
+CALL dbgen(sf=0.1::DOUBLE)
 
 statement ok
 PRAGMA force_compression='uncompressed'

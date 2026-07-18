@@ -7,7 +7,7 @@ require tpch
 load {TEST_DIR}/test_enum_blowup.db
 
 statement ok
-CALL DBGEN(sf=0.01);
+CALL DBGEN(sf=0.01::DOUBLE);
 
 statement ok
 create type orderkey_enum as enum (Select (l_orderkey/4)::VARCHAR from lineitem);

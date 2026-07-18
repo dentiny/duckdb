@@ -9,7 +9,7 @@ require tpch
 
 # create the CSV file
 load
-CALL dbgen(sf=1);
+CALL dbgen(sf=1::DOUBLE);
 
 run
 WITH my_cte AS (

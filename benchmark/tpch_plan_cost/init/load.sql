@@ -1,2 +1,2 @@
-CALL dbgen(sf=1)
+CALL dbgen(sf=1::DOUBLE)
 

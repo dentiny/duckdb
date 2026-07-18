@@ -1,0 +1,42 @@
+# name: test/issues/general/test_23723.test
+# description: Table function NULL and named option type errors are user errors
+# group: [general]
+
+statement ok
+CREATE TABLE storage_info_table(i INTEGER);
+
+# DEFAULT rejects positional NULL before the callback.
+statement error
+FROM pragma_storage_info(NULL)
+----
+<REGEX>:Invalid Input Error:.*pragma_storage_info.*NULL.*positional parameter 1
+
+# DEFAULT rejects named NULL before the callback.
+statement error
+FROM pragma_storage_info('storage_info_table', include_segment_info=NULL)
+----
+<REGEX>:Invalid Input Error:.*pragma_storage_info.*NULL.*named parameter.*include_segment_info
+
+# repeat_row is SPECIAL because row values may be NULL.
+query I
+FROM repeat_row(NULL, num_rows=2)
+----
+NULL
+NULL
+
+query I
+FROM repeat_row(42, num_rows=2)
+----
+42
+42
+
+# Its count remains required and is cast to the unsigned declared domain.
+statement error
+FROM repeat_row(42, num_rows=NULL)
+----
+<REGEX>:Invalid Input Error:.*num_rows.*repeat_row.*NULL
+
+statement error
+FROM repeat_row(42, num_rows=-1)
+----
+<REGEX>:Invalid Input Error:.*Failed to cast value

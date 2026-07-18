@@ -196,7 +196,7 @@ physical_plan	<REGEX>:.*__internal_decompress.*CAST.*__internal_compress.*CAST.*
 require tpch
 
 statement ok
-call dbgen(sf=0.01)
+call dbgen(sf=0.01::DOUBLE)
 
 statement ok
 PRAGMA explain_output = PHYSICAL_ONLY

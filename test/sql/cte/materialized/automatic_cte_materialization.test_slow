@@ -14,7 +14,7 @@ statement ok
 SET disabled_optimizers TO 'common_subplan'
 
 statement ok
-CALL dbgen(sf=0.01);
+CALL dbgen(sf=0.01::DOUBLE);
 
 # TPC-H Q15
 query II
@@ -90,7 +90,7 @@ DROP TABLE customer
 require tpcds
 
 statement ok
-call dsdgen(sf=0.01)
+call dsdgen(sf=0.01::DOUBLE)
 
 # TPC-DS Q23
 query II

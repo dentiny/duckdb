@@ -5,7 +5,7 @@
 require tpcds
 
 statement ok
-CALL dsdgen(sf=1, suffix='_original')
+CALL dsdgen(sf=1::DOUBLE, suffix='_original')
 
 statement ok
 PRAGMA default_null_order='NULLS LAST'

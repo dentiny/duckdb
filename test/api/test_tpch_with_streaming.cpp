@@ -18,7 +18,7 @@ TEST_CASE("Test TPC-H SF0.01 using streaming api", "[tpch][.]") {
 		return;
 	}
 
-	REQUIRE_NO_FAIL(con.Query("CALL dbgen(sf=" + to_string(sf) + ")"));
+	REQUIRE_NO_FAIL(con.Query("CALL dbgen(sf=" + to_string(sf) + "::DOUBLE)"));
 
 	for (idx_t tpch_num = 1; tpch_num <= 22; tpch_num++) {
 		result = con.SendQuery("pragma tpch(" + to_string(tpch_num) + ");");
@@ -49,7 +49,7 @@ TEST_CASE("Test TPC-H dbgen progress", "[tpch][progress-bar][.]") {
 	REQUIRE_NO_FAIL(con.Query("PRAGMA progress_bar_time=1"));
 	REQUIRE_NO_FAIL(con.Query("PRAGMA disable_print_progress_bar"));
 
-	auto pending = con.PendingQuery("CALL dbgen(sf=0.01, suffix='_progress')");
+	auto pending = con.PendingQuery("CALL dbgen(sf=0.01::DOUBLE, suffix='_progress')");
 	double previous_percentage = -1;
 	bool saw_intermediate_progress = false;
 	bool saw_progress_before_ready = false;
@@ -98,7 +98,7 @@ TEST_CASE("Test TPC-H dbgen parallel progress does not finish early", "[tpch][pr
 	REQUIRE_NO_FAIL(con.Query("PRAGMA progress_bar_time=1"));
 	REQUIRE_NO_FAIL(con.Query("PRAGMA disable_print_progress_bar"));
 
-	auto pending = con.PendingQuery("CALL dbgen(sf=0.01, suffix='_progress_parallel')");
+	auto pending = con.PendingQuery("CALL dbgen(sf=0.01::DOUBLE, suffix='_progress_parallel')");
 	bool saw_progress_before_ready = false;
 	bool saw_finished_progress_before_ready = false;
 
@@ -138,7 +138,7 @@ TEST_CASE("Test TPC-H dbgen rollback after interrupted optimistic write", "[tpch
 	REQUIRE_NO_FAIL(con.Query("PRAGMA threads=4"));
 	REQUIRE_NO_FAIL(con.Query("SET write_buffer_row_group_count=1"));
 
-	auto pending = con.PendingQuery("CALL dbgen(sf=1, suffix='_interrupted')");
+	auto pending = con.PendingQuery("CALL dbgen(sf=1::DOUBLE, suffix='_interrupted')");
 	auto state = pending->ExecuteTask();
 	REQUIRE(!PendingQueryResult::IsResultReady(state));
 
@@ -148,6 +148,6 @@ TEST_CASE("Test TPC-H dbgen rollback after interrupted optimistic write", "[tpch
 	con.context->ClearInterrupt();
 
 	REQUIRE_NO_FAIL(con.Query("CHECKPOINT"));
-	REQUIRE_NO_FAIL(con.Query("CALL dbgen(sf=0.01, suffix='_after_interrupt')"));
+	REQUIRE_NO_FAIL(con.Query("CALL dbgen(sf=0.01::DOUBLE, suffix='_after_interrupt')"));
 	REQUIRE_NO_FAIL(con.Query("CHECKPOINT"));
 }

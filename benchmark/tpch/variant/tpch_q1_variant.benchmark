@@ -12,7 +12,7 @@ require tpch
 cache tpch_variant_sf1.duckdb
 
 load
-CALL dbgen(sf=1, suffix='_normalized');
+CALL dbgen(sf=1::DOUBLE, suffix='_normalized');
 SET variant_minimum_shredding_size = 0;
 create table lineitem_variant as select
 	struct_pack(*COLUMNS(lineitem_normalized.*))::VARIANT lineitem

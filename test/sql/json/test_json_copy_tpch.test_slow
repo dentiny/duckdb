@@ -16,7 +16,7 @@ statement ok
 start transaction
 
 statement ok
-call dbgen(sf=0.1)
+call dbgen(sf=0.1::DOUBLE)
 
 # export lineitem as array (ARRAY does not need TRUE to be passed)
 statement ok
@@ -34,7 +34,7 @@ statement ok
 start transaction
 
 statement ok
-call dbgen(sf=0)
+call dbgen(sf=0::DOUBLE)
 
 # sf0.1 lineitem json is ~0.2GB so this tests that we can do streaming reads of json arrays
 statement ok

@@ -16,7 +16,7 @@ TEST_CASE("Test TPC-DS dsdgen progress", "[tpcds][progress-bar][.]") {
 	REQUIRE_NO_FAIL(con.Query("PRAGMA progress_bar_time=1"));
 	REQUIRE_NO_FAIL(con.Query("PRAGMA disable_print_progress_bar"));
 
-	auto pending = con.PendingQuery("CALL dsdgen(sf=0.01, suffix='_progress')");
+	auto pending = con.PendingQuery("CALL dsdgen(sf=0.01::DOUBLE, suffix='_progress')");
 	double previous_percentage = -1;
 	bool saw_intermediate_progress = false;
 	bool saw_progress_before_ready = false;
@@ -68,7 +68,7 @@ TEST_CASE("Test TPC-DS dsdgen parallel progress starts gradually", "[tpcds][prog
 	REQUIRE_NO_FAIL(con.Query("PRAGMA progress_bar_time=1"));
 	REQUIRE_NO_FAIL(con.Query("PRAGMA disable_print_progress_bar"));
 
-	auto pending = con.PendingQuery("CALL dsdgen(sf=1, suffix='_parallel_progress')");
+	auto pending = con.PendingQuery("CALL dsdgen(sf=1::DOUBLE, suffix='_parallel_progress')");
 	double previous_percentage = -1;
 	double first_positive_percentage = 101;
 	double max_percentage_before_ready = 0;
@@ -132,9 +132,9 @@ TEST_CASE("Test TPC-DS dsdgen parallel output matches sequential output", "[tpcd
 	}
 
 	REQUIRE_NO_FAIL(con.Query("PRAGMA threads=1"));
-	REQUIRE_NO_FAIL(con.Query("CALL dsdgen(sf=1, suffix='_seq')"));
+	REQUIRE_NO_FAIL(con.Query("CALL dsdgen(sf=1::DOUBLE, suffix='_seq')"));
 	REQUIRE_NO_FAIL(con.Query("PRAGMA threads=4"));
-	REQUIRE_NO_FAIL(con.Query("CALL dsdgen(sf=1, suffix='_par')"));
+	REQUIRE_NO_FAIL(con.Query("CALL dsdgen(sf=1::DOUBLE, suffix='_par')"));
 
 	const vector<string> tables = {"call_center",
 	                               "catalog_page",
@@ -185,7 +185,7 @@ TEST_CASE("Test TPC-DS dsdgen rollback after interrupted optimistic write", "[tp
 	REQUIRE_NO_FAIL(con.Query("PRAGMA threads=4"));
 	REQUIRE_NO_FAIL(con.Query("SET write_buffer_row_group_count=1"));
 
-	auto pending = con.PendingQuery("CALL dsdgen(sf=1, suffix='_interrupted')");
+	auto pending = con.PendingQuery("CALL dsdgen(sf=1::DOUBLE, suffix='_interrupted')");
 	auto state = pending->ExecuteTask();
 	REQUIRE(!PendingQueryResult::IsResultReady(state));
 
@@ -195,7 +195,7 @@ TEST_CASE("Test TPC-DS dsdgen rollback after interrupted optimistic write", "[tp
 	con.context->ClearInterrupt();
 
 	REQUIRE_NO_FAIL(con.Query("CHECKPOINT"));
-	REQUIRE_NO_FAIL(con.Query("CALL dsdgen(sf=0.01, suffix='_after_interrupt')"));
+	REQUIRE_NO_FAIL(con.Query("CALL dsdgen(sf=0.01::DOUBLE, suffix='_after_interrupt')"));
 	REQUIRE_NO_FAIL(con.Query("CHECKPOINT"));
 #endif
 }

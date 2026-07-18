@@ -194,6 +194,8 @@ struct CSVReaderOptions {
 	void SetDateFormat(LogicalTypeId type, const string &format, bool read_format);
 	void ToNamedParameters(named_parameter_map_t &out) const;
 	void FromNamedParameters(const named_parameter_map_t &in, ClientContext &context, MultiFileOptions &file_options);
+	void FromNamedParameters(const bound_named_parameter_map_t &in, ClientContext &context,
+	                         MultiFileOptions &file_options);
 	void ParseOption(ClientContext &context, const string &key, const Value &val);
 	//! Verify options are not conflicting
 	void Verify(MultiFileOptions &file_options);

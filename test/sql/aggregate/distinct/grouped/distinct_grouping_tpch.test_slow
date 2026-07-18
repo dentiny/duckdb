@@ -14,7 +14,7 @@ statement ok
 SET debug_force_external=true;
 
 statement ok
-CALL dbgen(sf=1);
+CALL dbgen(sf=1::DOUBLE);
 
 query IIIII
 select

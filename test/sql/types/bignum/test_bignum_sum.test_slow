@@ -23,7 +23,7 @@ mode unskip
 require tpch
 
 statement ok
-CALL dbgen(sf=1)
+CALL dbgen(sf=1::DOUBLE)
 
 query I
 select sum(l_orderkey::bignum) as l_orderkey from lineitem
