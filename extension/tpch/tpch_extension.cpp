@@ -248,8 +248,8 @@ static void LoadInternal(ExtensionLoader &loader) {
 	dbgen_func.named_parameters["catalog"] = LogicalType::VARCHAR;
 	dbgen_func.named_parameters["schema"] = LogicalType::VARCHAR;
 	dbgen_func.named_parameters["suffix"] = LogicalType::VARCHAR;
-	dbgen_func.named_parameters["children"] = LogicalType::UINTEGER;
-	dbgen_func.named_parameters["step"] = LogicalType::UINTEGER;
+	dbgen_func.named_parameters["children"] = NamedParameterType::Castable(LogicalType::UINTEGER);
+	dbgen_func.named_parameters["step"] = NamedParameterType::Castable(LogicalType::UINTEGER);
 	dbgen_func.call_return_type = StatementReturnType::NOTHING;
 	dbgen_func.table_scan_progress = DbgenProgress;
 	loader.RegisterFunction(dbgen_func);

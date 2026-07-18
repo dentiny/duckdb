@@ -15,18 +15,37 @@
 
 namespace duckdb {
 
+enum class NamedParameterCastPolicy : uint8_t { EXACT_TYPE, IMPLICIT_CAST };
+
 class NamedParameterType {
 public:
 	NamedParameterType() = default;
 	NamedParameterType(LogicalType type_p) : type(std::move(type_p)) { // NOLINT: preserve LogicalType assignment
 	}
+	NamedParameterType &operator=(LogicalType type_p) {
+		type = std::move(type_p);
+		cast_policy = NamedParameterCastPolicy::EXACT_TYPE;
+		return *this;
+	}
+
+	static NamedParameterType Castable(LogicalType type) {
+		return NamedParameterType(std::move(type), NamedParameterCastPolicy::IMPLICIT_CAST);
+	}
 
 	const LogicalType &GetType() const {
 		return type;
 	}
+	NamedParameterCastPolicy GetCastPolicy() const {
+		return cast_policy;
+	}
 
 private:
+	NamedParameterType(LogicalType type_p, NamedParameterCastPolicy cast_policy_p)
+	    : type(std::move(type_p)), cast_policy(cast_policy_p) {
+	}
+
 	LogicalType type;
+	NamedParameterCastPolicy cast_policy = NamedParameterCastPolicy::EXACT_TYPE;
 };
 
 struct CTableInternalBindInfo;
@@ -53,20 +72,20 @@ public:
 
 	template <class T>
 	T GetValue() const {
-		VerifyType<T>();
 		if (IsNull()) {
 			throw InvalidInputException("Named parameter \"%s\" for table function \"%s\" cannot be NULL",
 			                            option_name, function_name);
 		}
+		VerifyType<T>();
 		return GetValueInternal<T>();
 	}
 
 	template <class T>
 	optional<T> GetOptionalValue() const {
-		VerifyType<T>();
 		if (IsNull()) {
 			return nullopt;
 		}
+		VerifyType<T>();
 		return GetValueInternal<T>();
 	}
 

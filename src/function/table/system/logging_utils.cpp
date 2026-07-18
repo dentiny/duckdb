@@ -166,7 +166,7 @@ void EnableLoggingFun::RegisterFunction(BuiltinFunctions &set) {
 	// Config that is forwarded to the storage_config struct as syntactic sugar
 	enable_fun.named_parameters.emplace("storage_path", LogicalType::VARCHAR);
 	enable_fun.named_parameters.emplace("storage_normalize", LogicalType::BOOLEAN);
-	enable_fun.named_parameters.emplace("storage_buffer_size", LogicalType::UBIGINT);
+	enable_fun.named_parameters.emplace("storage_buffer_size", NamedParameterType::Castable(LogicalType::UBIGINT));
 
 	enable_fun.SetVarArgs(LogicalType::ANY);
 	set.AddFunction(enable_fun);

@@ -216,7 +216,7 @@ void duckdb_table_function_add_named_parameter(duckdb_table_function function, c
 	}
 	auto &tf = GetCTableFunction(function);
 	auto logical_type = reinterpret_cast<duckdb::LogicalType *>(type);
-	tf.named_parameters.insert({name, *logical_type});
+	tf.named_parameters.insert({name, duckdb::NamedParameterType::Castable(*logical_type)});
 }
 
 void duckdb_table_function_set_extra_info(duckdb_table_function function, void *extra_info,

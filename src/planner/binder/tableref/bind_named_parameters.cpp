@@ -43,9 +43,20 @@ bound_named_parameter_map_t Binder::BindNamedParameters(const named_parameter_ty
 			throw BinderException(error_context, "Invalid named parameter \"%s\" for function %s\n%s", kv.first,
 			                      func_name.GetIdentifierName(), error_msg);
 		}
-		const auto &type = entry->second.GetType();
-		if (type.id() != LogicalTypeId::ANY) {
-			kv.second = kv.second.DefaultCastAs(type);
+		const auto &parameter_type = entry->second;
+		const auto &type = parameter_type.GetType();
+		if (kv.second.IsNull()) {
+			if (type.id() != LogicalTypeId::ANY) {
+				kv.second = Value(type);
+			}
+		} else if (type.id() != LogicalTypeId::ANY) {
+			if (parameter_type.GetCastPolicy() == NamedParameterCastPolicy::IMPLICIT_CAST) {
+				kv.second = kv.second.DefaultCastAs(type);
+			} else if (kv.second.type() != type) {
+				throw InvalidInputException("Named parameter \"%s\" for function \"%s\" requires type %s, but "
+				                            "the argument has type %s",
+				                            kv.first, func_name, type, kv.second.type());
+			}
 		}
 		result.emplace(kv.first, BoundNamedParameterValue(kv.second, type, func_name, kv.first));
 	}

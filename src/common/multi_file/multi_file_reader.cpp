@@ -87,10 +87,10 @@ Value MultiFileReader::CreateValueFromFileList(const vector<string> &file_list) 
 
 void MultiFileReader::AddParameters(TableFunction &table_function) {
 	table_function.named_parameters["filename"] = LogicalType::ANY;
-	table_function.named_parameters["hive_partitioning"] = LogicalType::BOOLEAN;
-	table_function.named_parameters["union_by_name"] = LogicalType::BOOLEAN;
+	table_function.named_parameters["hive_partitioning"] = NamedParameterType::Castable(LogicalType::BOOLEAN);
+	table_function.named_parameters["union_by_name"] = NamedParameterType::Castable(LogicalType::BOOLEAN);
 	table_function.named_parameters["hive_types"] = LogicalType::ANY;
-	table_function.named_parameters["hive_types_autocast"] = LogicalType::BOOLEAN;
+	table_function.named_parameters["hive_types_autocast"] = NamedParameterType::Castable(LogicalType::BOOLEAN);
 	table_function.named_parameters["allow_empty"] = LogicalType::BOOLEAN;
 }
 

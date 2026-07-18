@@ -556,11 +556,11 @@ static vector<PartitionStatistics> ParquetGetPartitionStats(ClientContext &conte
 
 TableFunctionSet ParquetScanFunction::GetFunctionSet() {
 	MultiFileFunction<ParquetMultiFileInfo> table_function("parquet_scan");
-	table_function.named_parameters["binary_as_string"] = LogicalType::BOOLEAN;
-	table_function.named_parameters["file_row_number"] = LogicalType::BOOLEAN;
+	table_function.named_parameters["binary_as_string"] = NamedParameterType::Castable(LogicalType::BOOLEAN);
+	table_function.named_parameters["file_row_number"] = NamedParameterType::Castable(LogicalType::BOOLEAN);
 	table_function.named_parameters["debug_use_openssl"] = LogicalType::BOOLEAN;
 	table_function.named_parameters["compression"] = LogicalType::VARCHAR;
-	table_function.named_parameters["explicit_cardinality"] = LogicalType::UBIGINT;
+	table_function.named_parameters["explicit_cardinality"] = NamedParameterType::Castable(LogicalType::UBIGINT);
 	table_function.named_parameters["schema"] = LogicalTypeId::ANY;
 	table_function.named_parameters["encryption_config"] = LogicalTypeId::ANY;
 	table_function.named_parameters["parquet_version"] = LogicalType::VARCHAR;

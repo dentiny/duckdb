@@ -310,8 +310,8 @@ void CreateExternalResourceFun::RegisterFunction(BuiltinFunctions &set) {
 	                 CreateExternalResourceBind, CreateExternalResourceInit);
 	fn.named_parameters["params"] = LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR);
 	fn.named_parameters["teardown_on_failure"] = LogicalType::BOOLEAN;
-	fn.named_parameters["timeout_seconds"] = LogicalType::BIGINT;
-	fn.named_parameters["poll_interval_seconds"] = LogicalType::BIGINT;
+	fn.named_parameters["timeout_seconds"] = NamedParameterType::Castable(LogicalType::BIGINT);
+	fn.named_parameters["poll_interval_seconds"] = NamedParameterType::Castable(LogicalType::BIGINT);
 	set.AddFunction(fn);
 }
 
