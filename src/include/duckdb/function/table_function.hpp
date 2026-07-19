@@ -425,6 +425,12 @@ public:
 	table_function_deserialize_t GetDeserializeCallback() const {
 		return deserialize;
 	}
+	auto GetNullHandling() const -> FunctionNullHandling {
+		return null_handling;
+	}
+	auto SetNullHandling(FunctionNullHandling value) -> void {
+		null_handling = value;
+	}
 
 	//! Bind function
 	//! This function is used for determining the return type of a table producing function and returning bind data
@@ -542,6 +548,9 @@ public:
 	DUCKDB_API bool Equal(const TableFunction &rhs) const;
 	DUCKDB_API bool operator==(const TableFunction &rhs) const;
 	DUCKDB_API bool operator!=(const TableFunction &rhs) const;
+
+private:
+	FunctionNullHandling null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING;
 };
 
 } // namespace duckdb

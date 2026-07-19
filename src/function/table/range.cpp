@@ -388,6 +388,7 @@ void RangeTableFunction::RegisterFunction(BuiltinFunctions &set) {
 
 	TableFunction range_function({LogicalType::BIGINT}, nullptr, RangeFunctionBind<false>, nullptr,
 	                             RangeFunctionLocalInit);
+	range_function.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	range_function.in_out_function = RangeFunction<false>;
 	range_function.cardinality = RangeCardinality;
 	range_function.parallelism = TableFunctionParallelism::FORCE_SINGLE_THREADED;
@@ -402,6 +403,7 @@ void RangeTableFunction::RegisterFunction(BuiltinFunctions &set) {
 	range.AddFunction(range_function);
 	TableFunction range_in_out({LogicalType::TIMESTAMP, LogicalType::TIMESTAMP, LogicalType::INTERVAL}, nullptr,
 	                           RangeDateTimeBind<false>, nullptr, RangeDateTimeLocalInit);
+	range_in_out.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	range_in_out.in_out_function = RangeDateTimeFunction<false>;
 	range_in_out.cardinality = RangeDateTimeCardinality;
 	range_in_out.parallelism = TableFunctionParallelism::FORCE_SINGLE_THREADED;
@@ -420,6 +422,7 @@ void RangeTableFunction::RegisterFunction(BuiltinFunctions &set) {
 	generate_series.AddFunction(range_function);
 	TableFunction generate_series_in_out({LogicalType::TIMESTAMP, LogicalType::TIMESTAMP, LogicalType::INTERVAL},
 	                                     nullptr, RangeDateTimeBind<true>, nullptr, RangeDateTimeLocalInit);
+	generate_series_in_out.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	generate_series_in_out.in_out_function = RangeDateTimeFunction<true>;
 	generate_series_in_out.parallelism = TableFunctionParallelism::FORCE_SINGLE_THREADED;
 	generate_series_in_out.return_type = TableFunctionReturnType::SET_RETURNING_FUNCTION;

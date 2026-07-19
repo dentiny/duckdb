@@ -312,6 +312,7 @@ void CreateExternalResourceFun::RegisterFunction(BuiltinFunctions &set) {
 	fn.named_parameters["teardown_on_failure"] = LogicalType::BOOLEAN;
 	fn.named_parameters["timeout_seconds"] = LogicalType::BIGINT;
 	fn.named_parameters["poll_interval_seconds"] = LogicalType::BIGINT;
+	fn.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	set.AddFunction(fn);
 }
 

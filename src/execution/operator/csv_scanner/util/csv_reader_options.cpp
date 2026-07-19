@@ -658,6 +658,9 @@ void CSVReaderOptions::ParseOption(ClientContext &context, const string &key, co
 		user_defined_parameters[loption] = val.ToSQLString();
 	}
 	if (loption == "columns") {
+		if (val.IsNull()) {
+			throw BinderException("read_csv %s cannot be NULL", key);
+		}
 		if (!name_list.empty()) {
 			throw BinderException("read_csv column_names/names can only be supplied once");
 		}
@@ -676,6 +679,9 @@ void CSVReaderOptions::ParseOption(ClientContext &context, const string &key, co
 		for (idx_t i = 0; i < struct_children.size(); i++) {
 			auto &name = StructType::GetChildName(child_type, i);
 			auto &val = struct_children[i];
+			if (val.IsNull()) {
+				throw BinderException("read_csv %s parameter cannot have a NULL value", key);
+			}
 			parsed_names.emplace_back(name);
 			if (val.type().id() != LogicalTypeId::VARCHAR) {
 				throw BinderException("read_csv requires a type specification as string");
@@ -694,6 +700,9 @@ void CSVReaderOptions::ParseOption(ClientContext &context, const string &key, co
 		sql_type_list = std::move(parsed_types);
 		sql_types_per_column = std::move(parsed_types_per_column);
 	} else if (loption == "auto_type_candidates") {
+		if (val.IsNull()) {
+			throw BinderException("read_csv %s cannot be NULL", key);
+		}
 		auto_type_candidates.clear();
 		map<uint8_t, LogicalType> candidate_types;
 		// We always have the extremes of Null and Varchar, so we can default to varchar if the
@@ -710,6 +719,9 @@ void CSVReaderOptions::ParseOption(ClientContext &context, const string &key, co
 			throw BinderException("auto_type_candidates requires at least one type");
 		}
 		for (auto &child : list_children) {
+			if (child.IsNull()) {
+				throw BinderException("read_csv %s parameter cannot have a NULL value", key);
+			}
 			if (child.type().id() != LogicalTypeId::VARCHAR) {
 				throw BinderException("auto_type_candidates requires a type specification as string");
 			}
@@ -751,6 +763,9 @@ void CSVReaderOptions::ParseOption(ClientContext &context, const string &key, co
 			column_names.insert(name);
 		}
 	} else if (loption == "column_types" || loption == "types" || loption == "dtypes") {
+		if (val.IsNull()) {
+			throw BinderException("read_csv %s cannot be NULL", key);
+		}
 		auto &child_type = val.type();
 		if (child_type.id() != LogicalTypeId::STRUCT && child_type.id() != LogicalTypeId::LIST) {
 			throw BinderException("read_csv %s requires a struct or list as input", key);
@@ -768,6 +783,9 @@ void CSVReaderOptions::ParseOption(ClientContext &context, const string &key, co
 			for (idx_t i = 0; i < struct_children.size(); i++) {
 				auto &name = StructType::GetChildName(child_type, i);
 				auto &val = struct_children[i];
+				if (val.IsNull()) {
+					throw BinderException("read_csv %s parameter cannot have a NULL value", key);
+				}
 				if (val.type().id() != LogicalTypeId::VARCHAR) {
 					throw BinderException("read_csv %s requires a type specification as string", key);
 				}
@@ -781,6 +799,9 @@ void CSVReaderOptions::ParseOption(ClientContext &context, const string &key, co
 			}
 			auto &children = ListValue::GetChildren(val);
 			for (auto &child : children) {
+				if (child.IsNull()) {
+					throw BinderException("read_csv %s parameter cannot have a NULL value", key);
+				}
 				sql_type_names.push_back(StringValue::Get(child));
 			}
 		}
