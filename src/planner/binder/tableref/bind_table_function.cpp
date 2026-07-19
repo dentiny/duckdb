@@ -195,8 +195,7 @@ void Binder::ValidateTableFunctionParameters(const TableFunction &function, cons
 		if (!parameters[parameter_idx].IsNull()) {
 			continue;
 		}
-		if (parameters[parameter_idx].type() == LogicalType::TABLE &&
-		    parameter_idx < function.GetArguments().size() &&
+		if (parameters[parameter_idx].type() == LogicalType::TABLE && parameter_idx < function.GetArguments().size() &&
 		    function.GetArguments()[parameter_idx] == LogicalType::TABLE) {
 			continue;
 		}
