@@ -789,6 +789,7 @@ static optional<uint64_t> TryHashTimestamp(const Value &constant, const ParquetC
 	switch (schema.type_info) {
 	case ParquetExtraTypeInfo::UNIT_MS:
 		// DuckDB stores timestamps in microseconds, while the Parquet bloom filter hashes the stored milliseconds.
+		// Infinite timestamps are unit-independent sentinels and must remain unchanged.
 		if (timestamp_t {value}.IsFinite()) {
 			value /= Interval::MICROS_PER_MSEC;
 		}
