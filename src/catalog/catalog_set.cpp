@@ -17,7 +17,7 @@
 #include "duckdb/transaction/duck_transaction.hpp"
 #include "duckdb/transaction/duck_transaction_manager.hpp"
 #include "duckdb/transaction/transaction_manager.hpp"
-#include "duckdb/catalog/dependency_set.hpp"
+#include "duckdb/catalog/dependency_list.hpp"
 #include "duckdb/common/exception/transaction_exception.hpp"
 #include "duckdb/catalog/catalog_entry/schema_catalog_entry.hpp"
 
@@ -197,7 +197,7 @@ bool CatalogSet::CreateEntryInternal(CatalogTransaction transaction, const Ident
 }
 
 bool CatalogSet::CreateEntry(CatalogTransaction transaction, const Identifier &name, unique_ptr<CatalogEntry> value,
-                             const LogicalDependencySet &dependencies) {
+                             const LogicalDependencyList &dependencies) {
 	CheckCatalogEntryInvariants(*value, name);
 
 	// Mark this entry as being created by the current active transaction
@@ -214,7 +214,7 @@ bool CatalogSet::CreateEntry(CatalogTransaction transaction, const Identifier &n
 }
 
 bool CatalogSet::CreateEntry(ClientContext &context, const Identifier &name, unique_ptr<CatalogEntry> value,
-                             const LogicalDependencySet &dependencies) {
+                             const LogicalDependencyList &dependencies) {
 	return CreateEntry(catalog.GetCatalogTransaction(context), name, std::move(value), dependencies);
 }
 

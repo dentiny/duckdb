@@ -44,12 +44,12 @@ unique_ptr<LogicalOperator> Binder::BindCopyDatabaseSchema(Catalog &from_databas
 		auto on_conflict = create_info->type == CatalogType::SCHEMA_ENTRY ? OnCreateConflict::IGNORE_ON_CONFLICT
 		                                                                  : OnCreateConflict::ERROR_ON_CONFLICT;
 		// Update all the dependencies of the entry to point to the newly created entries on the target database
-		auto update_catalog = [&](const LogicalDependencySet &source) {
-			LogicalDependencySet result;
-			for (auto &dependency : source.Entries()) {
+		auto update_catalog = [&](const LogicalDependencyList &source) {
+			LogicalDependencyList result;
+			for (auto &dependency : source.Set()) {
 				auto updated_dependency = dependency;
 				updated_dependency.catalog = target_database_name;
-				result.Add(updated_dependency);
+				result.AddDependency(updated_dependency);
 			}
 			return result;
 		};

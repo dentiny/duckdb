@@ -264,7 +264,7 @@ public:
 	void SetCatalogLookupCallback(catalog_entry_callback_t callback);
 	void BindCreateViewInfo(CreateViewInfo &base);
 	static void BindView(ClientContext &context, const SelectStatement &stmt, const Identifier &catalog_name,
-	                     const Identifier &schema_name, optional_ptr<LogicalDependencySet> dependencies,
+	                     const Identifier &schema_name, optional_ptr<LogicalDependencyList> dependencies,
 	                     const vector<Identifier> &aliases, vector<LogicalType> &result_types,
 	                     vector<Identifier> &result_names);
 

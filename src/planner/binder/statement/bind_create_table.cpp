@@ -675,7 +675,7 @@ unique_ptr<BoundCreateTableInfo> Binder::BindCreateTableInfo(unique_ptr<CreateIn
 				return;
 			}
 
-			dependencies.Add(entry);
+			dependencies.AddDependency(entry);
 		});
 
 		// Bind all physical column types

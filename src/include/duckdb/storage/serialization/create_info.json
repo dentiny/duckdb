@@ -68,8 +68,8 @@
       {
         "id": 109,
         "name": "dependencies",
-        "type": "LogicalDependencySet",
-        "default": "LogicalDependencySet()",
+        "type": "LogicalDependencyList",
+        "default": "LogicalDependencyList()",
         "version": "v0.10.3"
       },
       {

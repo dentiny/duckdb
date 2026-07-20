@@ -78,7 +78,7 @@ unique_ptr<LogicalOperator> IndexBinder::BindCreateIndex(ClientContext &context,
 		if (&catalog != &entry.ParentCatalog()) {
 			return;
 		}
-		dependencies.Add(entry);
+		dependencies.AddDependency(entry);
 	});
 
 	// Bind the index expressions.

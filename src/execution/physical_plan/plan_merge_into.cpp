@@ -132,7 +132,7 @@ PhysicalOperator &Catalog::PlanMergeInto(ClientContext &context, PhysicalPlanGen
 PhysicalOperator &PhysicalPlanGenerator::CreatePlan(LogicalMergeInto &op) {
 	auto &plan = CreatePlan(*op.children[0]);
 	D_ASSERT(op.children.size() == 1);
-	dependencies.Add(op.table);
+	dependencies.AddDependency(op.table);
 	return op.table.catalog.PlanMergeInto(context, *this, op, plan);
 }
 

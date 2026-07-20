@@ -5,7 +5,7 @@
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/main/database.hpp"
 #include "duckdb/parser/expression/constant_expression.hpp"
-#include "duckdb/catalog/dependency_set.hpp"
+#include "duckdb/catalog/dependency_list.hpp"
 #include "duckdb/common/enums/catalog_type.hpp"
 #include "duckdb/catalog/catalog_entry/dependency/dependency_entry.hpp"
 #include "duckdb/catalog/catalog_entry/dependency/dependency_subject_entry.hpp"
@@ -288,7 +288,7 @@ void DependencyManager::CreateDependency(CatalogTransaction transaction, Depende
 }
 
 void DependencyManager::CreateDependencies(CatalogTransaction transaction, const CatalogEntry &object,
-                                           const LogicalDependencySet &dependencies) {
+                                           const LogicalDependencyList &dependencies) {
 	DependencyDependentFlags dependency_flags;
 	if (object.type == CatalogType::INDEX_ENTRY) {
 		// Indexes are contained by their table and are always dropped with it, so they cannot become dangling.
@@ -297,7 +297,7 @@ void DependencyManager::CreateDependencies(CatalogTransaction transaction, const
 	}
 	const auto object_info = GetLookupProperties(object);
 	// check for each object in the sources if they were not deleted yet
-	for (auto &dependency : dependencies.Entries()) {
+	for (auto &dependency : dependencies.Set()) {
 		if (dependency.catalog != object.ParentCatalog().GetName()) {
 			throw DependencyException(
 			    "Error adding dependency for object \"%s\" - dependency \"%s\" is in catalog "
@@ -307,7 +307,7 @@ void DependencyManager::CreateDependencies(CatalogTransaction transaction, const
 	}
 
 	// add the object to the dependents_map of each object that it depends on
-	for (auto &dependency : dependencies.Entries()) {
+	for (auto &dependency : dependencies.Set()) {
 		DependencyInfo info {
 		    /*dependent = */ DependencyDependent {GetLookupProperties(object), dependency_flags},
 		    /*subject = */ DependencySubject {dependency.entry, DependencySubjectFlags(), optional_idx()}};
@@ -316,7 +316,7 @@ void DependencyManager::CreateDependencies(CatalogTransaction transaction, const
 }
 
 void DependencyManager::AddObject(CatalogTransaction transaction, CatalogEntry &object,
-                                  const LogicalDependencySet &dependencies) {
+                                  const LogicalDependencyList &dependencies) {
 	if (IsSystemEntry(object)) {
 		// Don't do anything for this
 		return;

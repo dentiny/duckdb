@@ -6,7 +6,7 @@
 #include "duckdb/common/serializer/serializer.hpp"
 #include "duckdb/common/serializer/deserializer.hpp"
 #include "duckdb/catalog/dependency.hpp"
-#include "duckdb/catalog/dependency_set.hpp"
+#include "duckdb/catalog/dependency_list.hpp"
 
 namespace duckdb {
 
@@ -49,12 +49,12 @@ LogicalDependency LogicalDependency::Deserialize(Deserializer &deserializer) {
 	return result;
 }
 
-void LogicalDependencySet::Serialize(Serializer &serializer) const {
+void LogicalDependencyList::Serialize(Serializer &serializer) const {
 	serializer.WriteProperty<dependency_set_t>(100, "set", set);
 }
 
-LogicalDependencySet LogicalDependencySet::Deserialize(Deserializer &deserializer) {
-	LogicalDependencySet result;
+LogicalDependencyList LogicalDependencyList::Deserialize(Deserializer &deserializer) {
+	LogicalDependencyList result;
 	deserializer.ReadProperty<dependency_set_t>(100, "set", result.set);
 	return result;
 }

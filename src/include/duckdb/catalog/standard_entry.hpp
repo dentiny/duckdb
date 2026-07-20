@@ -9,7 +9,7 @@
 #pragma once
 
 #include "duckdb/catalog/catalog_entry.hpp"
-#include "duckdb/catalog/dependency_set.hpp"
+#include "duckdb/catalog/dependency_list.hpp"
 
 namespace duckdb {
 class SchemaCatalogEntry;
@@ -26,7 +26,7 @@ public:
 	//! The schema the entry belongs to
 	SchemaCatalogEntry &schema;
 	//! Dependencies that affect DROP/ALTER and catalog recreation order
-	LogicalDependencySet dependencies;
+	LogicalDependencyList dependencies;
 
 public:
 	SchemaCatalogEntry &ParentSchema() override {

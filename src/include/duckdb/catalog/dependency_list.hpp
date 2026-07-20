@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 //                         DuckDB
 //
-// duckdb/catalog/dependency_set.hpp
+// duckdb/catalog/dependency_list.hpp
 //
 //
 //===----------------------------------------------------------------------===//
@@ -19,7 +19,7 @@ class CatalogEntry;
 struct CreateInfo;
 class SchemaCatalogEntry;
 struct CatalogTransaction;
-class LogicalDependencySet;
+class LogicalDependencyList;
 
 //! A minimal representation of a CreateInfo / CatalogEntry
 //! enough to look up the entry inside SchemaCatalogEntry::GetEntry
@@ -48,21 +48,21 @@ struct LogicalDependencyEquality {
 };
 
 //! A set of LogicalDependency objects that have not been looked up in the catalog yet.
-class LogicalDependencySet {
+class LogicalDependencyList {
 	using dependency_set_t = unordered_set<LogicalDependency, LogicalDependencyHashFunction, LogicalDependencyEquality>;
 
 public:
-	DUCKDB_API void Add(CatalogEntry &entry);
-	DUCKDB_API void Add(const LogicalDependency &entry);
-	DUCKDB_API void AddAll(const LogicalDependencySet &dependencies);
+	DUCKDB_API void AddDependency(CatalogEntry &entry);
+	DUCKDB_API void AddDependency(const LogicalDependency &entry);
+	DUCKDB_API void AddAll(const LogicalDependencyList &dependencies);
 	DUCKDB_API bool Contains(CatalogEntry &entry) const;
 
 public:
 	DUCKDB_API void VerifyDependencies(Catalog &catalog, const Identifier &name);
 	void Serialize(Serializer &serializer) const;
-	static LogicalDependencySet Deserialize(Deserializer &deserializer);
-	bool operator==(const LogicalDependencySet &other) const;
-	const dependency_set_t &Entries() const;
+	static LogicalDependencyList Deserialize(Deserializer &deserializer);
+	bool operator==(const LogicalDependencyList &other) const;
+	const dependency_set_t &Set() const;
 
 private:
 	dependency_set_t set;

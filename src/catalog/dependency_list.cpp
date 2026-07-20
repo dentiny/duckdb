@@ -1,4 +1,4 @@
-#include "duckdb/catalog/dependency_set.hpp"
+#include "duckdb/catalog/dependency_list.hpp"
 #include "duckdb/catalog/catalog_entry.hpp"
 #include "duckdb/common/serializer/deserializer.hpp"
 #include "duckdb/common/serializer/serializer.hpp"
@@ -70,25 +70,25 @@ bool LogicalDependency::operator==(const LogicalDependency &other) const {
 	       other.entry.type == entry.type && other.entry.parent_name == entry.parent_name && other.catalog == catalog;
 }
 
-void LogicalDependencySet::Add(CatalogEntry &entry) {
+void LogicalDependencyList::AddDependency(CatalogEntry &entry) {
 	set.insert(LogicalDependency(entry));
 }
 
-void LogicalDependencySet::Add(const LogicalDependency &entry) {
+void LogicalDependencyList::AddDependency(const LogicalDependency &entry) {
 	set.insert(entry);
 }
 
-void LogicalDependencySet::AddAll(const LogicalDependencySet &dependencies) {
-	for (auto &dependency : dependencies.Entries()) {
-		Add(dependency);
+void LogicalDependencyList::AddAll(const LogicalDependencyList &dependencies) {
+	for (auto &dependency : dependencies.Set()) {
+		AddDependency(dependency);
 	}
 }
 
-bool LogicalDependencySet::Contains(CatalogEntry &entry_p) const {
+bool LogicalDependencyList::Contains(CatalogEntry &entry_p) const {
 	return set.count(LogicalDependency(entry_p));
 }
 
-void LogicalDependencySet::VerifyDependencies(Catalog &catalog, const Identifier &name) {
+void LogicalDependencyList::VerifyDependencies(Catalog &catalog, const Identifier &name) {
 	for (auto &dep : set) {
 		if (dep.catalog != catalog.GetName()) {
 			throw DependencyException(
@@ -99,11 +99,11 @@ void LogicalDependencySet::VerifyDependencies(Catalog &catalog, const Identifier
 	}
 }
 
-const LogicalDependencySet::dependency_set_t &LogicalDependencySet::Entries() const {
+const LogicalDependencyList::dependency_set_t &LogicalDependencyList::Set() const {
 	return set;
 }
 
-bool LogicalDependencySet::operator==(const LogicalDependencySet &other) const {
+bool LogicalDependencyList::operator==(const LogicalDependencyList &other) const {
 	if (set.size() != other.set.size()) {
 		return false;
 	}

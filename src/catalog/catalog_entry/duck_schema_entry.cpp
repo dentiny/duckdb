@@ -21,7 +21,7 @@
 #include "duckdb/catalog/default/default_table_functions.hpp"
 #include "duckdb/catalog/default/default_types.hpp"
 #include "duckdb/catalog/default/default_views.hpp"
-#include "duckdb/catalog/dependency_set.hpp"
+#include "duckdb/catalog/dependency_list.hpp"
 #include "duckdb/main/attached_database.hpp"
 #include "duckdb/main/database.hpp"
 #include "duckdb/parser/constraints/foreign_key_constraint.hpp"
@@ -119,10 +119,10 @@ unique_ptr<CreateInfo> DuckSchemaEntry::GetInfo() const {
 }
 
 optional_ptr<CatalogEntry> DuckSchemaEntry::CreateSchema(CatalogTransaction transaction, CreateSchemaInfo &info) {
-	LogicalDependencySet dependencies;
+	LogicalDependencyList dependencies;
 	// the nested schema depends on its parent schema, so DROP SCHEMA on the parent is blocked (RESTRICT) or
 	// cascades through the dependency manager - just like the schema's other contents
-	dependencies.Add(*this);
+	dependencies.AddDependency(*this);
 	auto entry = make_uniq<DuckSchemaEntry>(catalog, info, *this);
 	auto result = entry.get();
 	if (!schemas.CreateEntry(transaction, info.SchemaName(), std::move(entry), dependencies)) {
@@ -139,7 +139,7 @@ optional_ptr<CatalogEntry> DuckSchemaEntry::AddEntryInternal(CatalogTransaction 
 	auto result = entry.get();
 	auto dependencies = entry->dependencies;
 	// Every schema-owned entry depends on its containing schema.
-	dependencies.Add(*this);
+	dependencies.AddDependency(*this);
 
 	if (transaction.context) {
 		auto &meta = MetaTransaction::Get(transaction.GetContext());
@@ -203,10 +203,10 @@ optional_ptr<CatalogEntry> DuckSchemaEntry::CreateTable(CatalogTransaction trans
 
 		// make a dependency between this table and referenced table
 		auto &set = GetCatalogSet(CatalogType::TABLE_ENTRY);
-		info.dependencies.Add(*set.GetEntry(transaction, fk_info.GetQualifiedName().Name()));
+		info.dependencies.AddDependency(*set.GetEntry(transaction, fk_info.GetQualifiedName().Name()));
 	}
-	for (auto &dep : info.dependencies.Entries()) {
-		table->dependencies.Add(dep);
+	for (auto &dep : info.dependencies.Set()) {
+		table->dependencies.AddDependency(dep);
 	}
 
 	auto entry = AddEntryInternal(transaction, std::move(table), info.Base().on_conflict);
@@ -289,7 +289,7 @@ optional_ptr<CatalogEntry> DuckSchemaEntry::CreateView(CatalogTransaction transa
 
 optional_ptr<CatalogEntry> DuckSchemaEntry::CreateIndex(CatalogTransaction transaction, CreateIndexInfo &info,
                                                         TableCatalogEntry &table) {
-	info.dependencies.Add(table);
+	info.dependencies.AddDependency(table);
 
 	// currently, we can not alter PK/FK/UNIQUE constraints
 	// concurrency-safe name checks against other INDEX catalog entries happens in the catalog

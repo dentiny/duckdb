@@ -48,7 +48,7 @@
 	{
 		"class": "LogicalDependency",
 		"includes": [
-			"duckdb/catalog/dependency_set.hpp"
+			"duckdb/catalog/dependency_list.hpp"
 		],
 		"members": [
 			{
@@ -66,7 +66,7 @@
 		"constructor": ["?Catalog", "entry", "catalog"]
 	},
 	{
-		"class": "LogicalDependencySet",
+		"class": "LogicalDependencyList",
 		"members": [
 			{
 				"id": 100,

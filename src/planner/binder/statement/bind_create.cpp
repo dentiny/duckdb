@@ -251,7 +251,7 @@ void Binder::SetCatalogLookupCallback(catalog_entry_callback_t callback) {
 }
 
 void Binder::BindView(ClientContext &context, const SelectStatement &stmt, const Identifier &catalog_name,
-                      const Identifier &schema_name, optional_ptr<LogicalDependencySet> dependencies,
+                      const Identifier &schema_name, optional_ptr<LogicalDependencyList> dependencies,
                       const vector<Identifier> &aliases, vector<LogicalType> &result_types,
                       vector<Identifier> &result_names) {
 	auto view_binder = Binder::CreateBinder(context);
@@ -447,7 +447,7 @@ SchemaCatalogEntry &Binder::BindCreateFunctionInfo(CreateInfo &info) {
 				return;
 			}
 			// Register any catalog entry required to bind the macro function
-			dependencies.Add(entry);
+			dependencies.AddDependency(entry);
 		};
 
 		// bind it to verify the function was defined correctly
@@ -644,7 +644,7 @@ SchemaCatalogEntry &Binder::BindCreateTriggerInfo(CreateTriggerInfo &create_trig
 	auto &trigger_catalog = table.ParentCatalog();
 	validation_binder->SetCatalogLookupCallback([&](CatalogEntry &entry) {
 		if (&entry.ParentCatalog() == &trigger_catalog) {
-			create_trigger_info.dependencies.Add(entry);
+			create_trigger_info.dependencies.AddDependency(entry);
 		}
 	});
 	validation_binder->global_binder_state->trigger_expanded_tables.insert(table);
@@ -698,7 +698,7 @@ SchemaCatalogEntry &Binder::BindCreateTriggerInfo(CreateTriggerInfo &create_trig
 	}
 
 	// Add table dependency
-	create_trigger_info.dependencies.Add(table);
+	create_trigger_info.dependencies.AddDependency(table);
 
 	return schema;
 }
@@ -818,7 +818,7 @@ BoundStatement Binder::Bind(CreateStatement &stmt) {
 				// Don't register any cross-catalog dependencies
 				return;
 			}
-			dependencies.Add(entry);
+			dependencies.AddDependency(entry);
 		};
 		if (create_type_info.query) {
 			// CREATE TYPE mood AS ENUM (SELECT 'happy')

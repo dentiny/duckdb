@@ -125,7 +125,7 @@ PhysicalOperator &PhysicalPlanGenerator::CreatePlan(LogicalCreateIndex &op) {
 	}
 
 	// Add a dependency for the entire table on which we create the index.
-	dependencies.Add(op.table);
+	dependencies.AddDependency(op.table);
 	D_ASSERT(op.info->scan_types.size() - 1 <= op.info->names.size());
 	D_ASSERT(op.info->scan_types.size() - 1 <= op.info->column_ids.size());
 
