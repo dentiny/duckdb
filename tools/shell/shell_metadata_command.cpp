@@ -93,8 +93,7 @@ duckdb::LogicalDependencySet GetCatalogDependencies(duckdb::ClientContext &conte
 			dependencies = info->dependencies;
 		}
 	} catch (duckdb::Exception &ex) {
-		throw duckdb::InvalidInputException("Cannot dump invalid catalog entry \"%s\": %s", entry.name,
-		                                    ex.what());
+		throw duckdb::InvalidInputException("Cannot dump invalid catalog entry \"%s\": %s", entry.name, ex.what());
 	}
 	return dependencies;
 }
@@ -147,8 +146,7 @@ void SelectDumpDependencies(
 			continue;
 		}
 		selected.insert(entries[dependency_index->second].get().oid);
-		SelectDumpDependencies(dependency_index->second, entries, dependencies, entry_indexes, selected,
-		                       visited);
+		SelectDumpDependencies(dependency_index->second, entries, dependencies, entry_indexes, selected, visited);
 	}
 }
 

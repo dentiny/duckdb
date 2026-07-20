@@ -288,7 +288,7 @@ void DependencyManager::CreateDependency(CatalogTransaction transaction, Depende
 }
 
 void DependencyManager::CreateDependencies(CatalogTransaction transaction, const CatalogEntry &object,
-	                                       const LogicalDependencySet &dependencies) {
+                                           const LogicalDependencySet &dependencies) {
 	DependencyDependentFlags dependency_flags;
 	if (object.type == CatalogType::INDEX_ENTRY) {
 		// Indexes are contained by their table and are always dropped with it, so they cannot become dangling.
@@ -316,7 +316,7 @@ void DependencyManager::CreateDependencies(CatalogTransaction transaction, const
 }
 
 void DependencyManager::AddObject(CatalogTransaction transaction, CatalogEntry &object,
-	                              const LogicalDependencySet &dependencies) {
+                                  const LogicalDependencySet &dependencies) {
 	if (IsSystemEntry(object)) {
 		// Don't do anything for this
 		return;
@@ -533,7 +533,7 @@ void DependencyManager::VerifyExistence(CatalogTransaction transaction, Dependen
 	} else if (type == CatalogType::TRIGGER_ENTRY) {
 		lookup_result.result = LookupEntry(transaction, info);
 		lookup_result.reason = lookup_result.result ? CatalogSet::EntryLookup::FailureReason::SUCCESS
-		                                           : CatalogSet::EntryLookup::FailureReason::DELETED;
+		                                            : CatalogSet::EntryLookup::FailureReason::DELETED;
 	} else if (schema) {
 		EntryLookupInfo lookup_info(type, QualifiedName(name));
 		lookup_result = schema->LookupEntryDetailed(transaction, lookup_info);
