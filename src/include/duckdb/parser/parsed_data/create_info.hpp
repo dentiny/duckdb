@@ -15,7 +15,7 @@
 #include "duckdb/common/enum_util.hpp"
 #include "duckdb/common/enums/on_create_conflict.hpp"
 #include "duckdb/common/types/value.hpp"
-#include "duckdb/catalog/dependency_list.hpp"
+#include "duckdb/catalog/dependency_set.hpp"
 
 namespace duckdb {
 struct AlterInfo;
@@ -45,8 +45,10 @@ public:
 	Identifier extension_name;
 	//! The SQL string of the CREATE statement
 	string sql;
-	//! The inherent dependencies of the created entry
-	LogicalDependencyList dependencies;
+	//! Dependencies that affect DROP/ALTER and catalog recreation order
+	LogicalDependencySet blocking_dependencies;
+	//! Additional dependencies used only for catalog recreation order
+	LogicalDependencySet recreation_only_dependencies;
 	//! User provided comment
 	Value comment;
 	//! Key-value tags with additional metadata

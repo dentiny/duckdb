@@ -610,7 +610,7 @@ unique_ptr<BoundCreateTableInfo> Binder::BindCreateTableInfo(unique_ptr<CreateIn
                                                              AlterBindMode bind_mode) {
 	auto &base = info->Cast<CreateTableInfo>();
 	auto result = make_uniq<BoundCreateTableInfo>(schema, std::move(info));
-	auto &dependencies = result->dependencies;
+	auto &dependencies = result->blocking_dependencies;
 	auto &catalog = schema.ParentCatalog();
 	optional_ptr<StorageManager> storage_manager;
 	if (catalog.IsDuckCatalog() && !catalog.InMemory()) {
@@ -675,7 +675,7 @@ unique_ptr<BoundCreateTableInfo> Binder::BindCreateTableInfo(unique_ptr<CreateIn
 				return;
 			}
 
-			dependencies.AddDependency(entry);
+			dependencies.Add(entry);
 		});
 
 		// Bind all physical column types
@@ -710,7 +710,7 @@ unique_ptr<BoundCreateTableInfo> Binder::BindCreateTableInfo(unique_ptr<CreateIn
 		throw BinderException("Creating a table without physical (non-generated) columns is not supported");
 	}
 
-	result->dependencies.VerifyDependencies(schema.catalog, result->Base().GetTableName());
+	result->blocking_dependencies.VerifyDependencies(schema.catalog, result->Base().GetTableName());
 
 #ifdef DEBUG
 	// Ensure all types are bound

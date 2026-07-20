@@ -34,13 +34,17 @@ unique_ptr<LogicalOperator> Binder::BindCopyDatabaseSchema(Catalog &from_databas
 		auto on_conflict = create_info->type == CatalogType::SCHEMA_ENTRY ? OnCreateConflict::IGNORE_ON_CONFLICT
 		                                                                  : OnCreateConflict::ERROR_ON_CONFLICT;
 		// Update all the dependencies of the entry to point to the newly created entries on the target database
-		LogicalDependencyList altered_dependencies;
-		for (auto &dep : create_info->dependencies.Set()) {
-			auto altered_dep = dep;
-			altered_dep.catalog = target_database_name;
-			altered_dependencies.AddDependency(altered_dep);
-		}
-		create_info->dependencies = altered_dependencies;
+		auto update_catalog = [&](const LogicalDependencySet &source) {
+			LogicalDependencySet result;
+			for (auto &dependency : source.Entries()) {
+				auto updated_dependency = dependency;
+				updated_dependency.catalog = target_database_name;
+				result.Add(updated_dependency);
+			}
+			return result;
+		};
+		create_info->blocking_dependencies = update_catalog(create_info->blocking_dependencies);
+		create_info->recreation_only_dependencies = update_catalog(create_info->recreation_only_dependencies);
 		create_info->on_conflict = on_conflict;
 		info->entries.push_back(std::move(create_info));
 	}

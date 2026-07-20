@@ -22,7 +22,7 @@ namespace duckdb {
 class DuckCatalog;
 class ClientContext;
 class DependencyEntry;
-class LogicalDependencyList;
+class LogicalDependencySet;
 
 // The subject of this dependency
 struct DependencySubject {
@@ -93,7 +93,7 @@ public:
 
 	void AddOwnership(CatalogTransaction transaction, CatalogEntry &owner, CatalogEntry &entry);
 
-	//! Get the order of entries needed by EXPORT, the objects with no dependencies are exported first
+	//! Order catalog entries for recreation, with dependencies before their dependents
 	void ReorderEntries(catalog_entry_vector_t &entries);
 	void ReorderEntries(catalog_entry_vector_t &entries, ClientContext &context);
 
@@ -125,7 +125,9 @@ private:
 	void ReorderEntry(CatalogTransaction transaction, CatalogEntry &entry, catalog_entry_set_t &visited,
 	                  catalog_entry_set_t &visiting, catalog_entry_vector_t &order);
 	void ReorderEntries(catalog_entry_vector_t &entries, CatalogTransaction transaction);
-	void AddObject(CatalogTransaction transaction, CatalogEntry &object, const LogicalDependencyList &dependencies);
+	void AddObject(CatalogTransaction transaction, CatalogEntry &object,
+	               const LogicalDependencySet &blocking_dependencies,
+	               const LogicalDependencySet &recreation_only_dependencies);
 	void VerifyExistence(CatalogTransaction transaction, DependencyEntry &object);
 	void VerifyCommitDrop(CatalogTransaction transaction, transaction_t start_time, CatalogEntry &object);
 	//! Returns the objects that should be dropped alongside the object
@@ -137,7 +139,7 @@ private:
 	void RemoveDependency(CatalogTransaction transaction, const DependencyInfo &info);
 	void CreateDependency(CatalogTransaction transaction, DependencyInfo &info);
 	void CreateDependencies(CatalogTransaction transaction, const CatalogEntry &object,
-	                        const LogicalDependencyList &dependencies);
+	                        const LogicalDependencySet &dependencies, DependencyDependentFlags dependency_flags);
 	using dependency_entry_func_t = const std::function<unique_ptr<DependencyEntry>(
 	    Catalog &catalog, const DependencyDependent &dependent, const DependencySubject &dependency)>;
 

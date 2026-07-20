@@ -68,7 +68,7 @@ unique_ptr<SecretEntry> CatalogSetSecretStorage::StoreSecret(unique_ptr<const Ba
 	secret_entry->temporary = !persistent;
 	secret_entry->secret->storage_mode = storage_name;
 	secret_entry->secret->persist_type = persistent ? SecretPersistType::PERSISTENT : SecretPersistType::TEMPORARY;
-	LogicalDependencyList l;
+	LogicalDependencySet l;
 	secrets->CreateEntry(GetTransactionOrDefault(transaction), secret_name, std::move(secret_entry), l);
 
 	auto secret_catalog_entry =

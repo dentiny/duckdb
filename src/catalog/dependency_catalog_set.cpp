@@ -1,6 +1,6 @@
 #include "duckdb/catalog/dependency_catalog_set.hpp"
 #include "duckdb/catalog/catalog_entry/dependency/dependency_entry.hpp"
-#include "duckdb/catalog/dependency_list.hpp"
+#include "duckdb/catalog/dependency_set.hpp"
 
 namespace duckdb {
 
@@ -11,8 +11,8 @@ MangledDependencyName DependencyCatalogSet::ApplyPrefix(const MangledEntryName &
 bool DependencyCatalogSet::CreateEntry(CatalogTransaction transaction, const MangledEntryName &name,
                                        unique_ptr<CatalogEntry> value) {
 	auto new_name = ApplyPrefix(name);
-	const LogicalDependencyList EMPTY_DEPENDENCIES;
-	return set.CreateEntry(transaction, new_name.name, std::move(value), EMPTY_DEPENDENCIES);
+	const LogicalDependencySet EMPTY_BLOCKING_DEPENDENCIES;
+	return set.CreateEntry(transaction, new_name.name, std::move(value), EMPTY_BLOCKING_DEPENDENCIES);
 }
 
 CatalogSet::EntryLookup DependencyCatalogSet::GetEntryDetailed(CatalogTransaction transaction,

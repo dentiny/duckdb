@@ -13,7 +13,7 @@
 #include "duckdb/parser/parsed_data/parse_info.hpp"
 #include "duckdb/parser/qualified_name.hpp"
 #include "duckdb/common/enums/on_entry_not_found.hpp"
-#include "duckdb/catalog/dependency_list.hpp"
+#include "duckdb/catalog/dependency_set.hpp"
 
 namespace duckdb {
 
@@ -62,8 +62,8 @@ public:
 	bool allow_internal;
 	//! Determine whether to skip Bind
 	AlterBindMode bind_mode = AlterBindMode::BIND_ON_ALTER;
-	//! New dependencies for the altered entry (set during binding)
-	unique_ptr<LogicalDependencyList> new_dependencies;
+	//! New blocking dependencies for the altered entry (set during binding)
+	unique_ptr<LogicalDependencySet> new_blocking_dependencies;
 
 public:
 	const QualifiedName &GetQualifiedName() const {

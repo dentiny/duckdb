@@ -1,7 +1,7 @@
 #include "duckdb/function/table/table_scan.hpp"
 
 #include "duckdb/catalog/catalog_entry/duck_table_entry.hpp"
-#include "duckdb/catalog/dependency_list.hpp"
+#include "duckdb/catalog/dependency_set.hpp"
 #include "duckdb/common/enums/expression_type.hpp"
 #include "duckdb/common/mutex.hpp"
 #include "duckdb/common/serializer/deserializer.hpp"
@@ -889,9 +889,9 @@ BindInfo TableScanGetBindInfo(const optional_ptr<FunctionData> bind_data_p) {
 	return BindInfo(bind_data.table);
 }
 
-void TableScanDependency(LogicalDependencyList &entries, const FunctionData *bind_data_p) {
+void TableScanDependency(LogicalDependencySet &entries, const FunctionData *bind_data_p) {
 	auto &bind_data = bind_data_p->Cast<TableScanBindData>();
-	entries.AddDependency(bind_data.table);
+	entries.Add(bind_data.table);
 }
 
 unique_ptr<NodeStatistics> TableScanCardinality(ClientContext &context, const FunctionData *bind_data_p) {

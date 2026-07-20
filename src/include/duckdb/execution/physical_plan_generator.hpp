@@ -14,7 +14,7 @@
 #include "duckdb/planner/logical_operator.hpp"
 #include "duckdb/planner/logical_tokens.hpp"
 #include "duckdb/planner/joinside.hpp"
-#include "duckdb/catalog/dependency_list.hpp"
+#include "duckdb/catalog/dependency_set.hpp"
 #include "duckdb/common/unordered_map.hpp"
 #include "duckdb/common/unordered_set.hpp"
 
@@ -70,7 +70,7 @@ public:
 	explicit PhysicalPlanGenerator(ClientContext &context);
 	~PhysicalPlanGenerator();
 
-	LogicalDependencyList dependencies;
+	LogicalDependencySet dependencies;
 	//! Recursive CTEs require at least one ChunkScan, referencing the working_table.
 	//! This data structure is used to establish it.
 	unordered_map<TableIndex, shared_ptr<ColumnDataCollection>> recursive_cte_tables;

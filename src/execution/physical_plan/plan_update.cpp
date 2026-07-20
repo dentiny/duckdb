@@ -25,7 +25,7 @@ PhysicalOperator &Catalog::PlanUpdate(ClientContext &context, PhysicalPlanGenera
 
 PhysicalOperator &PhysicalPlanGenerator::CreatePlan(LogicalUpdate &op) {
 	D_ASSERT(op.children.size() == 1);
-	dependencies.AddDependency(op.table);
+	dependencies.Add(op.table);
 	return op.table.catalog.PlanUpdate(context, *this, op);
 }
 

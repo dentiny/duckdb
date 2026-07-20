@@ -5,7 +5,7 @@
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/main/database.hpp"
 #include "duckdb/parser/expression/constant_expression.hpp"
-#include "duckdb/catalog/dependency_list.hpp"
+#include "duckdb/catalog/dependency_set.hpp"
 #include "duckdb/common/enums/catalog_type.hpp"
 #include "duckdb/catalog/catalog_entry/dependency/dependency_entry.hpp"
 #include "duckdb/catalog/catalog_entry/dependency/dependency_subject_entry.hpp"
@@ -286,10 +286,15 @@ void DependencyManager::CreateDependency(CatalogTransaction transaction, Depende
 }
 
 void DependencyManager::CreateDependencies(CatalogTransaction transaction, const CatalogEntry &object,
-                                           const LogicalDependencyList &dependencies) {
+                                           const LogicalDependencySet &dependencies,
+                                           DependencyDependentFlags dependency_flags) {
+	if (object.type == CatalogType::INDEX_ENTRY) {
+		// indexes do not require CASCADE to be dropped, they are simply always dropped along with the table
+		dependency_flags = DependencyDependentFlags();
+	}
 	const auto object_info = GetLookupProperties(object);
 	// check for each object in the sources if they were not deleted yet
-	for (auto &dependency : dependencies.Set()) {
+	for (auto &dependency : dependencies.Entries()) {
 		if (dependency.catalog != object.ParentCatalog().GetName()) {
 			throw DependencyException(
 			    "Error adding dependency for object \"%s\" - dependency \"%s\" is in catalog "
@@ -299,17 +304,7 @@ void DependencyManager::CreateDependencies(CatalogTransaction transaction, const
 	}
 
 	// add the object to the dependents_map of each object that it depends on
-	for (auto &dependency : dependencies.Set()) {
-		DependencyDependentFlags dependency_flags;
-		if (dependency.dependency_type == LogicalDependencyType::RECREATION_ONLY) {
-			dependency_flags.SetRecreationOnly();
-		} else {
-			dependency_flags.SetBlocking();
-		}
-		if (object.type == CatalogType::INDEX_ENTRY) {
-			// indexes do not require CASCADE to be dropped, they are simply always dropped along with the table
-			dependency_flags = DependencyDependentFlags();
-		}
+	for (auto &dependency : dependencies.Entries()) {
 		DependencyInfo info {
 		    /*dependent = */ DependencyDependent {GetLookupProperties(object), dependency_flags},
 		    /*subject = */ DependencySubject {dependency.entry, DependencySubjectFlags(), optional_idx()}};
@@ -318,12 +313,15 @@ void DependencyManager::CreateDependencies(CatalogTransaction transaction, const
 }
 
 void DependencyManager::AddObject(CatalogTransaction transaction, CatalogEntry &object,
-                                  const LogicalDependencyList &dependencies) {
+                                  const LogicalDependencySet &blocking_dependencies,
+                                  const LogicalDependencySet &recreation_only_dependencies) {
 	if (IsSystemEntry(object)) {
 		// Don't do anything for this
 		return;
 	}
-	CreateDependencies(transaction, object, dependencies);
+	CreateDependencies(transaction, object, blocking_dependencies, DependencyDependentFlags().SetBlocking());
+	CreateDependencies(transaction, object, recreation_only_dependencies,
+	                   DependencyDependentFlags().SetRecreationOnly());
 }
 
 static bool CascadeDrop(bool cascade, const DependencyDependentFlags &flags) {
@@ -751,11 +749,11 @@ void DependencyManager::AlterObject(CatalogTransaction transaction, CatalogEntry
 	});
 
 	// Keep old dependencies
-	bool has_new_dependencies = alter_info.new_dependencies.get();
+	bool has_new_blocking_dependencies = alter_info.new_blocking_dependencies.get();
 	ScanSubjects(transaction, old_info, [&](DependencyEntry &dep) {
-		if (has_new_dependencies && !dep.Subject().flags.IsOwnership()) {
-			// The alter provided updated dependencies - skip old non-ownership subject dependencies
-			// as they will be replaced by the new dependencies
+		if (has_new_blocking_dependencies && !dep.Subject().flags.IsOwnership() &&
+		    !dep.Dependent().flags.IsRecreationOnly()) {
+			// The alter provided updated blocking dependencies, which replace the old blocking dependencies.
 			return;
 		}
 		auto entry = LookupEntry(transaction, dep);
@@ -768,15 +766,16 @@ void DependencyManager::AlterObject(CatalogTransaction transaction, CatalogEntry
 		dependencies.emplace_back(dep_info);
 	});
 
-	if (has_new_dependencies || !(old_obj.name == new_obj.name)) {
+	if (has_new_blocking_dependencies || !(old_obj.name == new_obj.name)) {
 		// The dependencies have changed (e.g. SET DEFAULT) or the name has changed
 		// We need to recreate the dependency links
 		CleanupDependencies(transaction, old_obj);
 	}
 
-	if (has_new_dependencies) {
+	if (has_new_blocking_dependencies) {
 		// Add the new dependencies
-		CreateDependencies(transaction, new_obj, *alter_info.new_dependencies);
+		CreateDependencies(transaction, new_obj, *alter_info.new_blocking_dependencies,
+		                   DependencyDependentFlags().SetBlocking());
 	}
 
 	// Reinstate any old dependencies

@@ -6,7 +6,7 @@
 #include "duckdb/common/serializer/serializer.hpp"
 #include "duckdb/common/serializer/deserializer.hpp"
 #include "duckdb/catalog/dependency.hpp"
-#include "duckdb/catalog/dependency_list.hpp"
+#include "duckdb/catalog/dependency_set.hpp"
 
 namespace duckdb {
 
@@ -36,26 +36,22 @@ CatalogEntryInfo CatalogEntryInfo::Deserialize(Deserializer &deserializer) {
 void LogicalDependency::Serialize(Serializer &serializer) const {
 	serializer.WriteProperty<CatalogEntryInfo>(100, "entry", entry);
 	serializer.WritePropertyWithDefault<Identifier>(101, "catalog", catalog);
-	if (serializer.ShouldSerialize(StorageVersion::V2_0_0)) {
-		serializer.WritePropertyWithDefault<LogicalDependencyType>(102, "dependency_type", dependency_type, LogicalDependencyType::BLOCKING);
-	}
 }
 
 LogicalDependency LogicalDependency::Deserialize(Deserializer &deserializer) {
 	auto entry = deserializer.ReadProperty<CatalogEntryInfo>(100, "entry");
 	auto catalog = deserializer.ReadPropertyWithDefault<Identifier>(101, "catalog");
-	auto dependency_type = deserializer.ReadPropertyWithExplicitDefault<LogicalDependencyType>(102, "dependency_type", LogicalDependencyType::BLOCKING);
-	LogicalDependency result(deserializer.TryGet<Catalog>(), entry, std::move(catalog), dependency_type);
+	LogicalDependency result(deserializer.TryGet<Catalog>(), entry, std::move(catalog));
 	return result;
 }
 
-void LogicalDependencyList::Serialize(Serializer &serializer) const {
-	serializer.WriteProperty<create_info_set_t>(100, "set", GetSetForSerialization(serializer));
+void LogicalDependencySet::Serialize(Serializer &serializer) const {
+	serializer.WriteProperty<dependency_set_t>(100, "set", set);
 }
 
-LogicalDependencyList LogicalDependencyList::Deserialize(Deserializer &deserializer) {
-	LogicalDependencyList result;
-	deserializer.ReadProperty<create_info_set_t>(100, "set", result.set);
+LogicalDependencySet LogicalDependencySet::Deserialize(Deserializer &deserializer) {
+	LogicalDependencySet result;
+	deserializer.ReadProperty<dependency_set_t>(100, "set", result.set);
 	return result;
 }
 

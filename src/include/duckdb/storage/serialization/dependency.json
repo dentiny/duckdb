@@ -41,7 +41,7 @@
 	{
 		"class": "LogicalDependency",
 		"includes": [
-			"duckdb/catalog/dependency_list.hpp"
+			"duckdb/catalog/dependency_set.hpp"
 		],
 		"members": [
 			{
@@ -53,26 +53,18 @@
 				"id": 101,
 				"name": "catalog",
 				"type": "Identifier"
-			},
-			{
-				"id": 102,
-				"name": "dependency_type",
-				"type": "LogicalDependencyType",
-				"default": "LogicalDependencyType::BLOCKING",
-				"version": "v2.0.0"
 			}
 		],
 		"pointer_type": "none",
-		"constructor": ["?Catalog", "entry", "catalog", "dependency_type"]
+		"constructor": ["?Catalog", "entry", "catalog"]
 	},
 	{
-		"class": "LogicalDependencyList",
+		"class": "LogicalDependencySet",
 		"members": [
 			{
 				"id": 100,
 				"name": "set",
-				"type": "create_info_set_t",
-				"serialize_property": "GetSetForSerialization(serializer)"
+				"type": "dependency_set_t"
 			}
 		],
 		"pointer_type": "none"

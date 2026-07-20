@@ -21,7 +21,7 @@
 #include "duckdb/catalog/default/default_table_functions.hpp"
 #include "duckdb/catalog/default/default_types.hpp"
 #include "duckdb/catalog/default/default_views.hpp"
-#include "duckdb/catalog/dependency_list.hpp"
+#include "duckdb/catalog/dependency_set.hpp"
 #include "duckdb/main/attached_database.hpp"
 #include "duckdb/main/database.hpp"
 #include "duckdb/parser/constraints/foreign_key_constraint.hpp"
@@ -119,13 +119,13 @@ unique_ptr<CreateInfo> DuckSchemaEntry::GetInfo() const {
 }
 
 optional_ptr<CatalogEntry> DuckSchemaEntry::CreateSchema(CatalogTransaction transaction, CreateSchemaInfo &info) {
-	LogicalDependencyList dependencies;
+	LogicalDependencySet blocking_dependencies;
 	// the nested schema depends on its parent schema, so DROP SCHEMA on the parent is blocked (RESTRICT) or
 	// cascades through the dependency manager - just like the schema's other contents
-	dependencies.AddDependency(*this);
+	blocking_dependencies.Add(*this);
 	auto entry = make_uniq<DuckSchemaEntry>(catalog, info, *this);
 	auto result = entry.get();
-	if (!schemas.CreateEntry(transaction, info.SchemaName(), std::move(entry), dependencies)) {
+	if (!schemas.CreateEntry(transaction, info.SchemaName(), std::move(entry), blocking_dependencies)) {
 		return nullptr;
 	}
 	return result;
@@ -137,9 +137,10 @@ optional_ptr<CatalogEntry> DuckSchemaEntry::AddEntryInternal(CatalogTransaction 
 	auto entry_name = entry->name;
 	auto entry_type = entry->type;
 	auto result = entry.get();
-	auto dependencies = entry->dependencies;
+	auto blocking_dependencies = entry->blocking_dependencies;
+	auto recreation_only_dependencies = entry->recreation_only_dependencies;
 	// Every schema-owned entry has a blocking dependency on its containing schema.
-	dependencies.AddDependency(*this);
+	blocking_dependencies.Add(*this);
 
 	if (transaction.context) {
 		auto &meta = MetaTransaction::Get(transaction.GetContext());
@@ -165,7 +166,7 @@ optional_ptr<CatalogEntry> DuckSchemaEntry::AddEntryInternal(CatalogTransaction 
 		// CREATE OR REPLACE: first try to drop the entry
 		auto old_entry = set.GetEntry(transaction, entry_name);
 		if (old_entry) {
-			if (dependencies.ContainsBlockingDependency(*old_entry)) {
+			if (blocking_dependencies.Contains(*old_entry)) {
 				throw CatalogException("CREATE OR REPLACE is not allowed to depend on itself");
 			}
 			if (old_entry->type != entry_type) {
@@ -177,7 +178,8 @@ optional_ptr<CatalogEntry> DuckSchemaEntry::AddEntryInternal(CatalogTransaction 
 		}
 	}
 	// now try to add the entry
-	if (!set.CreateEntry(transaction, entry_name, std::move(entry), dependencies)) {
+	if (!set.CreateEntry(transaction, entry_name, std::move(entry), blocking_dependencies,
+	                     recreation_only_dependencies)) {
 		// entry already exists!
 		if (on_conflict == OnCreateConflict::ERROR_ON_CONFLICT) {
 			auto existing_entry = set.GetEntry(transaction, entry_name);
@@ -203,10 +205,10 @@ optional_ptr<CatalogEntry> DuckSchemaEntry::CreateTable(CatalogTransaction trans
 
 		// make a dependency between this table and referenced table
 		auto &set = GetCatalogSet(CatalogType::TABLE_ENTRY);
-		info.dependencies.AddDependency(*set.GetEntry(transaction, fk_info.GetQualifiedName().Name()));
+		info.blocking_dependencies.Add(*set.GetEntry(transaction, fk_info.GetQualifiedName().Name()));
 	}
-	for (auto &dep : info.dependencies.Set()) {
-		table->dependencies.AddDependency(dep);
+	for (auto &dep : info.blocking_dependencies.Entries()) {
+		table->blocking_dependencies.Add(dep);
 	}
 
 	auto entry = AddEntryInternal(transaction, std::move(table), info.Base().on_conflict);
@@ -289,7 +291,7 @@ optional_ptr<CatalogEntry> DuckSchemaEntry::CreateView(CatalogTransaction transa
 
 optional_ptr<CatalogEntry> DuckSchemaEntry::CreateIndex(CatalogTransaction transaction, CreateIndexInfo &info,
                                                         TableCatalogEntry &table) {
-	info.dependencies.AddDependency(table);
+	info.blocking_dependencies.Add(table);
 
 	// currently, we can not alter PK/FK/UNIQUE constraints
 	// concurrency-safe name checks against other INDEX catalog entries happens in the catalog

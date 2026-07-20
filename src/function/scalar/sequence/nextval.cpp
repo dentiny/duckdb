@@ -2,7 +2,7 @@
 #include "duckdb/function/scalar/sequence_utils.hpp"
 
 #include "duckdb/catalog/catalog.hpp"
-#include "duckdb/catalog/dependency_list.hpp"
+#include "duckdb/catalog/dependency_set.hpp"
 #include "duckdb/catalog/catalog_entry/sequence_catalog_entry.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/vector_operations/vector_operations.hpp"

@@ -146,7 +146,7 @@ PhysicalOperator &PhysicalPlanGenerator::CreatePlan(LogicalInsert &op) {
 		D_ASSERT(op.children.size() == 1);
 		plan = CreatePlan(*op.children[0]);
 	}
-	dependencies.AddDependency(op.table);
+	dependencies.Add(op.table);
 	return op.table.catalog.PlanInsert(context, *this, op, plan);
 }
 

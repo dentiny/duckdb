@@ -7,7 +7,8 @@ IndexCatalogEntry::IndexCatalogEntry(Catalog &catalog, SchemaCatalogEntry &schem
       options(info.options), index_type(info.index_type), index_constraint_type(info.constraint_type),
       column_ids(info.column_ids) {
 	this->temporary = info.temporary;
-	this->dependencies = info.dependencies;
+	this->blocking_dependencies = info.blocking_dependencies;
+	this->recreation_only_dependencies = info.recreation_only_dependencies;
 	this->comment = info.comment;
 	for (auto &expr : expressions) {
 		D_ASSERT(expr);
@@ -29,7 +30,8 @@ unique_ptr<CreateInfo> IndexCatalogEntry::GetInfo() const {
 	result->index_type = index_type;
 	result->constraint_type = index_constraint_type;
 	result->column_ids = column_ids;
-	result->dependencies = dependencies;
+	result->blocking_dependencies = blocking_dependencies;
+	result->recreation_only_dependencies = recreation_only_dependencies;
 
 	for (auto &expr : expressions) {
 		result->expressions.push_back(expr->Copy());

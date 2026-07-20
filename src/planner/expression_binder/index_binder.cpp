@@ -72,13 +72,13 @@ unique_ptr<LogicalOperator> IndexBinder::BindCreateIndex(ClientContext &context,
                                                          unique_ptr<LogicalOperator> plan,
                                                          unique_ptr<AlterTableInfo> alter_table_info) {
 	// Add the dependencies.
-	auto &dependencies = create_index_info->dependencies;
+	auto &dependencies = create_index_info->blocking_dependencies;
 	auto &catalog = Catalog::GetCatalog(context, create_index_info->GetQualifiedName().Catalog());
 	SetCatalogLookupCallback([&dependencies, &catalog](CatalogEntry &entry) {
 		if (&catalog != &entry.ParentCatalog()) {
 			return;
 		}
-		dependencies.AddDependency(entry);
+		dependencies.Add(entry);
 	});
 
 	// Bind the index expressions.

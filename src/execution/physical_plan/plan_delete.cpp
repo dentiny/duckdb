@@ -26,7 +26,7 @@ PhysicalOperator &Catalog::PlanDelete(ClientContext &context, PhysicalPlanGenera
 PhysicalOperator &PhysicalPlanGenerator::CreatePlan(LogicalDelete &op) {
 	D_ASSERT(op.children.size() == 1);
 
-	dependencies.AddDependency(op.table);
+	dependencies.Add(op.table);
 	return op.table.catalog.PlanDelete(context, *this, op);
 }
 

@@ -16,7 +16,7 @@
 #include "duckdb/common/case_insensitive_map.hpp"
 #include "duckdb/catalog/catalog_entry/table_column_type.hpp"
 #include "duckdb/catalog/catalog_entry/column_dependency_manager.hpp"
-#include "duckdb/catalog/dependency_list.hpp"
+#include "duckdb/catalog/dependency_set.hpp"
 #include "duckdb/storage/table_storage_info.hpp"
 
 namespace duckdb {
@@ -37,7 +37,7 @@ struct BoundCreateTableInfo {
 	//! List of constraints on the table
 	vector<unique_ptr<Constraint>> constraints;
 	//! Dependents of the table (in e.g. default values)
-	LogicalDependencyList dependencies;
+	LogicalDependencySet blocking_dependencies;
 	//! The existing table data on disk (if any)
 	unique_ptr<PersistentTableData> data;
 	//! CREATE TABLE from QUERY

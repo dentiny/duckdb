@@ -61,7 +61,7 @@ optional_ptr<DependencyManager> DuckCatalog::GetDependencyManager() {
 // Schema
 //===--------------------------------------------------------------------===//
 optional_ptr<CatalogEntry> DuckCatalog::CreateSchemaInternal(CatalogTransaction transaction, CreateSchemaInfo &info) {
-	LogicalDependencyList dependencies;
+	LogicalDependencySet dependencies;
 
 	auto parents = info.ParentSchemas();
 	if (parents.empty()) {

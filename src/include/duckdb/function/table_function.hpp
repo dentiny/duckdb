@@ -34,7 +34,7 @@ enum class TableFunctionParallelism : uint8_t {
 };
 
 class BaseStatistics;
-class LogicalDependencyList;
+class LogicalDependencySet;
 class LogicalGet;
 class TableFunction;
 class TableFilterSet;
@@ -345,7 +345,7 @@ typedef bool (*table_function_supports_pushdown_extract_t)(const FunctionData &b
 
 typedef double (*table_function_progress_t)(ClientContext &context, const FunctionData *bind_data,
                                             const GlobalTableFunctionState *global_state);
-typedef void (*table_function_dependency_t)(LogicalDependencyList &dependencies, const FunctionData *bind_data);
+typedef void (*table_function_dependency_t)(LogicalDependencySet &dependencies, const FunctionData *bind_data);
 typedef unique_ptr<NodeStatistics> (*table_function_cardinality_t)(ClientContext &context,
                                                                    const FunctionData *bind_data);
 typedef void (*table_function_get_metrics_t)(TableFunctionGetMetricsInput &input);

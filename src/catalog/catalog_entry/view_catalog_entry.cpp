@@ -35,7 +35,8 @@ void ViewCatalogEntry::Initialize(CreateViewInfo &info) {
 	this->temporary = info.temporary;
 	this->sql = info.sql;
 	this->internal = info.internal;
-	this->dependencies = info.dependencies;
+	this->blocking_dependencies = info.blocking_dependencies;
+	this->recreation_only_dependencies = info.recreation_only_dependencies;
 	this->comment = info.comment;
 	this->tags = info.tags;
 	this->column_comments = info.column_comments_map;
@@ -58,7 +59,8 @@ unique_ptr<CreateInfo> ViewCatalogEntry::GetInfo() const {
 		result->types = view_columns->types;
 	}
 	result->temporary = temporary;
-	result->dependencies = dependencies;
+	result->blocking_dependencies = blocking_dependencies;
+	result->recreation_only_dependencies = recreation_only_dependencies;
 	result->comment = comment;
 	result->tags = tags;
 	result->column_comments_map = column_comments;
@@ -165,8 +167,8 @@ void ViewCatalogEntry::BindView(ClientContext &context, BindViewAction action) {
 	bind_thread = ThreadUtil::GetThreadId();
 	try {
 		auto columns = make_shared_ptr<ViewColumnInfo>();
-		Binder::BindView(context, GetQuery(), ParentCatalog().GetName(), ParentSchema().name, nullptr,
-		                 LogicalDependencyType::BLOCKING, aliases, columns->types, columns->names);
+		Binder::BindView(context, GetQuery(), ParentCatalog().GetName(), ParentSchema().name, nullptr, aliases,
+		                 columns->types, columns->names);
 		view_columns.atomic_store(columns);
 	} catch (...) {
 		bind_state = prev_bind_state;
