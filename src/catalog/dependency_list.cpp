@@ -39,8 +39,7 @@ bool LogicalDependencyEquality::operator()(const LogicalDependency &a, const Log
 	return true;
 }
 
-LogicalDependency::LogicalDependency()
-    : entry(), catalog(), dependency_type(LogicalDependencyType::BLOCKING) {
+LogicalDependency::LogicalDependency() : entry(), catalog(), dependency_type(LogicalDependencyType::BLOCKING) {
 }
 
 LogicalDependency::LogicalDependency(CatalogEntry &entry, LogicalDependencyType dependency_type_p)

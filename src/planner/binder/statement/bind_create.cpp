@@ -253,8 +253,7 @@ void Binder::SetCatalogLookupCallback(catalog_entry_callback_t callback) {
 void Binder::BindView(ClientContext &context, const SelectStatement &stmt, const Identifier &catalog_name,
                       const Identifier &schema_name, optional_ptr<LogicalDependencyList> dependencies,
                       LogicalDependencyType dependency_type, const vector<Identifier> &aliases,
-                      vector<LogicalType> &result_types,
-                      vector<Identifier> &result_names) {
+                      vector<LogicalType> &result_types, vector<Identifier> &result_names) {
 	auto view_binder = Binder::CreateBinder(context);
 	auto &catalog = Catalog::GetCatalog(context, catalog_name);
 
@@ -305,8 +304,8 @@ void Binder::BindCreateViewInfo(CreateViewInfo &base) {
 	const auto dependency_type = Settings::Get<EnableViewDependenciesSetting>(context)
 	                                 ? LogicalDependencyType::BLOCKING
 	                                 : LogicalDependencyType::RECREATION_ONLY;
-	BindView(context, *base.query, base.GetQualifiedName().Catalog(), base.GetQualifiedName().Schema(), base.dependencies,
-	         dependency_type, base.aliases, base.types, base.names);
+	BindView(context, *base.query, base.GetQualifiedName().Catalog(), base.GetQualifiedName().Schema(),
+	         base.dependencies, dependency_type, base.aliases, base.types, base.names);
 }
 
 SchemaCatalogEntry &Binder::BindCreateFunctionInfo(CreateInfo &info) {
