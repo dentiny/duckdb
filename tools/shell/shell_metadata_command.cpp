@@ -209,6 +209,7 @@ void DumpCatalog(ShellState &state, const string &like_clause) {
 		duckdb::catalog_entry_vector_t entries;
 		for (auto &entry_ref : export_entries) {
 			auto &entry = entry_ref.get();
+			// TODO(hjiang): support sequence entries in the followup PR.
 			if (entry.type == duckdb::CatalogType::SEQUENCE_ENTRY) {
 				continue;
 			}
