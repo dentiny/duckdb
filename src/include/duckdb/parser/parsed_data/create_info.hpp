@@ -47,6 +47,8 @@ public:
 	string sql;
 	//! The inherent dependencies of the created entry
 	LogicalDependencyList dependencies;
+	//! Catalog references used to order serialization of the created entry
+	LogicalDependencyList ordering_dependencies;
 	//! User provided comment
 	Value comment;
 	//! Key-value tags with additional metadata

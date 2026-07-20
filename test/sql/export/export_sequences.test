@@ -1,0 +1,30 @@
+# name: test/sql/export/export_sequences.test
+# description: Test exporting and restoring sequence state
+# group: [export]
+
+require noforcestorage
+
+statement ok
+BEGIN TRANSACTION;
+
+statement ok
+CREATE SEQUENCE z_sequence START 7;
+
+query I
+SELECT nextval('z_sequence');
+----
+7
+
+statement ok
+EXPORT DATABASE '{TEST_DIR}/export_sequences' (FORMAT CSV);
+
+statement ok
+ROLLBACK;
+
+statement ok
+IMPORT DATABASE '{TEST_DIR}/export_sequences';
+
+query I
+SELECT nextval('z_sequence');
+----
+8

@@ -15,6 +15,7 @@ void CreateInfo::CopyProperties(CreateInfo &other) const {
 	other.extension_name = extension_name;
 	other.sql = sql;
 	other.dependencies = dependencies;
+	other.ordering_dependencies = ordering_dependencies;
 	other.comment = comment;
 	other.tags = tags;
 }
@@ -25,9 +26,13 @@ unique_ptr<AlterInfo> CreateInfo::GetAlterInfo() const {
 
 string CreateInfo::QualifiedNameToString() const {
 	// for temporary entries the catalog is implied, so it is omitted from the rendered name
-	auto catalog = temporary ? Identifier() : qualified_name.Catalog();
-	return QualifiedName(std::move(catalog), qualified_name.Schema(), qualified_name.Name())
-	    .ToString(QualifiedNameToStringMode::HIDE_DEFAULT_SCHEMA);
+	auto path = qualified_name.Path();
+	if (temporary && path.size() >= 3) {
+		path.erase(path.begin());
+	}
+	auto name = std::move(path.back());
+	path.pop_back();
+	return QualifiedName(std::move(path), std::move(name)).ToString(QualifiedNameToStringMode::HIDE_DEFAULT_SCHEMA);
 }
 
 string CreateInfo::GetCreatePrefix(const string &entry) const {

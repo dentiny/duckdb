@@ -67,6 +67,9 @@ public:
 	//! successful.
 	DUCKDB_API bool CreateEntry(CatalogTransaction transaction, const Identifier &name, unique_ptr<CatalogEntry> value,
 	                            const LogicalDependencyList &dependencies);
+	DUCKDB_API bool CreateEntry(CatalogTransaction transaction, const Identifier &name, unique_ptr<CatalogEntry> value,
+	                            const LogicalDependencyList &dependencies,
+	                            const LogicalDependencyList &ordering_dependencies);
 	DUCKDB_API bool CreateEntry(ClientContext &context, const Identifier &name, unique_ptr<CatalogEntry> value,
 	                            const LogicalDependencyList &dependencies);
 

@@ -1428,7 +1428,7 @@ TableStorageInfo DuckTableEntry::GetStorageInfo(ClientContext &context) {
 optional_ptr<CatalogEntry> DuckTableEntry::CreateTrigger(CatalogTransaction transaction, CreateTriggerInfo &info) {
 	auto trigger = make_uniq<TriggerCatalogEntry>(catalog, schema, info);
 	auto entry_name = trigger->name;
-	LogicalDependencyList dependencies = trigger->dependencies;
+	LogicalDependencyList no_dependencies;
 	if (info.on_conflict == OnCreateConflict::IGNORE_ON_CONFLICT) {
 		auto old_entry = triggers->GetEntry(transaction, entry_name);
 		if (old_entry) {
@@ -1440,7 +1440,7 @@ optional_ptr<CatalogEntry> DuckTableEntry::CreateTrigger(CatalogTransaction tran
 			triggers->DropEntry(transaction, entry_name, false);
 		}
 	}
-	if (!triggers->CreateEntry(transaction, entry_name, std::move(trigger), dependencies)) {
+	if (!triggers->CreateEntry(transaction, entry_name, std::move(trigger), no_dependencies, no_dependencies)) {
 		throw CatalogException::EntryAlreadyExists(CatalogType::TRIGGER_ENTRY, entry_name);
 	}
 	return triggers->GetEntry(transaction, entry_name);

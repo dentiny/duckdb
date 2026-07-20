@@ -95,6 +95,7 @@ struct DependencyDependentFlags : public DependencyFlags {
 private:
 	static constexpr uint8_t BLOCKING = 0;
 	static constexpr uint8_t OWNED_BY = 1;
+	static constexpr uint8_t ORDERING_ONLY = 2;
 
 public:
 	DependencyDependentFlags &Apply(DependencyDependentFlags other) {
@@ -109,6 +110,9 @@ public:
 	bool IsOwnedBy() const {
 		return IsSet<OWNED_BY>();
 	}
+	bool IsOrderingOnly() const {
+		return IsSet<ORDERING_ONLY>() && !IsBlocking();
+	}
 
 public:
 	DependencyDependentFlags &SetBlocking() {
@@ -117,6 +121,10 @@ public:
 	}
 	DependencyDependentFlags &SetOwnedBy() {
 		Set<OWNED_BY>();
+		return *this;
+	}
+	DependencyDependentFlags &SetOrderingOnly() {
+		Set<ORDERING_ONLY>();
 		return *this;
 	}
 
@@ -131,6 +139,9 @@ public:
 		result += " | ";
 		if (IsOwnedBy()) {
 			result += "OWNED BY";
+		}
+		if (IsOrderingOnly()) {
+			result += "ORDERING ONLY";
 		}
 		return result;
 	}

@@ -167,15 +167,16 @@ static string PragmaImportDatabase(ClientContext &context, const FunctionParamet
 		if (file == "load.sql") {
 			Parser parser;
 			parser.ParseQuery(query);
-			auto copy_statements = std::move(parser.statements);
+			auto statements = std::move(parser.statements);
 			query.clear();
-			for (auto &statement_p : copy_statements) {
-				D_ASSERT(statement_p->type == StatementType::COPY_STATEMENT);
-				auto &statement = statement_p->Cast<CopyStatement>();
-				auto &info = *statement.info;
-				auto file_name = fs.ExtractName(info.file_path);
-				info.file_path = fs.JoinPath(parameters.values[0].ToString(), file_name);
-				query += statement.ToString() + ";";
+			for (auto &statement : statements) {
+				if (statement->type == StatementType::COPY_STATEMENT) {
+					auto &copy_statement = statement->Cast<CopyStatement>();
+					auto &info = *copy_statement.info;
+					auto file_name = fs.ExtractName(info.file_path);
+					info.file_path = fs.JoinPath(parameters.values[0].ToString(), file_name);
+				}
+				query += statement->ToString() + ";";
 			}
 		}
 		final_query += query;

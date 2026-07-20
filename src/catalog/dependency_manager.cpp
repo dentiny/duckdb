@@ -286,11 +286,11 @@ void DependencyManager::CreateDependency(CatalogTransaction transaction, Depende
 }
 
 void DependencyManager::CreateDependencies(CatalogTransaction transaction, const CatalogEntry &object,
-                                           const LogicalDependencyList &dependencies) {
-	DependencyDependentFlags dependency_flags;
-	if (object.type != CatalogType::INDEX_ENTRY) {
+                                           const LogicalDependencyList &dependencies,
+                                           DependencyDependentFlags dependency_flags) {
+	if (object.type == CatalogType::INDEX_ENTRY) {
 		// indexes do not require CASCADE to be dropped, they are simply always dropped along with the table
-		dependency_flags.SetBlocking();
+		dependency_flags = DependencyDependentFlags();
 	}
 
 	const auto object_info = GetLookupProperties(object);
@@ -314,12 +314,14 @@ void DependencyManager::CreateDependencies(CatalogTransaction transaction, const
 }
 
 void DependencyManager::AddObject(CatalogTransaction transaction, CatalogEntry &object,
-                                  const LogicalDependencyList &dependencies) {
+                                  const LogicalDependencyList &dependencies,
+                                  const LogicalDependencyList &ordering_dependencies) {
 	if (IsSystemEntry(object)) {
 		// Don't do anything for this
 		return;
 	}
-	CreateDependencies(transaction, object, dependencies);
+	CreateDependencies(transaction, object, dependencies, DependencyDependentFlags().SetBlocking());
+	CreateDependencies(transaction, object, ordering_dependencies, DependencyDependentFlags().SetOrderingOnly());
 }
 
 static bool CascadeDrop(bool cascade, const DependencyDependentFlags &flags) {
@@ -475,6 +477,9 @@ string DependencyManager::CollectDependents(CatalogTransaction transaction, cata
 		result += StringUtil::Format("%s depends on %s.\n", EntryToString(other_info), EntryToString(info));
 		catalog_entry_set_t entry_dependents;
 		ScanDependents(transaction, other_info, [&](DependencyEntry &dep) {
+			if (dep.Dependent().flags.IsOrderingOnly()) {
+				return;
+			}
 			auto child = LookupEntry(transaction, dep);
 			if (!child) {
 				return;
@@ -536,6 +541,9 @@ void DependencyManager::VerifyCommitDrop(CatalogTransaction transaction, transac
 	}
 	auto info = GetLookupProperties(object);
 	ScanDependents(transaction, info, [&](DependencyEntry &dep) {
+		if (dep.Dependent().flags.IsOrderingOnly()) {
+			return;
+		}
 		auto dep_committed_at = dep.timestamp.load();
 		if (dep_committed_at > start_time) {
 			// In the event of a CASCADE, the dependency drop has not committed yet
@@ -579,6 +587,9 @@ catalog_entry_set_t DependencyManager::CheckDropDependencies(CatalogTransaction 
 	auto info = GetLookupProperties(object);
 	// Look through all the objects that depend on the 'object'
 	ScanDependents(transaction, info, [&](DependencyEntry &dep) {
+		if (dep.Dependent().flags.IsOrderingOnly()) {
+			return;
+		}
 		// a nested schema depends on its parent schema; other schemas have no dependencies
 		auto entry = LookupEntry(transaction, dep);
 		if (!entry) {
@@ -642,33 +653,36 @@ void DependencyManager::ReorderEntries(catalog_entry_vector_t &entries) {
 }
 
 void DependencyManager::ReorderEntry(CatalogTransaction transaction, CatalogEntry &entry, catalog_entry_set_t &visited,
-                                     catalog_entry_vector_t &order) {
+                                     catalog_entry_set_t &visiting, catalog_entry_vector_t &order) {
 	auto &catalog_entry = *LookupEntry(transaction, entry);
 	// We use this in CheckpointManager, it has the highest commit ID, allowing us to read any committed data
 	bool allow_internal = transaction.start_time == TRANSACTION_ID_START - 1;
-	if (visited.count(catalog_entry) || (!allow_internal && catalog_entry.internal)) {
+	if (visited.count(catalog_entry) || visiting.count(catalog_entry) || (!allow_internal && catalog_entry.internal)) {
 		// Already seen and ordered appropriately
 		return;
 	}
+	visiting.insert(catalog_entry);
 
 	// Check if there are any entries that this entry depends on, those are written first
 	catalog_entry_vector_t dependents;
 	auto info = GetLookupProperties(entry);
 	ScanSubjects(transaction, info, [&](DependencyEntry &dep) { dependents.push_back(dep); });
 	for (auto &dep : dependents) {
-		ReorderEntry(transaction, dep, visited, order);
+		ReorderEntry(transaction, dep, visited, visiting, order);
 	}
 
 	// Then write the entry
 	visited.insert(catalog_entry);
+	visiting.erase(catalog_entry);
 	order.push_back(catalog_entry);
 }
 
 void DependencyManager::ReorderEntries(catalog_entry_vector_t &entries, CatalogTransaction transaction) {
 	catalog_entry_vector_t reordered;
 	catalog_entry_set_t visited;
+	catalog_entry_set_t visiting;
 	for (auto &entry : entries) {
-		ReorderEntry(transaction, entry, visited, reordered);
+		ReorderEntry(transaction, entry, visited, visiting, reordered);
 	}
 	// If this would fail, that means there are more entries that we somehow reached through the dependency manager
 	// but those entries should not actually be visible to this transaction
@@ -694,7 +708,7 @@ void DependencyManager::AlterObject(CatalogTransaction transaction, CatalogEntry
 		// It makes no sense to have a schema depend on anything
 		D_ASSERT(dep.EntryInfo().type != CatalogType::SCHEMA_ENTRY);
 
-		bool disallow_alter = true;
+		bool disallow_alter = !dep.Dependent().flags.IsOrderingOnly();
 		switch (alter_info.type) {
 		case AlterType::ALTER_TABLE: {
 			auto &alter_table = alter_info.Cast<AlterTableInfo>();
@@ -760,7 +774,8 @@ void DependencyManager::AlterObject(CatalogTransaction transaction, CatalogEntry
 
 	if (has_new_dependencies) {
 		// Add the new dependencies
-		CreateDependencies(transaction, new_obj, *alter_info.new_dependencies);
+		CreateDependencies(transaction, new_obj, *alter_info.new_dependencies,
+		                   DependencyDependentFlags().SetBlocking());
 	}
 
 	// Reinstate any old dependencies

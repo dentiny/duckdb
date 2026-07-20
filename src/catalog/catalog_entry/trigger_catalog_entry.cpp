@@ -15,6 +15,9 @@ TriggerCatalogEntry::TriggerCatalogEntry(Catalog &catalog, SchemaCatalogEntry &s
       referencing_new_table(info.referencing_new_table), referencing_old_table(info.referencing_old_table),
       trigger_action(info.trigger_action->Copy()) {
 	this->temporary = info.temporary;
+	this->dependencies = info.dependencies;
+	this->ordering_dependencies = info.ordering_dependencies;
+	this->ordering_dependencies.AddDependencies(info.dependencies);
 	this->comment = info.comment;
 	this->tags = info.tags;
 }
@@ -37,6 +40,7 @@ unique_ptr<CreateInfo> TriggerCatalogEntry::GetInfo() const {
 	result->referencing_old_table = referencing_old_table;
 	result->trigger_action = trigger_action->Copy();
 	result->dependencies = dependencies;
+	result->ordering_dependencies = ordering_dependencies;
 	result->comment = comment;
 	result->tags = tags;
 	return std::move(result);

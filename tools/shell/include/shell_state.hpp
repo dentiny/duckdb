@@ -357,6 +357,8 @@ public:
 	SuccessState ExecuteSQL(const string &zSql);
 	void RunSchemaDumpQuery(const string &zQuery);
 	void RunTableDumpQuery(const string &zSelect);
+	void DumpTableData(const string &schema, const string &table);
+	void DumpTableData(const string &qualified_name);
 	void OpenDB(ShellOpenFlags open_flags = ShellOpenFlags::EXIT_ON_FAILURE);
 
 	void SetOrClearFlag(ShellFlags mFlag, const string &zArg);

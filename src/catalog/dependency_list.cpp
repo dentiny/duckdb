@@ -79,6 +79,12 @@ void LogicalDependencyList::AddDependency(const LogicalDependency &entry) {
 	set.insert(entry);
 }
 
+void LogicalDependencyList::AddDependencies(const LogicalDependencyList &dependencies) {
+	for (auto &dependency : dependencies.Set()) {
+		AddDependency(dependency);
+	}
+}
+
 bool LogicalDependencyList::Contains(CatalogEntry &entry_p) {
 	LogicalDependency logical_entry(entry_p);
 	return set.count(logical_entry);

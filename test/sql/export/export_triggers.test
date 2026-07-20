@@ -1,0 +1,39 @@
+# name: test/sql/export/export_triggers.test
+# description: Test that triggers are created after data is imported
+# group: [export]
+
+require noforcestorage
+
+statement ok
+BEGIN TRANSACTION;
+
+statement ok
+CREATE TABLE data(i INTEGER);
+
+statement ok
+CREATE TABLE log(i INTEGER);
+
+statement ok
+CREATE TRIGGER log_insert AFTER INSERT ON data FOR EACH ROW INSERT INTO log VALUES (new.i);
+
+statement ok
+INSERT INTO data VALUES (42);
+
+statement ok
+EXPORT DATABASE '{TEST_DIR}/export_triggers' (FORMAT CSV);
+
+statement ok
+ROLLBACK;
+
+statement ok
+IMPORT DATABASE '{TEST_DIR}/export_triggers';
+
+query I
+SELECT * FROM log ORDER BY ALL;
+----
+42
+
+query I
+SELECT COUNT(*) FROM duckdb_triggers() WHERE trigger_name = 'log_insert';
+----
+1

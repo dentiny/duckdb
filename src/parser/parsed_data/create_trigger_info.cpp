@@ -34,9 +34,6 @@ string CreateTriggerInfo::ToString() const {
 	if (on_conflict == OnCreateConflict::IGNORE_ON_CONFLICT) {
 		ss << "IF NOT EXISTS ";
 	}
-	if (!IsInvalidSchema(GetQualifiedName().Schema())) {
-		ss << SQLIdentifier(GetQualifiedName().Schema()) << ".";
-	}
 	ss << SQLIdentifier(GetTriggerName());
 	ss << " ";
 	ss << EnumUtil::ToString(timing);

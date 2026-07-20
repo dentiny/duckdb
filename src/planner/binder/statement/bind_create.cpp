@@ -297,12 +297,11 @@ void Binder::BindCreateViewInfo(CreateViewInfo &base) {
 			throw BinderException("DML statements (INSERT/UPDATE/DELETE) are not allowed as CTE bodies inside a VIEW");
 		}
 	}
-	optional_ptr<LogicalDependencyList> dependencies;
+	BindView(context, *base.query, base.GetQualifiedName().Catalog(), base.GetQualifiedName().Schema(),
+	         base.ordering_dependencies, base.aliases, base.types, base.names);
 	if (Settings::Get<EnableViewDependenciesSetting>(context)) {
-		dependencies = base.dependencies;
+		base.dependencies.AddDependencies(base.ordering_dependencies);
 	}
-	BindView(context, *base.query, base.GetQualifiedName().Catalog(), base.GetQualifiedName().Schema(), dependencies,
-	         base.aliases, base.types, base.names);
 }
 
 SchemaCatalogEntry &Binder::BindCreateFunctionInfo(CreateInfo &info) {
@@ -445,14 +444,19 @@ SchemaCatalogEntry &Binder::BindCreateFunctionInfo(CreateInfo &info) {
 		macro_binding = this_macro_binding.get();
 
 		auto &dependencies = base.dependencies;
+		auto &ordering_dependencies = base.ordering_dependencies;
 		const auto should_create_dependencies = Settings::Get<EnableMacroDependenciesSetting>(context);
-		const auto binder_callback = [&dependencies, &catalog](CatalogEntry &entry) {
+		const auto binder_callback = [&dependencies, &ordering_dependencies, &catalog,
+		                              should_create_dependencies](CatalogEntry &entry) {
 			if (&catalog != &entry.ParentCatalog()) {
 				// Don't register any cross-catalog dependencies
 				return;
 			}
 			// Register any catalog entry required to bind the macro function
-			dependencies.AddDependency(entry);
+			ordering_dependencies.AddDependency(entry);
+			if (should_create_dependencies) {
+				dependencies.AddDependency(entry);
+			}
 		};
 
 		// bind it to verify the function was defined correctly
@@ -460,9 +464,7 @@ SchemaCatalogEntry &Binder::BindCreateFunctionInfo(CreateInfo &info) {
 		if (info.type == CatalogType::MACRO_ENTRY) {
 			BoundSelectNode sel_node;
 			SelectBinder binder(*this, context, sel_node);
-			if (should_create_dependencies) {
-				binder.SetCatalogLookupCallback(binder_callback);
-			}
+			binder.SetCatalogLookupCallback(binder_callback);
 
 			// create a copy of the expression because we do not want to alter the original
 			auto expression = function->Cast<ScalarMacroFunction>().expression->Copy();
@@ -478,9 +480,7 @@ SchemaCatalogEntry &Binder::BindCreateFunctionInfo(CreateInfo &info) {
 		} else {
 			D_ASSERT(info.type == CatalogType::TABLE_MACRO_ENTRY);
 			auto dummy_binder = CreateBinder(context, this);
-			if (should_create_dependencies) {
-				dummy_binder->SetCatalogLookupCallback(binder_callback);
-			}
+			dummy_binder->SetCatalogLookupCallback(binder_callback);
 
 			// create a copy of the query node because we do not want to alter the original
 			auto query_node = function->Cast<TableMacroFunction>().query_node->Copy();
@@ -650,6 +650,12 @@ SchemaCatalogEntry &Binder::BindCreateTriggerInfo(CreateTriggerInfo &create_trig
 	// Set up trigger_expanded_tables to match runtime behavior.
 	// Set up trigger_creation_table to detect recursive triggers during the validation.
 	auto validation_binder = Binder::CreateBinder(context);
+	auto &trigger_catalog = table.ParentCatalog();
+	validation_binder->SetCatalogLookupCallback([&](CatalogEntry &entry) {
+		if (&entry.ParentCatalog() == &trigger_catalog) {
+			create_trigger_info.ordering_dependencies.AddDependency(entry);
+		}
+	});
 	validation_binder->global_binder_state->trigger_expanded_tables.insert(table);
 	validation_binder->global_binder_state->trigger_creation_table = &table;
 	validation_binder->global_binder_state->trigger_creation_name = create_trigger_info.GetTriggerName();

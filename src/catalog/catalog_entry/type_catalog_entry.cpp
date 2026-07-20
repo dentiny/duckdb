@@ -18,6 +18,8 @@ TypeCatalogEntry::TypeCatalogEntry(Catalog &catalog, SchemaCatalogEntry &schema,
 	this->internal = info.internal;
 	this->extension_name = info.extension_name;
 	this->dependencies = info.dependencies;
+	this->ordering_dependencies = info.ordering_dependencies;
+	this->ordering_dependencies.AddDependencies(info.dependencies);
 	this->comment = info.comment;
 	this->tags = info.tags;
 }
@@ -35,6 +37,7 @@ unique_ptr<CreateInfo> TypeCatalogEntry::GetInfo() const {
 	result->type = user_type;
 	result->extension_name = extension_name;
 	result->dependencies = dependencies;
+	result->ordering_dependencies = ordering_dependencies;
 	result->comment = comment;
 	result->tags = tags;
 	result->bind_function = bind_function;

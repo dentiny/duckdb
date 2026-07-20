@@ -4,12 +4,247 @@
 #include "shell_progress_bar.hpp"
 #include "shell_renderer.hpp"
 
+#include "duckdb/catalog/catalog.hpp"
+#include "duckdb/catalog/dependency_manager.hpp"
+#include "duckdb/catalog/catalog_entry/schema_catalog_entry.hpp"
+#include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
+#include "duckdb/catalog/catalog_entry/view_catalog_entry.hpp"
+#include "duckdb/execution/operator/persistent/physical_export.hpp"
+#include "duckdb/planner/binder.hpp"
+
 #ifdef HAVE_LINENOISE
 #include "linenoise.h"
 #include "shortcuts.hpp"
 #endif
 
 namespace duckdb_shell {
+namespace {
+
+duckdb::unordered_set<idx_t> GetDumpEntries(ShellState &state, const string &like_clause) {
+	duckdb::unordered_set<idx_t> result;
+	if (like_clause == "true") {
+		return result;
+	}
+	auto query = StringUtil::Format(
+	    "WITH RECURSIVE entries(name, oid) AS ("
+	    "SELECT schema_name, oid FROM duckdb_schemas() WHERE database_name=current_database() AND NOT internal "
+	    "UNION ALL SELECT table_name, table_oid FROM duckdb_tables() "
+	    "WHERE database_name=current_database() AND NOT internal AND NOT temporary "
+	    "UNION ALL SELECT view_name, view_oid FROM duckdb_views() "
+	    "WHERE database_name=current_database() AND NOT internal AND NOT temporary "
+	    "UNION ALL SELECT index_name, index_oid FROM duckdb_indexes() WHERE database_name=current_database() "
+	    "UNION ALL SELECT sequence_name, sequence_oid FROM duckdb_sequences() "
+	    "WHERE database_name=current_database() AND NOT temporary "
+	    "UNION ALL SELECT type_name, type_oid FROM duckdb_types() "
+	    "WHERE database_name=current_database() AND NOT internal "
+	    "UNION ALL SELECT function_name, function_oid FROM duckdb_functions() "
+	    "WHERE database_name=current_database() AND NOT internal AND function_type IN ('macro','table_macro') "
+	    "UNION ALL SELECT trigger_name, trigger_oid FROM duckdb_triggers() "
+	    "WHERE database_name=current_database() AND NOT temporary"
+	    "), selected(oid) AS (SELECT oid FROM entries WHERE (%s) UNION "
+	    "SELECT dependency.objid FROM selected "
+	    "JOIN duckdb_dependencies() dependency ON dependency.refobjid=selected.oid "
+	    "JOIN entries ON entries.oid=dependency.objid) SELECT oid FROM selected",
+	    like_clause);
+	auto selected = state.conn->Query(query);
+	if (selected->HasError()) {
+		state.PrintF(PrintOutput::STDERR, "/**** ERROR: %s *****/\n", selected->GetError().c_str());
+		state.AddError();
+		return result;
+	}
+	for (auto &row : *selected) {
+		result.insert(row.GetValue<idx_t>(0));
+	}
+	return result;
+}
+
+string GetDumpSQL(duckdb::CatalogEntry &entry) {
+	auto schema_path = duckdb::DependencyManager::GetSchemaPath(entry);
+	if (entry.type == duckdb::CatalogType::SCHEMA_ENTRY) {
+		schema_path.push_back(entry.name);
+		auto info = entry.GetInfo();
+		info->on_conflict = duckdb::OnCreateConflict::IGNORE_ON_CONFLICT;
+		info->SetQualifiedName(duckdb::QualifiedName(std::move(schema_path), duckdb::Identifier()));
+		return info->ToString();
+	}
+	auto info = entry.GetInfo();
+	try {
+		info->SetQualifiedName(duckdb::QualifiedName(std::move(schema_path), entry.name));
+		return info->ToString();
+	} catch (duckdb::NotImplementedException &) {
+		return entry.ToSQL();
+	}
+}
+
+duckdb::LogicalDependencyList GetOrderingDependencies(duckdb::ClientContext &context, duckdb::CatalogEntry &entry) {
+	auto info = entry.GetInfo();
+	auto dependencies = info->ordering_dependencies;
+	try {
+		if (entry.type == duckdb::CatalogType::VIEW_ENTRY) {
+			auto &view = entry.Cast<duckdb::ViewCatalogEntry>();
+			vector<duckdb::LogicalType> result_types;
+			vector<duckdb::Identifier> result_names;
+			duckdb::Binder::BindView(context, view.GetQuery(), view.ParentCatalog().GetName(), view.ParentSchema().name,
+			                         dependencies, view.aliases, result_types, result_names);
+		} else if (entry.type == duckdb::CatalogType::MACRO_ENTRY ||
+		           entry.type == duckdb::CatalogType::TABLE_MACRO_ENTRY) {
+			auto binder = duckdb::Binder::CreateBinder(context);
+			binder->BindCreateFunctionInfo(*info);
+			dependencies = info->ordering_dependencies;
+		}
+	} catch (duckdb::Exception &) {
+		// Invalid catalog objects should still be included in the dump.
+	}
+	return dependencies;
+}
+
+void OrderDumpEntry(idx_t entry_index, const duckdb::catalog_entry_vector_t &entries,
+                    const vector<duckdb::LogicalDependencyList> &dependencies,
+                    const duckdb::unordered_map<duckdb::LogicalDependency, idx_t, duckdb::LogicalDependencyHashFunction,
+                                                duckdb::LogicalDependencyEquality> &entry_indexes,
+                    vector<uint8_t> &visited, duckdb::catalog_entry_vector_t &ordered) {
+	if (visited[entry_index] == 2) {
+		return;
+	}
+	if (visited[entry_index] == 1) {
+		throw duckdb::InvalidInputException("Cannot dump catalog with cyclic dependencies involving entry \"%s\"",
+		                                    entries[entry_index].get().name);
+	}
+	visited[entry_index] = 1;
+	for (auto &dependency : dependencies[entry_index].Set()) {
+		auto dependency_index = entry_indexes.find(dependency);
+		if (dependency_index != entry_indexes.end()) {
+			OrderDumpEntry(dependency_index->second, entries, dependencies, entry_indexes, visited, ordered);
+		}
+	}
+	visited[entry_index] = 2;
+	ordered.push_back(entries[entry_index]);
+}
+
+vector<duckdb::LogicalDependencyList> GetDumpDependencies(duckdb::ClientContext &context,
+                                                          const duckdb::catalog_entry_vector_t &entries) {
+	vector<duckdb::LogicalDependencyList> dependencies;
+	dependencies.reserve(entries.size());
+	for (auto &entry : entries) {
+		dependencies.push_back(GetOrderingDependencies(context, entry.get()));
+	}
+	return dependencies;
+}
+
+void SelectDumpDependencies(
+    idx_t entry_index, const duckdb::catalog_entry_vector_t &entries,
+    const vector<duckdb::LogicalDependencyList> &dependencies,
+    const duckdb::unordered_map<duckdb::LogicalDependency, idx_t, duckdb::LogicalDependencyHashFunction,
+                                duckdb::LogicalDependencyEquality> &entry_indexes,
+    duckdb::unordered_set<idx_t> &selected, duckdb::unordered_set<idx_t> &visited) {
+	if (!visited.insert(entry_index).second) {
+		return;
+	}
+	for (auto &dependency : dependencies[entry_index].Set()) {
+		auto dependency_index = entry_indexes.find(dependency);
+		if (dependency_index == entry_indexes.end()) {
+			continue;
+		}
+		selected.insert(entries[dependency_index->second].get().oid);
+		SelectDumpDependencies(dependency_index->second, entries, dependencies, entry_indexes, selected, visited);
+	}
+}
+
+void ExpandDumpEntries(const duckdb::catalog_entry_vector_t &entries,
+                       const vector<duckdb::LogicalDependencyList> &dependencies,
+                       duckdb::unordered_set<idx_t> &selected) {
+	duckdb::unordered_map<duckdb::LogicalDependency, idx_t, duckdb::LogicalDependencyHashFunction,
+	                      duckdb::LogicalDependencyEquality>
+	    entry_indexes;
+	for (idx_t entry_index = 0; entry_index < entries.size(); entry_index++) {
+		auto &entry = entries[entry_index].get();
+		entry_indexes.emplace(duckdb::LogicalDependency(entry), entry_index);
+	}
+	duckdb::unordered_set<idx_t> visited;
+	for (idx_t entry_index = 0; entry_index < entries.size(); entry_index++) {
+		if (selected.find(entries[entry_index].get().oid) != selected.end()) {
+			SelectDumpDependencies(entry_index, entries, dependencies, entry_indexes, selected, visited);
+		}
+	}
+}
+
+void OrderDumpEntries(duckdb::catalog_entry_vector_t &entries,
+                      const vector<duckdb::LogicalDependencyList> &dependencies) {
+	duckdb::unordered_map<duckdb::LogicalDependency, idx_t, duckdb::LogicalDependencyHashFunction,
+	                      duckdb::LogicalDependencyEquality>
+	    entry_indexes;
+	for (idx_t entry_index = 0; entry_index < entries.size(); entry_index++) {
+		entry_indexes.emplace(duckdb::LogicalDependency(entries[entry_index].get()), entry_index);
+	}
+	vector<uint8_t> visited(entries.size(), 0);
+	duckdb::catalog_entry_vector_t ordered;
+	for (idx_t entry_index = 0; entry_index < entries.size(); entry_index++) {
+		OrderDumpEntry(entry_index, entries, dependencies, entry_indexes, visited, ordered);
+	}
+	entries = std::move(ordered);
+}
+
+struct DumpCatalogEntry {
+	duckdb::CatalogType type;
+	string qualified_name;
+	string sql;
+};
+
+string GetDumpQualifiedName(duckdb::CatalogEntry &entry) {
+	return duckdb::QualifiedName(duckdb::DependencyManager::GetSchemaPath(entry), entry.name).ToString();
+}
+
+string GetDumpTerminator(const string &sql) {
+	return StringUtil::EndsWith(sql, ";") ? "\n" : ";\n";
+}
+
+void DumpCatalog(ShellState &state, const string &like_clause) {
+	auto &context = *state.conn->context;
+	auto selected = GetDumpEntries(state, like_clause);
+	auto filter = like_clause != "true";
+	vector<DumpCatalogEntry> dump_entries;
+	context.RunFunctionInTransaction([&]() {
+		auto &catalog = duckdb::Catalog::GetCatalog(context, duckdb::Identifier::InvalidCatalog());
+		auto entries = duckdb::PhysicalExport::GetNaiveExportOrder(context, catalog);
+		auto dependencies = GetDumpDependencies(context, entries);
+		if (filter) {
+			ExpandDumpEntries(entries, dependencies, selected);
+		}
+		OrderDumpEntries(entries, dependencies);
+		for (auto &entry_ref : entries) {
+			auto &entry = entry_ref.get();
+			if (entry.internal || (filter && selected.find(entry.oid) == selected.end())) {
+				continue;
+			}
+			DumpCatalogEntry dump_entry;
+			dump_entry.type = entry.type;
+			if (entry.type == duckdb::CatalogType::TABLE_ENTRY) {
+				dump_entry.qualified_name = GetDumpQualifiedName(entry);
+			}
+			dump_entry.sql = GetDumpSQL(entry);
+			dump_entries.push_back(std::move(dump_entry));
+		}
+	});
+
+	for (auto &entry : dump_entries) {
+		if (entry.type == duckdb::CatalogType::TRIGGER_ENTRY) {
+			continue;
+		}
+		state.PrintSQL(state.GetSchemaLine(entry.sql, GetDumpTerminator(entry.sql)));
+	}
+	for (auto &entry : dump_entries) {
+		if (entry.type == duckdb::CatalogType::TABLE_ENTRY) {
+			state.DumpTableData(entry.qualified_name);
+		}
+	}
+	for (auto &entry : dump_entries) {
+		if (entry.type == duckdb::CatalogType::TRIGGER_ENTRY) {
+			state.PrintSQL(state.GetSchemaLine(entry.sql, GetDumpTerminator(entry.sql)));
+		}
+	}
+}
+
+} // namespace
 
 MetadataResult ToggleAbout(ShellState &state, const vector<string> &args) {
 	string about_text = "DuckDB is an in-process analytical database management system designed for fast "
@@ -140,31 +375,7 @@ MetadataResult DumpTable(ShellState &state, const vector<string> &args) {
 		zLike = "true";
 	}
 
-	// Emit CREATE SCHEMA for non-main schemas first
-	auto zSql = StringUtil::Format("SELECT DISTINCT table_schema FROM information_schema.tables "
-	                               "WHERE table_schema != 'main' AND table_schema NOT LIKE 'pg_%%' "
-	                               "AND table_schema != 'information_schema' "
-	                               "AND table_name IN (SELECT name FROM sqlite_schema WHERE (%s) AND type=='table') "
-	                               "ORDER BY table_schema",
-	                               zLike);
-	auto result = state.conn->Query(zSql);
-	for (auto &row : *result) {
-		auto schema = row.GetValue<string>(0);
-		auto create_schema = StringUtil::Format("CREATE SCHEMA IF NOT EXISTS %s;", SQLIdentifier(schema));
-		state.PrintSQL(create_schema + ";\n");
-	}
-
-	zSql = StringUtil::Format("SELECT name, type, sql FROM sqlite_schema "
-	                          "WHERE (%s) AND type=='table'"
-	                          "  AND sql NOT NULL"
-	                          " ORDER BY tbl_name='sqlite_sequence'",
-	                          zLike);
-	state.RunSchemaDumpQuery(zSql);
-	zSql = StringUtil::Format("SELECT sql FROM sqlite_schema "
-	                          "WHERE (%s) AND sql NOT NULL"
-	                          "  AND type IN ('index','trigger','view')",
-	                          zLike);
-	state.RunTableDumpQuery(zSql);
+	DumpCatalog(state, zLike);
 	state.PrintSQL(state.nErr ? "ROLLBACK; -- due to errors\n" : "COMMIT;\n");
 	state.showHeader = savedShowHeader;
 	state.shellFlgs = savedShellFlags;
