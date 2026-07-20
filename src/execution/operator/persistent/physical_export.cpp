@@ -35,16 +35,17 @@ static void WriteCatalogEntries(stringstream &ss, catalog_entry_vector_t &entrie
 			continue;
 		}
 		auto create_info = entry.get().GetInfo();
+		string sql;
 		try {
 			// Strip the catalog from the info
 			create_info->SetQualifiedName(QualifiedName(Identifier(), create_info->GetQualifiedName().Schema(),
 			                                            create_info->GetQualifiedName().Name()));
-			auto to_string = create_info->ToString();
-			ss << to_string;
+			sql = create_info->ToString();
 		} catch (const NotImplementedException &) {
-			ss << entry.get().ToSQL();
+			sql = entry.get().ToSQL();
 		}
-		ss << ";\n";
+		ss << sql;
+		ss << (StringUtil::EndsWith(sql, ";") ? "\n" : ";\n");
 	}
 	ss << '\n';
 }
