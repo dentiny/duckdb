@@ -1144,47 +1144,41 @@ void ShellState::RunSchemaDumpQuery(const string &zQuery) {
 		// print sql
 		PrintSQL(GetSchemaLine(zSql, ";\n"));
 		if (zType == "table") {
-			// dump table contents
-			string sSelect;
-			string sTable;
-
 			auto zSchema = getTableSchema(con, zTable.c_str());
-			auto zQualifiedName = buildQualifiedName(zSchema.c_str(), zTable.c_str());
-
-			auto table_columns = TableColumnList(zQualifiedName.c_str());
-			if (table_columns.empty()) {
-				AddError();
-				break;
-			}
-
-			if (!zSchema.empty()) {
-				sTable += zQualifiedName;
-			} else {
-				sTable += StringUtil::Format("%s", SQLIdentifier(zTable));
-			}
-
-			/* Build an appropriate SELECT statement */
-			sSelect += "SELECT ";
-			for (idx_t i = 0; i < table_columns.size(); i++) {
-				if (i > 0) {
-					sSelect += ", ";
-				}
-				sSelect += StringUtil::Format("%s", SQLIdentifier(table_columns[i]));
-			}
-			sSelect += " FROM ";
-			sSelect += zQualifiedName;
-
-			auto savedDestTable = zDestTable;
-			auto savedMode = mode;
-			zDestTable = sTable;
-			mode = cMode = RenderMode::INSERT;
-			auto res = ExecuteSQL(sSelect);
-			zDestTable = savedDestTable;
-			mode = savedMode;
-			if (res != SuccessState::SUCCESS) {
-				AddError();
-			}
+			DumpTableData(zSchema, zTable);
 		}
+	}
+}
+
+void ShellState::DumpTableData(const string &schema, const string &table) {
+	DumpTableData(buildQualifiedName(schema.c_str(), table.c_str()));
+}
+
+void ShellState::DumpTableData(const string &qualified_name) {
+	auto table_columns = TableColumnList(qualified_name.c_str());
+	if (table_columns.empty()) {
+		AddError();
+		return;
+	}
+
+	string select = "SELECT ";
+	for (idx_t i = 0; i < table_columns.size(); i++) {
+		if (i > 0) {
+			select += ", ";
+		}
+		select += SQLIdentifier(table_columns[i]);
+	}
+	select += " FROM " + qualified_name;
+
+	auto saved_dest_table = zDestTable;
+	auto saved_mode = mode;
+	zDestTable = qualified_name;
+	mode = cMode = RenderMode::INSERT;
+	auto result = ExecuteSQL(select);
+	zDestTable = saved_dest_table;
+	mode = saved_mode;
+	if (result != SuccessState::SUCCESS) {
+		AddError();
 	}
 }
 

@@ -19,6 +19,9 @@ void CatalogEntryInfo::Serialize(Serializer &serializer) const {
 	if (serializer.ShouldSerialize(StorageVersion::V2_0_0)) {
 		serializer.WritePropertyWithDefault<vector<Identifier>>(103, "schema_path", schema_path, vector<Identifier>());
 	}
+	if (serializer.ShouldSerialize(StorageVersion::V2_0_0)) {
+		serializer.WritePropertyWithDefault<Identifier>(104, "parent_name", parent_name, Identifier());
+	}
 }
 
 CatalogEntryInfo CatalogEntryInfo::Deserialize(Deserializer &deserializer) {
@@ -27,6 +30,7 @@ CatalogEntryInfo CatalogEntryInfo::Deserialize(Deserializer &deserializer) {
 	auto schema = deserializer.ReadPropertyWithDefault<Identifier>(101, "schema");
 	deserializer.ReadPropertyWithDefault<Identifier>(102, "name", result.name);
 	deserializer.ReadPropertyWithExplicitDefault<vector<Identifier>>(103, "schema_path", result.schema_path, vector<Identifier>());
+	deserializer.ReadPropertyWithExplicitDefault<Identifier>(104, "parent_name", result.parent_name, Identifier());
 	if (result.schema_path.empty() && result.type != CatalogType::SCHEMA_ENTRY && !schema.empty()) {
 		result.schema_path.push_back(std::move(schema));
 	}
@@ -46,12 +50,12 @@ LogicalDependency LogicalDependency::Deserialize(Deserializer &deserializer) {
 }
 
 void LogicalDependencyList::Serialize(Serializer &serializer) const {
-	serializer.WriteProperty<create_info_set_t>(100, "set", set);
+	serializer.WriteProperty<dependency_set_t>(100, "set", set);
 }
 
 LogicalDependencyList LogicalDependencyList::Deserialize(Deserializer &deserializer) {
 	LogicalDependencyList result;
-	deserializer.ReadProperty<create_info_set_t>(100, "set", result.set);
+	deserializer.ReadProperty<dependency_set_t>(100, "set", result.set);
 	return result;
 }
 

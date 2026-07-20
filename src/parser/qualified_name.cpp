@@ -19,19 +19,15 @@ QualifiedName QualifiedName::Deserialize(Deserializer &deserializer) {
 }
 
 string QualifiedName::ToString(QualifiedNameToStringMode mode) const {
-	const auto &catalog = Catalog();
-	const auto &schema = Schema();
 	string result;
-	if (!catalog.empty()) {
-		result += SQLIdentifier(catalog) + ".";
-		if (!schema.empty()) {
-			result += SQLIdentifier(schema) + ".";
+	const idx_t start =
+	    mode == QualifiedNameToStringMode::HIDE_DEFAULT_SCHEMA && path.size() == 2 && path[0] == DEFAULT_SCHEMA ? 1 : 0;
+	for (idx_t i = start; i < path.size(); i++) {
+		if (!result.empty()) {
+			result += ".";
 		}
-	} else if (!schema.empty() &&
-	           !(mode == QualifiedNameToStringMode::HIDE_DEFAULT_SCHEMA && schema == DEFAULT_SCHEMA)) {
-		result += SQLIdentifier(schema) + ".";
+		result += SQLIdentifier(path[i]);
 	}
-	result += SQLIdentifier(Name());
 	return result;
 }
 

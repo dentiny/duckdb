@@ -47,25 +47,25 @@ struct LogicalDependencyEquality {
 	bool operator()(const LogicalDependency &a, const LogicalDependency &b) const;
 };
 
-//! The LogicalDependencyList containing LogicalDependency objects, not looked up in the catalog yet
+//! A set of LogicalDependency objects that have not been looked up in the catalog yet.
 class LogicalDependencyList {
-	using create_info_set_t =
-	    unordered_set<LogicalDependency, LogicalDependencyHashFunction, LogicalDependencyEquality>;
+	using dependency_set_t = unordered_set<LogicalDependency, LogicalDependencyHashFunction, LogicalDependencyEquality>;
 
 public:
 	DUCKDB_API void AddDependency(CatalogEntry &entry);
 	DUCKDB_API void AddDependency(const LogicalDependency &entry);
-	DUCKDB_API bool Contains(CatalogEntry &entry);
+	DUCKDB_API void AddAll(const LogicalDependencyList &dependencies);
+	DUCKDB_API bool Contains(CatalogEntry &entry) const;
 
 public:
 	DUCKDB_API void VerifyDependencies(Catalog &catalog, const Identifier &name);
 	void Serialize(Serializer &serializer) const;
 	static LogicalDependencyList Deserialize(Deserializer &deserializer);
 	bool operator==(const LogicalDependencyList &other) const;
-	const create_info_set_t &Set() const;
+	const dependency_set_t &Set() const;
 
 private:
-	create_info_set_t set;
+	dependency_set_t set;
 };
 
 } // namespace duckdb

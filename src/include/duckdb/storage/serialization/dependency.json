@@ -34,6 +34,13 @@
 				"type": "vector<Identifier>",
 				"version": "v2.0.0",
 				"default": "vector<Identifier>()"
+			},
+			{
+				"id": 104,
+				"name": "parent_name",
+				"type": "Identifier",
+				"version": "v2.0.0",
+				"default": "Identifier()"
 			}
 		],
 		"pointer_type": "none"
@@ -64,7 +71,7 @@
 			{
 				"id": 100,
 				"name": "set",
-				"type": "create_info_set_t"
+				"type": "dependency_set_t"
 			}
 		],
 		"pointer_type": "none"

@@ -2,7 +2,15 @@
 # group: [function]
 
 statement ok
-set storage_compatibility_version='v0.10.2'
+ATTACH '{TEST_DIR}/macro_default_arg.db' (STORAGE_VERSION 'v1.0.0');
+
+statement ok
+USE macro_default_arg
+
+statement ok
+set enable_macro_dependencies=false
+
+# The legacy setting is ignored: macros always create catalog dependencies.
 
 statement ok
 CREATE MACRO f(x := NULL) AS x+1;
@@ -45,7 +53,6 @@ create macro my_macro1(a, b := a) as a + b;
 ----
 Binder Error: Default value for parameter 'b' cannot contain column names
 
-
 statement ok
 create table integers (a integer);
 
@@ -53,12 +60,37 @@ create table integers (a integer);
 statement error
 create macro my_macro2(a := i) as (
 	select min(a) from integers
-)
+);
 ----
 Binder Error: Default value for parameter 'a' cannot contain column names
 
+# to test the dependencies we create this macro instead
 statement ok
+create macro my_macro2(i := 42) as (
+    select min(a) + i from integers
+);
+
+statement ok
+insert into integers values (5), (10), (13)
+
+query I
+select my_macro2(84)
+----
+89
+
+statement error
 drop table integers;
+----
+macro function "my_macro2" depends on table "integers".
+
+statement ok
+drop table integers cascade;
+
+# The macro was dropped by the CASCADE
+statement error
+select my_macro2(5);
+----
+Catalog Error: Scalar Function with name my_macro2 does not exist!
 
 statement ok
 Create table t1 (a int, b int);
@@ -83,4 +115,3 @@ statement error
 SELECT * FROM t1 as t1_alias inner join (select * from t2) as t2_alias ON (eq(a := t1_alias.a, c := t2_alias.c))
 ----
 Binder Error
-

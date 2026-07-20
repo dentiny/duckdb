@@ -143,6 +143,8 @@ public:
 	//! is the path of the *containing* schemas - for a schema entry it is the parent chain (not including itself).
 	vector<Identifier> schema_path;
 	Identifier name;
+	//! The name of the parent catalog entry for entries in a parent-local namespace (currently triggers only)
+	Identifier parent_name;
 
 public:
 	bool operator==(const CatalogEntryInfo &other) const {
@@ -153,6 +155,9 @@ public:
 			return false;
 		}
 		if (other.name != name) {
+			return false;
+		}
+		if (other.parent_name != parent_name) {
 			return false;
 		}
 		return true;
