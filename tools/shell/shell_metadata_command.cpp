@@ -76,21 +76,22 @@ string GetDumpSQL(duckdb::CatalogEntry &entry) {
 	}
 }
 
-duckdb::LogicalDependencyList GetRecreationDependencies(duckdb::ClientContext &context, duckdb::CatalogEntry &entry) {
+duckdb::LogicalDependencyList GetDumpEntryDependencies(duckdb::ClientContext &context, duckdb::CatalogEntry &entry) {
 	auto info = entry.GetInfo();
-	auto dependencies = info->recreation_dependencies;
+	auto dependencies = info->dependencies;
 	try {
 		if (entry.type == duckdb::CatalogType::VIEW_ENTRY) {
 			auto &view = entry.Cast<duckdb::ViewCatalogEntry>();
 			vector<duckdb::LogicalType> result_types;
 			vector<duckdb::Identifier> result_names;
 			duckdb::Binder::BindView(context, view.GetQuery(), view.ParentCatalog().GetName(), view.ParentSchema().name,
-			                         dependencies, view.aliases, result_types, result_names);
+			                         dependencies, duckdb::LogicalDependencyType::RECREATION_ONLY, view.aliases,
+			                         result_types, result_names);
 		} else if (entry.type == duckdb::CatalogType::MACRO_ENTRY ||
 		           entry.type == duckdb::CatalogType::TABLE_MACRO_ENTRY) {
 			auto binder = duckdb::Binder::CreateBinder(context);
 			binder->BindCreateFunctionInfo(*info);
-			dependencies = info->recreation_dependencies;
+			dependencies = info->dependencies;
 		}
 	} catch (duckdb::Exception &) {
 		// Invalid catalog objects should still be included in the dump.
@@ -126,7 +127,7 @@ vector<duckdb::LogicalDependencyList> GetDumpDependencies(duckdb::ClientContext 
 	vector<duckdb::LogicalDependencyList> dependencies;
 	dependencies.reserve(entries.size());
 	for (auto &entry : entries) {
-		dependencies.push_back(GetRecreationDependencies(context, entry.get()));
+		dependencies.push_back(GetDumpEntryDependencies(context, entry.get()));
 	}
 	return dependencies;
 }

@@ -13,6 +13,7 @@
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/catalog/catalog_entry/dependency/dependency_entry.hpp"
 #include "duckdb/catalog/catalog_entry/table_column_type.hpp"
+#include "duckdb/catalog/dependency_list.hpp"
 #include "duckdb/common/box_renderer.hpp"
 #include "duckdb/common/column_index.hpp"
 #include "duckdb/common/encryption_state.hpp"
@@ -3177,6 +3178,24 @@ const char* EnumUtil::ToChars<LoggingTargetTable>(LoggingTargetTable value) {
 template<>
 LoggingTargetTable EnumUtil::FromString<LoggingTargetTable>(const char *value) {
 	return static_cast<LoggingTargetTable>(StringUtil::StringToEnum(GetLoggingTargetTableValues(), 3, "LoggingTargetTable", value));
+}
+
+const StringUtil::EnumStringLiteral *GetLogicalDependencyTypeValues() {
+	static constexpr StringUtil::EnumStringLiteral values[] {
+		{ static_cast<uint32_t>(LogicalDependencyType::BLOCKING), "BLOCKING" },
+		{ static_cast<uint32_t>(LogicalDependencyType::RECREATION_ONLY), "RECREATION_ONLY" }
+	};
+	return values;
+}
+
+template<>
+const char* EnumUtil::ToChars<LogicalDependencyType>(LogicalDependencyType value) {
+	return StringUtil::EnumToString(GetLogicalDependencyTypeValues(), 2, "LogicalDependencyType", static_cast<uint32_t>(value));
+}
+
+template<>
+LogicalDependencyType EnumUtil::FromString<LogicalDependencyType>(const char *value) {
+	return static_cast<LogicalDependencyType>(StringUtil::StringToEnum(GetLogicalDependencyTypeValues(), 2, "LogicalDependencyType", value));
 }
 
 const StringUtil::EnumStringLiteral *GetLogicalOperatorTypeValues() {

@@ -265,7 +265,8 @@ public:
 	void BindCreateViewInfo(CreateViewInfo &base);
 	static void BindView(ClientContext &context, const SelectStatement &stmt, const Identifier &catalog_name,
 	                     const Identifier &schema_name, optional_ptr<LogicalDependencyList> dependencies,
-	                     const vector<Identifier> &aliases, vector<LogicalType> &result_types,
+	                     LogicalDependencyType dependency_type, const vector<Identifier> &aliases,
+	                     vector<LogicalType> &result_types,
 	                     vector<Identifier> &result_names);
 
 	void SearchSchema(CreateInfo &info);

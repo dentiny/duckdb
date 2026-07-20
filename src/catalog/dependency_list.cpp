@@ -39,10 +39,12 @@ bool LogicalDependencyEquality::operator()(const LogicalDependency &a, const Log
 	return true;
 }
 
-LogicalDependency::LogicalDependency() : entry(), catalog() {
+LogicalDependency::LogicalDependency()
+    : entry(), catalog(), dependency_type(LogicalDependencyType::BLOCKING) {
 }
 
-LogicalDependency::LogicalDependency(CatalogEntry &entry) {
+LogicalDependency::LogicalDependency(CatalogEntry &entry, LogicalDependencyType dependency_type_p)
+    : dependency_type(dependency_type_p) {
 	catalog = Identifier::InvalidCatalog();
 	if (entry.type == CatalogType::DEPENDENCY_ENTRY) {
 		auto &dependency_entry = entry.Cast<DependencyEntry>();
@@ -58,8 +60,9 @@ LogicalDependency::LogicalDependency(CatalogEntry &entry) {
 	}
 }
 
-LogicalDependency::LogicalDependency(optional_ptr<Catalog> catalog_p, CatalogEntryInfo entry_p, Identifier catalog_str)
-    : entry(std::move(entry_p)), catalog(std::move(catalog_str)) {
+LogicalDependency::LogicalDependency(optional_ptr<Catalog> catalog_p, CatalogEntryInfo entry_p, Identifier catalog_str,
+                                     LogicalDependencyType dependency_type_p)
+    : entry(std::move(entry_p)), catalog(std::move(catalog_str)), dependency_type(dependency_type_p) {
 	if (catalog_p) {
 		catalog = catalog_p->GetName();
 	}
@@ -67,16 +70,32 @@ LogicalDependency::LogicalDependency(optional_ptr<Catalog> catalog_p, CatalogEnt
 
 bool LogicalDependency::operator==(const LogicalDependency &other) const {
 	return other.entry.name == entry.name && other.entry.schema_path == entry.schema_path &&
-	       other.entry.type == entry.type;
+	       other.entry.type == entry.type && other.dependency_type == dependency_type;
 }
 
 void LogicalDependencyList::AddDependency(CatalogEntry &entry) {
-	LogicalDependency dependency(entry);
-	set.insert(dependency);
+	AddDependencyInternal(LogicalDependency(entry));
 }
 
 void LogicalDependencyList::AddDependency(const LogicalDependency &entry) {
-	set.insert(entry);
+	AddDependencyInternal(entry);
+}
+
+void LogicalDependencyList::AddRecreationDependency(CatalogEntry &entry) {
+	AddDependencyInternal(LogicalDependency(entry, LogicalDependencyType::RECREATION_ONLY));
+}
+
+void LogicalDependencyList::AddDependencyInternal(LogicalDependency dependency) {
+	auto existing = set.find(dependency);
+	if (existing == set.end()) {
+		set.insert(std::move(dependency));
+		return;
+	}
+	if (existing->dependency_type == LogicalDependencyType::RECREATION_ONLY &&
+	    dependency.dependency_type == LogicalDependencyType::BLOCKING) {
+		set.erase(existing);
+		set.insert(std::move(dependency));
+	}
 }
 
 void LogicalDependencyList::AddDependencies(const LogicalDependencyList &dependencies) {
@@ -85,9 +104,10 @@ void LogicalDependencyList::AddDependencies(const LogicalDependencyList &depende
 	}
 }
 
-bool LogicalDependencyList::Contains(CatalogEntry &entry_p) {
+bool LogicalDependencyList::ContainsBlockingDependency(CatalogEntry &entry_p) {
 	LogicalDependency logical_entry(entry_p);
-	return set.count(logical_entry);
+	auto dependency = set.find(logical_entry);
+	return dependency != set.end() && dependency->dependency_type == LogicalDependencyType::BLOCKING;
 }
 
 void LogicalDependencyList::VerifyDependencies(Catalog &catalog, const Identifier &name) {
@@ -105,13 +125,27 @@ const LogicalDependencyList::create_info_set_t &LogicalDependencyList::Set() con
 	return set;
 }
 
+LogicalDependencyList::create_info_set_t LogicalDependencyList::GetSetForSerialization(Serializer &serializer) const {
+	if (serializer.ShouldSerialize(StorageVersion::V2_0_0)) {
+		return set;
+	}
+	create_info_set_t result;
+	for (auto &dependency : set) {
+		if (dependency.dependency_type == LogicalDependencyType::BLOCKING) {
+			result.insert(dependency);
+		}
+	}
+	return result;
+}
+
 bool LogicalDependencyList::operator==(const LogicalDependencyList &other) const {
 	if (set.size() != other.set.size()) {
 		return false;
 	}
 
 	for (auto &entry : set) {
-		if (!other.set.count(entry)) {
+		auto other_entry = other.set.find(entry);
+		if (other_entry == other.set.end() || other_entry->dependency_type != entry.dependency_type) {
 			return false;
 		}
 	}

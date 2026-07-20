@@ -36,17 +36,21 @@ CatalogEntryInfo CatalogEntryInfo::Deserialize(Deserializer &deserializer) {
 void LogicalDependency::Serialize(Serializer &serializer) const {
 	serializer.WriteProperty<CatalogEntryInfo>(100, "entry", entry);
 	serializer.WritePropertyWithDefault<Identifier>(101, "catalog", catalog);
+	if (serializer.ShouldSerialize(StorageVersion::V2_0_0)) {
+		serializer.WritePropertyWithDefault<LogicalDependencyType>(102, "dependency_type", dependency_type, LogicalDependencyType::BLOCKING);
+	}
 }
 
 LogicalDependency LogicalDependency::Deserialize(Deserializer &deserializer) {
 	auto entry = deserializer.ReadProperty<CatalogEntryInfo>(100, "entry");
 	auto catalog = deserializer.ReadPropertyWithDefault<Identifier>(101, "catalog");
-	LogicalDependency result(deserializer.TryGet<Catalog>(), entry, std::move(catalog));
+	auto dependency_type = deserializer.ReadPropertyWithExplicitDefault<LogicalDependencyType>(102, "dependency_type", LogicalDependencyType::BLOCKING);
+	LogicalDependency result(deserializer.TryGet<Catalog>(), entry, std::move(catalog), dependency_type);
 	return result;
 }
 
 void LogicalDependencyList::Serialize(Serializer &serializer) const {
-	serializer.WriteProperty<create_info_set_t>(100, "set", set);
+	serializer.WriteProperty<create_info_set_t>(100, "set", GetSetForSerialization(serializer));
 }
 
 LogicalDependencyList LogicalDependencyList::Deserialize(Deserializer &deserializer) {

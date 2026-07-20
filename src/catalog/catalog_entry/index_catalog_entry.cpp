@@ -8,8 +8,6 @@ IndexCatalogEntry::IndexCatalogEntry(Catalog &catalog, SchemaCatalogEntry &schem
       column_ids(info.column_ids) {
 	this->temporary = info.temporary;
 	this->dependencies = info.dependencies;
-	this->recreation_dependencies = info.recreation_dependencies;
-	this->recreation_dependencies.AddDependencies(info.dependencies);
 	this->comment = info.comment;
 	for (auto &expr : expressions) {
 		D_ASSERT(expr);
@@ -32,7 +30,6 @@ unique_ptr<CreateInfo> IndexCatalogEntry::GetInfo() const {
 	result->constraint_type = index_constraint_type;
 	result->column_ids = column_ids;
 	result->dependencies = dependencies;
-	result->recreation_dependencies = recreation_dependencies;
 
 	for (auto &expr : expressions) {
 		result->expressions.push_back(expr->Copy());

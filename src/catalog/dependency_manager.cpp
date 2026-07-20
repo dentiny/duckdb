@@ -286,13 +286,7 @@ void DependencyManager::CreateDependency(CatalogTransaction transaction, Depende
 }
 
 void DependencyManager::CreateDependencies(CatalogTransaction transaction, const CatalogEntry &object,
-                                           const LogicalDependencyList &dependencies,
-                                           DependencyDependentFlags dependency_flags) {
-	if (object.type == CatalogType::INDEX_ENTRY) {
-		// indexes do not require CASCADE to be dropped, they are simply always dropped along with the table
-		dependency_flags = DependencyDependentFlags();
-	}
-
+                                           const LogicalDependencyList &dependencies) {
 	const auto object_info = GetLookupProperties(object);
 	// check for each object in the sources if they were not deleted yet
 	for (auto &dependency : dependencies.Set()) {
@@ -306,6 +300,16 @@ void DependencyManager::CreateDependencies(CatalogTransaction transaction, const
 
 	// add the object to the dependents_map of each object that it depends on
 	for (auto &dependency : dependencies.Set()) {
+		DependencyDependentFlags dependency_flags;
+		if (dependency.dependency_type == LogicalDependencyType::RECREATION_ONLY) {
+			dependency_flags.SetRecreationOnly();
+		} else {
+			dependency_flags.SetBlocking();
+		}
+		if (object.type == CatalogType::INDEX_ENTRY) {
+			// indexes do not require CASCADE to be dropped, they are simply always dropped along with the table
+			dependency_flags = DependencyDependentFlags();
+		}
 		DependencyInfo info {
 		    /*dependent = */ DependencyDependent {GetLookupProperties(object), dependency_flags},
 		    /*subject = */ DependencySubject {dependency.entry, DependencySubjectFlags(), optional_idx()}};
@@ -314,14 +318,12 @@ void DependencyManager::CreateDependencies(CatalogTransaction transaction, const
 }
 
 void DependencyManager::AddObject(CatalogTransaction transaction, CatalogEntry &object,
-                                  const LogicalDependencyList &dependencies,
-                                  const LogicalDependencyList &recreation_dependencies) {
+                                  const LogicalDependencyList &dependencies) {
 	if (IsSystemEntry(object)) {
 		// Don't do anything for this
 		return;
 	}
-	CreateDependencies(transaction, object, dependencies, DependencyDependentFlags().SetBlocking());
-	CreateDependencies(transaction, object, recreation_dependencies, DependencyDependentFlags().SetRecreationOnly());
+	CreateDependencies(transaction, object, dependencies);
 }
 
 static bool CascadeDrop(bool cascade, const DependencyDependentFlags &flags) {
@@ -774,8 +776,7 @@ void DependencyManager::AlterObject(CatalogTransaction transaction, CatalogEntry
 
 	if (has_new_dependencies) {
 		// Add the new dependencies
-		CreateDependencies(transaction, new_obj, *alter_info.new_dependencies,
-		                   DependencyDependentFlags().SetBlocking());
+		CreateDependencies(transaction, new_obj, *alter_info.new_dependencies);
 	}
 
 	// Reinstate any old dependencies

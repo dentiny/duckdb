@@ -252,18 +252,23 @@ void Binder::SetCatalogLookupCallback(catalog_entry_callback_t callback) {
 
 void Binder::BindView(ClientContext &context, const SelectStatement &stmt, const Identifier &catalog_name,
                       const Identifier &schema_name, optional_ptr<LogicalDependencyList> dependencies,
-                      const vector<Identifier> &aliases, vector<LogicalType> &result_types,
+                      LogicalDependencyType dependency_type, const vector<Identifier> &aliases,
+                      vector<LogicalType> &result_types,
                       vector<Identifier> &result_names) {
 	auto view_binder = Binder::CreateBinder(context);
 	auto &catalog = Catalog::GetCatalog(context, catalog_name);
 
 	if (dependencies) {
-		view_binder->SetCatalogLookupCallback([&dependencies, &catalog](CatalogEntry &entry) {
+		view_binder->SetCatalogLookupCallback([&dependencies, &catalog, dependency_type](CatalogEntry &entry) {
 			if (&catalog != &entry.ParentCatalog()) {
 				// Don't register dependencies between catalogs
 				return;
 			}
-			dependencies->AddDependency(entry);
+			if (dependency_type == LogicalDependencyType::RECREATION_ONLY) {
+				dependencies->AddRecreationDependency(entry);
+			} else {
+				dependencies->AddDependency(entry);
+			}
 		});
 	}
 	view_binder->SetCanContainNulls(true);
@@ -297,11 +302,11 @@ void Binder::BindCreateViewInfo(CreateViewInfo &base) {
 			throw BinderException("DML statements (INSERT/UPDATE/DELETE) are not allowed as CTE bodies inside a VIEW");
 		}
 	}
-	BindView(context, *base.query, base.GetQualifiedName().Catalog(), base.GetQualifiedName().Schema(),
-	         base.recreation_dependencies, base.aliases, base.types, base.names);
-	if (Settings::Get<EnableViewDependenciesSetting>(context)) {
-		base.dependencies.AddDependencies(base.recreation_dependencies);
-	}
+	const auto dependency_type = Settings::Get<EnableViewDependenciesSetting>(context)
+	                                 ? LogicalDependencyType::BLOCKING
+	                                 : LogicalDependencyType::RECREATION_ONLY;
+	BindView(context, *base.query, base.GetQualifiedName().Catalog(), base.GetQualifiedName().Schema(), base.dependencies,
+	         dependency_type, base.aliases, base.types, base.names);
 }
 
 SchemaCatalogEntry &Binder::BindCreateFunctionInfo(CreateInfo &info) {
@@ -444,18 +449,17 @@ SchemaCatalogEntry &Binder::BindCreateFunctionInfo(CreateInfo &info) {
 		macro_binding = this_macro_binding.get();
 
 		auto &dependencies = base.dependencies;
-		auto &recreation_dependencies = base.recreation_dependencies;
 		const auto should_create_dependencies = Settings::Get<EnableMacroDependenciesSetting>(context);
-		const auto binder_callback = [&dependencies, &recreation_dependencies, &catalog,
-		                              should_create_dependencies](CatalogEntry &entry) {
+		const auto binder_callback = [&dependencies, &catalog, should_create_dependencies](CatalogEntry &entry) {
 			if (&catalog != &entry.ParentCatalog()) {
 				// Don't register any cross-catalog dependencies
 				return;
 			}
 			// Register any catalog entry required to bind the macro function
-			recreation_dependencies.AddDependency(entry);
 			if (should_create_dependencies) {
 				dependencies.AddDependency(entry);
+			} else {
+				dependencies.AddRecreationDependency(entry);
 			}
 		};
 
@@ -653,7 +657,7 @@ SchemaCatalogEntry &Binder::BindCreateTriggerInfo(CreateTriggerInfo &create_trig
 	auto &trigger_catalog = table.ParentCatalog();
 	validation_binder->SetCatalogLookupCallback([&](CatalogEntry &entry) {
 		if (&entry.ParentCatalog() == &trigger_catalog) {
-			create_trigger_info.recreation_dependencies.AddDependency(entry);
+			create_trigger_info.dependencies.AddRecreationDependency(entry);
 		}
 	});
 	validation_binder->global_binder_state->trigger_expanded_tables.insert(table);

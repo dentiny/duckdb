@@ -87,13 +87,6 @@
         "serialize_condition": "qualified_name.Path().size() > 3",
         "deserialize_default": "QualifiedName()",
         "deserialize_skip_assign": true
-      },
-      {
-        "id": 112,
-        "name": "recreation_dependencies",
-        "type": "LogicalDependencyList",
-        "default": "LogicalDependencyList()",
-        "version": "v2.0.0"
       }
     ],
     "methods": {

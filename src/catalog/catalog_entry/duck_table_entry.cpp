@@ -1440,7 +1440,7 @@ optional_ptr<CatalogEntry> DuckTableEntry::CreateTrigger(CatalogTransaction tran
 			triggers->DropEntry(transaction, entry_name, false);
 		}
 	}
-	if (!triggers->CreateEntry(transaction, entry_name, std::move(trigger), no_dependencies, no_dependencies)) {
+	if (!triggers->CreateEntry(transaction, entry_name, std::move(trigger), no_dependencies)) {
 		throw CatalogException::EntryAlreadyExists(CatalogType::TRIGGER_ENTRY, entry_name);
 	}
 	return triggers->GetEntry(transaction, entry_name);
