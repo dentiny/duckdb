@@ -72,15 +72,8 @@ string CreateIndexInfo::ToString() const {
 	}
 	result += SQLIdentifier(GetIndexName());
 	result += " ON ";
-	auto path = GetQualifiedName().Path();
-	path.back() = table;
-	if (temporary && path.size() >= 3) {
-		path.erase(path.begin());
-	}
-	auto table_name = std::move(path.back());
-	path.pop_back();
-	result +=
-	    QualifiedName(std::move(path), std::move(table_name)).ToString(QualifiedNameToStringMode::HIDE_DEFAULT_SCHEMA);
+	result += QualifiedName(temporary ? Identifier() : GetQualifiedName().Catalog(), GetQualifiedName().Schema(), table)
+	              .ToString(QualifiedNameToStringMode::HIDE_DEFAULT_SCHEMA);
 	if (index_type != "ART") {
 		result += " USING ";
 		result += SQLIdentifier(index_type);

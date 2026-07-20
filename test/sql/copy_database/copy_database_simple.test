@@ -3,7 +3,7 @@
 # group: [copy_database]
 
 statement ok
-ATTACH '{TEST_DIR}/copy_database_simple.db' AS db1 (STORAGE_VERSION 'v2.0.0')
+ATTACH '{TEST_DIR}/copy_database_simple.db' AS db1
 
 statement ok
 CREATE TABLE db1.test(a INTEGER, b INTEGER, c VARCHAR(10));
@@ -12,13 +12,7 @@ statement ok
 INSERT INTO db1.test VALUES (42, 88, 'hello');
 
 statement ok
-CREATE SCHEMA db1.parent;
-
-statement ok
-CREATE SCHEMA db1.parent.child;
-
-statement ok
-ATTACH '{TEST_DIR}/other_copy_database_simple.db' AS db2 (STORAGE_VERSION 'v2.0.0');
+ATTACH '{TEST_DIR}/other_copy_database_simple.db' AS db2;
 
 statement ok
 COPY FROM DATABASE db1 TO db2
@@ -27,13 +21,6 @@ query III
 SELECT * FROM db2.test;
 ----
 42	88	hello
-
-query II
-SELECT schema_name, parent_schema FROM duckdb_schemas()
-WHERE database_name = 'db2' AND schema_name IN ('parent', 'child') ORDER BY schema_name;
-----
-child	parent
-parent	NULL
 
 # unrecognized database
 statement error
