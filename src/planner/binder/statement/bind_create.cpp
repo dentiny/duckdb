@@ -263,7 +263,7 @@ void Binder::BindView(ClientContext &context, const SelectStatement &stmt, const
 				// Don't register dependencies between catalogs
 				return;
 			}
-			dependencies->Add(entry);
+			dependencies->AddDependency(entry);
 		});
 	}
 	view_binder->SetCanContainNulls(true);

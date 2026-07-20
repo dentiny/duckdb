@@ -8,9 +8,11 @@
 #include "duckdb/catalog/dependency_manager.hpp"
 #include "duckdb/catalog/catalog_entry/schema_catalog_entry.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
+#include "duckdb/catalog/catalog_entry/duck_table_entry.hpp"
 #include "duckdb/catalog/catalog_entry/view_catalog_entry.hpp"
 #include "duckdb/execution/operator/persistent/physical_export.hpp"
 #include "duckdb/planner/binder.hpp"
+#include "duckdb/transaction/transaction.hpp"
 
 #ifdef HAVE_LINENOISE
 #include "linenoise.h"
@@ -33,8 +35,6 @@ duckdb::unordered_set<idx_t> GetDumpEntries(ShellState &state, const string &lik
 	    "UNION ALL SELECT view_name, view_oid FROM duckdb_views() "
 	    "WHERE database_name=current_database() AND NOT internal AND NOT temporary "
 	    "UNION ALL SELECT index_name, index_oid FROM duckdb_indexes() WHERE database_name=current_database() "
-	    "UNION ALL SELECT sequence_name, sequence_oid FROM duckdb_sequences() "
-	    "WHERE database_name=current_database() AND NOT temporary "
 	    "UNION ALL SELECT type_name, type_oid FROM duckdb_types() "
 	    "WHERE database_name=current_database() AND NOT internal "
 	    "UNION ALL SELECT function_name, function_oid FROM duckdb_functions() "
@@ -205,7 +205,22 @@ void DumpCatalog(ShellState &state, const string &like_clause) {
 	vector<DumpCatalogEntry> dump_entries;
 	context.RunFunctionInTransaction([&]() {
 		auto &catalog = duckdb::Catalog::GetCatalog(context, duckdb::Identifier::InvalidCatalog());
-		auto entries = duckdb::PhysicalExport::GetNaiveExportOrder(context, catalog);
+		auto export_entries = duckdb::PhysicalExport::GetNaiveExportOrder(context, catalog);
+		duckdb::catalog_entry_vector_t entries;
+		for (auto &entry_ref : export_entries) {
+			auto &entry = entry_ref.get();
+			if (entry.type == duckdb::CatalogType::SEQUENCE_ENTRY) {
+				continue;
+			}
+			entries.push_back(entry);
+			if (entry.type == duckdb::CatalogType::TABLE_ENTRY &&
+			    entry.Cast<duckdb::TableCatalogEntry>().IsDuckTable()) {
+				auto &table = entry.Cast<duckdb::DuckTableEntry>();
+				auto transaction = duckdb::CatalogTransaction(table.ParentCatalog(), context);
+				table.ScanTriggers(transaction,
+				                   [&](duckdb::CatalogEntry &trigger) { entries.push_back(trigger); });
+			}
+		}
 		auto dependencies = GetDumpDependencies(context, entries);
 		if (filter) {
 			ExpandDumpEntries(entries, dependencies, selected);

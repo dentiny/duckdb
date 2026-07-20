@@ -61,3 +61,27 @@ query I
 SELECT COUNT(*) FROM duckdb_views() WHERE NOT internal;
 ----
 0
+
+# Trigger body dependencies also participate in DROP/CASCADE semantics.
+statement ok
+CREATE TABLE trigger_data(i INTEGER);
+
+statement ok
+CREATE TABLE trigger_log(i INTEGER);
+
+statement ok
+CREATE TRIGGER log_insert AFTER INSERT ON trigger_data
+FOR EACH ROW INSERT INTO trigger_log VALUES (new.i);
+
+statement error
+DROP TABLE trigger_log;
+----
+<REGEX>:Dependency Error:.*depend.*
+
+statement ok
+DROP TABLE trigger_log CASCADE;
+
+query I
+SELECT COUNT(*) FROM duckdb_triggers() WHERE trigger_name = 'log_insert';
+----
+0

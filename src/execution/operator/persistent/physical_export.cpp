@@ -3,7 +3,6 @@
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/catalog/catalog_entry/schema_catalog_entry.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
-#include "duckdb/catalog/catalog_entry/duck_table_entry.hpp"
 #include "duckdb/common/file_system.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/parallel/meta_pipeline.hpp"
@@ -44,16 +43,15 @@ static void WriteCatalogEntries(stringstream &ss, catalog_entry_vector_t &entrie
 			continue;
 		}
 		auto create_info = entry.get().GetInfo();
-		string sql;
 		try {
 			// Strip the catalog from the info
 			create_info->SetQualifiedName(GetExportQualifiedName(entry.get()));
-			sql = create_info->ToString();
+			auto to_string = create_info->ToString();
+			ss << to_string;
 		} catch (const NotImplementedException &) {
-			sql = entry.get().ToSQL();
+			ss << entry.get().ToSQL();
 		}
-		ss << sql;
-		ss << (StringUtil::EndsWith(sql, ";") ? "\n" : ";\n");
+		ss << ";\n";
 	}
 	ss << '\n';
 }
@@ -142,11 +140,6 @@ void PhysicalExport::ExtractEntries(ClientContext &context, vector<reference<Sch
 			}
 			if (entry.type == CatalogType::TABLE_ENTRY) {
 				result.tables.push_back(entry);
-				if (entry.Cast<TableCatalogEntry>().IsDuckTable()) {
-					auto &table = entry.Cast<DuckTableEntry>();
-					auto transaction = CatalogTransaction(table.ParentCatalog(), context);
-					table.ScanTriggers(transaction, [&](CatalogEntry &trigger) { result.triggers.push_back(trigger); });
-				}
 			}
 		});
 		schema.Scan(context, CatalogType::SEQUENCE_ENTRY, [&](CatalogEntry &entry) {
@@ -210,7 +203,6 @@ catalog_entry_vector_t PhysicalExport::GetNaiveExportOrder(ClientContext &contex
 	size += entries.views.size();
 	size += entries.indexes.size();
 	size += entries.macros.size();
-	size += entries.triggers.size();
 	catalog_entries.reserve(size);
 	AddEntries(catalog_entries, entries.schemas);
 	AddEntries(catalog_entries, entries.sequences);
@@ -219,7 +211,6 @@ catalog_entry_vector_t PhysicalExport::GetNaiveExportOrder(ClientContext &contex
 	AddEntries(catalog_entries, entries.macros);
 	AddEntries(catalog_entries, entries.views);
 	AddEntries(catalog_entries, entries.indexes);
-	AddEntries(catalog_entries, entries.triggers);
 	return catalog_entries;
 }
 
@@ -241,19 +232,9 @@ SourceResultType PhysicalExport::GetDataInternal(ExecutionContext &context, Data
 	if (dependency_manager) {
 		dependency_manager->ReorderEntries(catalog_entries, ccontext);
 	}
-	catalog_entry_vector_t schema_entries;
-	catalog_entry_vector_t trigger_entries;
-	for (auto &entry : catalog_entries) {
-		if (entry.get().type == CatalogType::TRIGGER_ENTRY) {
-			trigger_entries.push_back(entry);
-		} else {
-			schema_entries.push_back(entry);
-		}
-	}
-
 	// write the schema.sql file
 	stringstream ss;
-	WriteCatalogEntries(ss, schema_entries);
+	WriteCatalogEntries(ss, catalog_entries);
 	WriteStringStreamToFile(fs, ss, fs.JoinPath(info->file_path, "schema.sql"));
 
 	// write the load.sql file
@@ -263,7 +244,6 @@ SourceResultType PhysicalExport::GetDataInternal(ExecutionContext &context, Data
 		auto exported_table_info = exported_tables->data[i].table_data;
 		WriteCopyStatement(fs, load_ss, *info, exported_table_info);
 	}
-	WriteCatalogEntries(load_ss, trigger_entries);
 	WriteStringStreamToFile(fs, load_ss, fs.JoinPath(info->file_path, "load.sql"));
 	state.finished = true;
 

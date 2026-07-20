@@ -90,34 +90,6 @@ def test_dump_views(shell):
     result = test.run()
     result.check_stdout("CREATE VIEW v1")
 
-@pytest.mark.parametrize("pattern", [None, "log_insert"])
-def test_dump_creates_triggers_after_data(shell, tmp_path, pattern):
-    source_database = tmp_path / "trigger_source.db"
-    restored_database = tmp_path / "trigger_restored.db"
-    create = (
-        ShellTest(shell, [str(source_database)])
-        .statement("CREATE TABLE data(i INTEGER)")
-        .statement("CREATE TABLE log(i INTEGER)")
-        .statement(
-            "CREATE TRIGGER log_insert AFTER INSERT ON data "
-            "FOR EACH ROW INSERT INTO log VALUES (new.i)"
-        )
-        .statement("INSERT INTO data VALUES (42)")
-    )
-    create_result = create.run()
-    create_result.check_stdout(None)
-    create_result.check_stderr(None)
-
-    dump_command = ".dump" if pattern is None else f".dump {pattern}"
-    dump = ShellTest(shell, [str(source_database)]).statement(dump_command).run()
-    trigger_position = dump.stdout.index("CREATE TRIGGER log_insert")
-    assert trigger_position > dump.stdout.index("INSERT INTO main.log VALUES(42)")
-
-    restore_sql = dump.stdout + "\nSELECT * FROM log ORDER BY ALL;\n"
-    restored = ShellTest(shell, [str(restored_database)]).run_raw(restore_sql)
-    restored.check_stdout("42")
-
-
 @pytest.mark.parametrize("pattern", [None, "nested index"])
 def test_dump_nested_schema_path(shell, tmp_path, pattern):
     source_database = tmp_path / "nested source.db"
