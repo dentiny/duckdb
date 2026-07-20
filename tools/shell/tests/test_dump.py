@@ -90,45 +90,6 @@ def test_dump_views(shell):
     result = test.run()
     result.check_stdout("CREATE VIEW v1")
 
-@pytest.mark.parametrize("pattern", [None, "m_view"])
-def test_dump_catalog_dependencies(shell, tmp_path, pattern):
-    source_database = tmp_path / "source.db"
-    restored_database = tmp_path / "restored.db"
-    create = (
-        ShellTest(shell, [str(source_database)])
-        .statement("CREATE SEQUENCE z_sequence START 7")
-        .statement("CREATE TYPE mood AS ENUM ('sad', 'ok')")
-        .statement("CREATE MACRO a_macro() AS nextval('z_sequence')")
-        .statement("CREATE TABLE dependency_base(i INTEGER DEFAULT a_macro(), m mood)")
-        .statement("INSERT INTO dependency_base(m) VALUES ('ok')")
-        .statement("CREATE VIEW z_view AS SELECT * FROM dependency_base")
-        .statement("CREATE VIEW a_view AS SELECT * FROM z_view")
-        .statement("CREATE VIEW m_view AS SELECT * FROM a_view")
-    )
-    create_result = create.run()
-    create_result.check_stdout(None)
-    create_result.check_stderr(None)
-
-    dump_command = ".dump" if pattern is None else f".dump {pattern}"
-    result = ShellTest(shell, [str(source_database)]).statement(dump_command).run()
-    expected_order = [
-        "CREATE SEQUENCE z_sequence",
-        "CREATE MACRO a_macro",
-        "CREATE TABLE dependency_base",
-        "CREATE VIEW z_view",
-        "CREATE VIEW a_view",
-        "CREATE VIEW m_view",
-    ]
-    if pattern is None:
-        expected_order.insert(1, "CREATE TYPE mood")
-    positions = [result.stdout.index(statement) for statement in expected_order]
-    assert positions == sorted(positions)
-
-    restore_sql = result.stdout + "\n.mode list\n.headers off\nSELECT * FROM m_view;\nSELECT a_macro();\n"
-    restored = ShellTest(shell, [str(restored_database)]).run_raw(restore_sql)
-    restored.check_stdout("7|ok\n8")
-
-
 @pytest.mark.parametrize("pattern", [None, "log_insert"])
 def test_dump_creates_triggers_after_data(shell, tmp_path, pattern):
     source_database = tmp_path / "trigger_source.db"

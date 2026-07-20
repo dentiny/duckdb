@@ -1,0 +1,50 @@
+# name: test/sql/export/export_recreation_dependencies.test
+# description: Test exporting catalog objects in dependency order
+# group: [export]
+
+require noforcestorage
+
+statement ok
+BEGIN TRANSACTION;
+
+# The dependent view sorts before its dependency by name.
+statement ok
+CREATE TABLE z_table(i INTEGER);
+
+statement ok
+INSERT INTO z_table VALUES (21);
+
+statement ok
+CREATE VIEW z_view AS SELECT * FROM z_table;
+
+statement ok
+CREATE VIEW a_view AS SELECT * FROM z_view;
+
+# Tables are normally exported before macros, but this table requires the macro during creation.
+statement ok
+CREATE MACRO z_macro(i) AS i * 2;
+
+statement ok
+CREATE TABLE a_table(i INTEGER DEFAULT z_macro(21));
+
+statement ok
+INSERT INTO a_table DEFAULT VALUES;
+
+statement ok
+EXPORT DATABASE '{TEST_DIR}/export_recreation_dependencies' (FORMAT CSV);
+
+statement ok
+ROLLBACK;
+
+statement ok
+IMPORT DATABASE '{TEST_DIR}/export_recreation_dependencies';
+
+query I
+SELECT * FROM a_view;
+----
+21
+
+query I
+SELECT * FROM a_table;
+----
+42

@@ -27,8 +27,8 @@ public:
 	SchemaCatalogEntry &schema;
 	//! The dependencies of the entry, can be empty
 	LogicalDependencyList dependencies;
-	//! Catalog references used to order serialization of the entry
-	LogicalDependencyList ordering_dependencies;
+	//! Catalog entries that must exist before recreating this entry
+	LogicalDependencyList recreation_dependencies;
 
 public:
 	SchemaCatalogEntry &ParentSchema() override {

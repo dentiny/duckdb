@@ -39,7 +39,7 @@ void CreateInfo::Serialize(Serializer &serializer) const {
 		serializer.WriteProperty<QualifiedName>(111, "qualified_name", qualified_name);
 	}
 	if (serializer.ShouldSerialize(StorageVersion::V2_0_0)) {
-		serializer.WritePropertyWithDefault<LogicalDependencyList>(112, "ordering_dependencies", ordering_dependencies, LogicalDependencyList());
+		serializer.WritePropertyWithDefault<LogicalDependencyList>(112, "recreation_dependencies", recreation_dependencies, LogicalDependencyList());
 	}
 }
 
@@ -56,7 +56,7 @@ unique_ptr<CreateInfo> CreateInfo::Deserialize(Deserializer &deserializer) {
 	auto dependencies = deserializer.ReadPropertyWithExplicitDefault<LogicalDependencyList>(109, "dependencies", LogicalDependencyList());
 	auto extension_name = deserializer.ReadPropertyWithDefault<Identifier>(110, "extension_name");
 	auto qualified_name = deserializer.ReadPropertyWithExplicitDefault<QualifiedName>(111, "qualified_name", QualifiedName());
-	auto ordering_dependencies = deserializer.ReadPropertyWithExplicitDefault<LogicalDependencyList>(112, "ordering_dependencies", LogicalDependencyList());
+	auto recreation_dependencies = deserializer.ReadPropertyWithExplicitDefault<LogicalDependencyList>(112, "recreation_dependencies", LogicalDependencyList());
 	deserializer.Set<CatalogType>(type);
 	unique_ptr<CreateInfo> result;
 	switch (type) {
@@ -99,7 +99,7 @@ unique_ptr<CreateInfo> CreateInfo::Deserialize(Deserializer &deserializer) {
 	result->tags = std::move(tags);
 	result->dependencies = dependencies;
 	result->extension_name = std::move(extension_name);
-	result->ordering_dependencies = ordering_dependencies;
+	result->recreation_dependencies = recreation_dependencies;
 	result->SetQualification(std::move(catalog), std::move(schema));
 	if (!qualified_name.Path().empty()) {
 		result->qualified_name = std::move(qualified_name);

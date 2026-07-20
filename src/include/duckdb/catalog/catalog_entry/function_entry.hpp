@@ -21,8 +21,8 @@ public:
 		descriptions = std::move(info.descriptions);
 		alias_of = std::move(info.alias_of);
 		this->dependencies = info.dependencies;
-		this->ordering_dependencies = info.ordering_dependencies;
-		this->ordering_dependencies.AddDependencies(info.dependencies);
+		this->recreation_dependencies = info.recreation_dependencies;
+		this->recreation_dependencies.AddDependencies(info.dependencies);
 		this->internal = info.internal;
 		this->extension_name = info.extension_name;
 	}

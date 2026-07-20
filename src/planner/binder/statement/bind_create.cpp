@@ -298,9 +298,9 @@ void Binder::BindCreateViewInfo(CreateViewInfo &base) {
 		}
 	}
 	BindView(context, *base.query, base.GetQualifiedName().Catalog(), base.GetQualifiedName().Schema(),
-	         base.ordering_dependencies, base.aliases, base.types, base.names);
+	         base.recreation_dependencies, base.aliases, base.types, base.names);
 	if (Settings::Get<EnableViewDependenciesSetting>(context)) {
-		base.dependencies.AddDependencies(base.ordering_dependencies);
+		base.dependencies.AddDependencies(base.recreation_dependencies);
 	}
 }
 
@@ -444,16 +444,16 @@ SchemaCatalogEntry &Binder::BindCreateFunctionInfo(CreateInfo &info) {
 		macro_binding = this_macro_binding.get();
 
 		auto &dependencies = base.dependencies;
-		auto &ordering_dependencies = base.ordering_dependencies;
+		auto &recreation_dependencies = base.recreation_dependencies;
 		const auto should_create_dependencies = Settings::Get<EnableMacroDependenciesSetting>(context);
-		const auto binder_callback = [&dependencies, &ordering_dependencies, &catalog,
+		const auto binder_callback = [&dependencies, &recreation_dependencies, &catalog,
 		                              should_create_dependencies](CatalogEntry &entry) {
 			if (&catalog != &entry.ParentCatalog()) {
 				// Don't register any cross-catalog dependencies
 				return;
 			}
 			// Register any catalog entry required to bind the macro function
-			ordering_dependencies.AddDependency(entry);
+			recreation_dependencies.AddDependency(entry);
 			if (should_create_dependencies) {
 				dependencies.AddDependency(entry);
 			}
@@ -653,7 +653,7 @@ SchemaCatalogEntry &Binder::BindCreateTriggerInfo(CreateTriggerInfo &create_trig
 	auto &trigger_catalog = table.ParentCatalog();
 	validation_binder->SetCatalogLookupCallback([&](CatalogEntry &entry) {
 		if (&entry.ParentCatalog() == &trigger_catalog) {
-			create_trigger_info.ordering_dependencies.AddDependency(entry);
+			create_trigger_info.recreation_dependencies.AddDependency(entry);
 		}
 	});
 	validation_binder->global_binder_state->trigger_expanded_tables.insert(table);

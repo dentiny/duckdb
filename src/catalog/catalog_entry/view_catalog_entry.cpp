@@ -36,8 +36,8 @@ void ViewCatalogEntry::Initialize(CreateViewInfo &info) {
 	this->sql = info.sql;
 	this->internal = info.internal;
 	this->dependencies = info.dependencies;
-	this->ordering_dependencies = info.ordering_dependencies;
-	this->ordering_dependencies.AddDependencies(info.dependencies);
+	this->recreation_dependencies = info.recreation_dependencies;
+	this->recreation_dependencies.AddDependencies(info.dependencies);
 	this->comment = info.comment;
 	this->tags = info.tags;
 	this->column_comments = info.column_comments_map;
@@ -61,7 +61,7 @@ unique_ptr<CreateInfo> ViewCatalogEntry::GetInfo() const {
 	}
 	result->temporary = temporary;
 	result->dependencies = dependencies;
-	result->ordering_dependencies = ordering_dependencies;
+	result->recreation_dependencies = recreation_dependencies;
 	result->comment = comment;
 	result->tags = tags;
 	result->column_comments_map = column_comments;

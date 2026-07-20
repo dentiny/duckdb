@@ -315,13 +315,13 @@ void DependencyManager::CreateDependencies(CatalogTransaction transaction, const
 
 void DependencyManager::AddObject(CatalogTransaction transaction, CatalogEntry &object,
                                   const LogicalDependencyList &dependencies,
-                                  const LogicalDependencyList &ordering_dependencies) {
+                                  const LogicalDependencyList &recreation_dependencies) {
 	if (IsSystemEntry(object)) {
 		// Don't do anything for this
 		return;
 	}
 	CreateDependencies(transaction, object, dependencies, DependencyDependentFlags().SetBlocking());
-	CreateDependencies(transaction, object, ordering_dependencies, DependencyDependentFlags().SetOrderingOnly());
+	CreateDependencies(transaction, object, recreation_dependencies, DependencyDependentFlags().SetRecreationOnly());
 }
 
 static bool CascadeDrop(bool cascade, const DependencyDependentFlags &flags) {
@@ -477,7 +477,7 @@ string DependencyManager::CollectDependents(CatalogTransaction transaction, cata
 		result += StringUtil::Format("%s depends on %s.\n", EntryToString(other_info), EntryToString(info));
 		catalog_entry_set_t entry_dependents;
 		ScanDependents(transaction, other_info, [&](DependencyEntry &dep) {
-			if (dep.Dependent().flags.IsOrderingOnly()) {
+			if (dep.Dependent().flags.IsRecreationOnly()) {
 				return;
 			}
 			auto child = LookupEntry(transaction, dep);
@@ -541,7 +541,7 @@ void DependencyManager::VerifyCommitDrop(CatalogTransaction transaction, transac
 	}
 	auto info = GetLookupProperties(object);
 	ScanDependents(transaction, info, [&](DependencyEntry &dep) {
-		if (dep.Dependent().flags.IsOrderingOnly()) {
+		if (dep.Dependent().flags.IsRecreationOnly()) {
 			return;
 		}
 		auto dep_committed_at = dep.timestamp.load();
@@ -587,7 +587,7 @@ catalog_entry_set_t DependencyManager::CheckDropDependencies(CatalogTransaction 
 	auto info = GetLookupProperties(object);
 	// Look through all the objects that depend on the 'object'
 	ScanDependents(transaction, info, [&](DependencyEntry &dep) {
-		if (dep.Dependent().flags.IsOrderingOnly()) {
+		if (dep.Dependent().flags.IsRecreationOnly()) {
 			return;
 		}
 		// a nested schema depends on its parent schema; other schemas have no dependencies
@@ -708,7 +708,7 @@ void DependencyManager::AlterObject(CatalogTransaction transaction, CatalogEntry
 		// It makes no sense to have a schema depend on anything
 		D_ASSERT(dep.EntryInfo().type != CatalogType::SCHEMA_ENTRY);
 
-		bool disallow_alter = !dep.Dependent().flags.IsOrderingOnly();
+		bool disallow_alter = !dep.Dependent().flags.IsRecreationOnly();
 		switch (alter_info.type) {
 		case AlterType::ALTER_TABLE: {
 			auto &alter_table = alter_info.Cast<AlterTableInfo>();

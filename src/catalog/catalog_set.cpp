@@ -203,13 +203,13 @@ bool CatalogSet::CreateEntry(CatalogTransaction transaction, const Identifier &n
 
 bool CatalogSet::CreateEntry(CatalogTransaction transaction, const Identifier &name, unique_ptr<CatalogEntry> value,
                              const LogicalDependencyList &dependencies,
-                             const LogicalDependencyList &ordering_dependencies) {
+                             const LogicalDependencyList &recreation_dependencies) {
 	CheckCatalogEntryInvariants(*value, name);
 
 	// Mark this entry as being created by the current active transaction
 	value->timestamp = transaction.transaction_id;
 	value->set = this;
-	catalog.GetDependencyManager()->AddObject(transaction, *value, dependencies, ordering_dependencies);
+	catalog.GetDependencyManager()->AddObject(transaction, *value, dependencies, recreation_dependencies);
 
 	// lock the catalog for writing
 	lock_guard<mutex> write_lock(catalog.GetWriteLock());

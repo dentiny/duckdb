@@ -126,7 +126,7 @@ private:
 	                  catalog_entry_set_t &visiting, catalog_entry_vector_t &order);
 	void ReorderEntries(catalog_entry_vector_t &entries, CatalogTransaction transaction);
 	void AddObject(CatalogTransaction transaction, CatalogEntry &object, const LogicalDependencyList &dependencies,
-	               const LogicalDependencyList &ordering_dependencies);
+	               const LogicalDependencyList &recreation_dependencies);
 	void VerifyExistence(CatalogTransaction transaction, DependencyEntry &object);
 	void VerifyCommitDrop(CatalogTransaction transaction, transaction_t start_time, CatalogEntry &object);
 	//! Returns the objects that should be dropped alongside the object

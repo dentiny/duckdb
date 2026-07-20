@@ -1,10 +1,10 @@
-# name: test/sql/storage/catalog/test_ordering_dependencies.test
-# description: Persist ordering dependencies independently from blocking dependencies
+# name: test/sql/storage/catalog/test_recreation_dependencies.test
+# description: Persist recreation dependencies independently from blocking dependencies
 # group: [catalog]
 
 require skip_reload
 
-load {TEST_DIR}/ordering_dependencies.db
+load {TEST_DIR}/recreation_dependencies.db
 
 statement ok
 CREATE SEQUENCE z_sequence;
@@ -48,7 +48,7 @@ dependency_base	a_macro	n
 dependency_base	z_sequence	n
 z_view	dependency_base	o
 
-# Ordering dependencies must not change ALTER behavior when view dependencies are disabled.
+# Recreation dependencies must not change ALTER behavior when view dependencies are disabled.
 statement ok
 ALTER TABLE dependency_base RENAME TO renamed_dependency_base;
 
