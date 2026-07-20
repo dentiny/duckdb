@@ -66,12 +66,9 @@ public:
 	//! Create an entry in the catalog set. Returns whether or not it was
 	//! successful.
 	DUCKDB_API bool CreateEntry(CatalogTransaction transaction, const Identifier &name, unique_ptr<CatalogEntry> value,
-	                            const LogicalDependencySet &blocking_dependencies);
-	DUCKDB_API bool CreateEntry(CatalogTransaction transaction, const Identifier &name, unique_ptr<CatalogEntry> value,
-	                            const LogicalDependencySet &blocking_dependencies,
-	                            const LogicalDependencySet &recreation_only_dependencies);
+	                            const LogicalDependencySet &dependencies);
 	DUCKDB_API bool CreateEntry(ClientContext &context, const Identifier &name, unique_ptr<CatalogEntry> value,
-	                            const LogicalDependencySet &blocking_dependencies);
+	                            const LogicalDependencySet &dependencies);
 
 	DUCKDB_API bool AlterEntry(CatalogTransaction transaction, const Identifier &name, AlterInfo &alter_info);
 

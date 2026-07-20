@@ -35,8 +35,7 @@ void ViewCatalogEntry::Initialize(CreateViewInfo &info) {
 	this->temporary = info.temporary;
 	this->sql = info.sql;
 	this->internal = info.internal;
-	this->blocking_dependencies = info.blocking_dependencies;
-	this->recreation_only_dependencies = info.recreation_only_dependencies;
+	this->dependencies = info.dependencies;
 	this->comment = info.comment;
 	this->tags = info.tags;
 	this->column_comments = info.column_comments_map;
@@ -59,8 +58,7 @@ unique_ptr<CreateInfo> ViewCatalogEntry::GetInfo() const {
 		result->types = view_columns->types;
 	}
 	result->temporary = temporary;
-	result->blocking_dependencies = blocking_dependencies;
-	result->recreation_only_dependencies = recreation_only_dependencies;
+	result->dependencies = dependencies;
 	result->comment = comment;
 	result->tags = tags;
 	result->column_comments_map = column_comments;

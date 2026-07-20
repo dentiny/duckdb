@@ -1,10 +1,10 @@
-# name: test/sql/storage/catalog/test_recreation_dependencies.test
-# description: Persist recreation dependencies independently from blocking dependencies
+# name: test/sql/storage/catalog/test_catalog_dependencies.test
+# description: Persist catalog dependencies used for DROP and recreation ordering
 # group: [catalog]
 
 require skip_reload
 
-load {TEST_DIR}/recreation_dependencies.db
+load {TEST_DIR}/catalog_dependencies.db
 
 statement ok
 CREATE SEQUENCE z_sequence;
@@ -41,16 +41,23 @@ FROM duckdb_dependencies() dependency
 JOIN entries subject ON subject.oid = dependency.objid
 JOIN entries dependent ON dependent.oid = dependency.refobjid
 ----
-a_macro	z_sequence	o
-a_view	dependency_base	o
-a_view	z_view	o
+a_macro	z_sequence	n
+a_view	dependency_base	n
+a_view	z_view	n
 dependency_base	a_macro	n
 dependency_base	z_sequence	n
-z_view	dependency_base	o
+z_view	dependency_base	n
 
-# Recreation dependencies must not change ALTER behavior when view dependencies are disabled.
-statement ok
+# View dependencies prevent the referenced table from being altered.
+statement error
 ALTER TABLE dependency_base RENAME TO renamed_dependency_base;
+----
+Dependency Error: Cannot alter entry "dependency_base" because there are entries that depend on it.
 
 statement ok
-ALTER TABLE renamed_dependency_base RENAME TO dependency_base;
+DROP TABLE dependency_base CASCADE;
+
+query I
+SELECT COUNT(*) FROM duckdb_views() WHERE NOT internal;
+----
+0

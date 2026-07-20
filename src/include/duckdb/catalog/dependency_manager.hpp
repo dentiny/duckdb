@@ -125,9 +125,7 @@ private:
 	void ReorderEntry(CatalogTransaction transaction, CatalogEntry &entry, catalog_entry_set_t &visited,
 	                  catalog_entry_set_t &visiting, catalog_entry_vector_t &order);
 	void ReorderEntries(catalog_entry_vector_t &entries, CatalogTransaction transaction);
-	void AddObject(CatalogTransaction transaction, CatalogEntry &object,
-	               const LogicalDependencySet &blocking_dependencies,
-	               const LogicalDependencySet &recreation_only_dependencies);
+	void AddObject(CatalogTransaction transaction, CatalogEntry &object, const LogicalDependencySet &dependencies);
 	void VerifyExistence(CatalogTransaction transaction, DependencyEntry &object);
 	void VerifyCommitDrop(CatalogTransaction transaction, transaction_t start_time, CatalogEntry &object);
 	//! Returns the objects that should be dropped alongside the object
@@ -139,7 +137,7 @@ private:
 	void RemoveDependency(CatalogTransaction transaction, const DependencyInfo &info);
 	void CreateDependency(CatalogTransaction transaction, DependencyInfo &info);
 	void CreateDependencies(CatalogTransaction transaction, const CatalogEntry &object,
-	                        const LogicalDependencySet &dependencies, DependencyDependentFlags dependency_flags);
+	                        const LogicalDependencySet &dependencies);
 	using dependency_entry_func_t = const std::function<unique_ptr<DependencyEntry>(
 	    Catalog &catalog, const DependencyDependent &dependent, const DependencySubject &dependency)>;
 

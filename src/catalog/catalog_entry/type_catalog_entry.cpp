@@ -17,8 +17,7 @@ TypeCatalogEntry::TypeCatalogEntry(Catalog &catalog, SchemaCatalogEntry &schema,
 	this->temporary = info.temporary;
 	this->internal = info.internal;
 	this->extension_name = info.extension_name;
-	this->blocking_dependencies = info.blocking_dependencies;
-	this->recreation_only_dependencies = info.recreation_only_dependencies;
+	this->dependencies = info.dependencies;
 	this->comment = info.comment;
 	this->tags = info.tags;
 }
@@ -35,8 +34,7 @@ unique_ptr<CreateInfo> TypeCatalogEntry::GetInfo() const {
 	result->SetQualifiedName(QualifiedName(catalog.GetName(), schema.name, name));
 	result->type = user_type;
 	result->extension_name = extension_name;
-	result->blocking_dependencies = blocking_dependencies;
-	result->recreation_only_dependencies = recreation_only_dependencies;
+	result->dependencies = dependencies;
 	result->comment = comment;
 	result->tags = tags;
 	result->bind_function = bind_function;

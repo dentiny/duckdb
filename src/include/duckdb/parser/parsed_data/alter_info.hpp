@@ -62,8 +62,8 @@ public:
 	bool allow_internal;
 	//! Determine whether to skip Bind
 	AlterBindMode bind_mode = AlterBindMode::BIND_ON_ALTER;
-	//! New blocking dependencies for the altered entry (set during binding)
-	unique_ptr<LogicalDependencySet> new_blocking_dependencies;
+	//! New dependencies for the altered entry (set during binding)
+	unique_ptr<LogicalDependencySet> new_dependencies;
 
 public:
 	const QualifiedName &GetQualifiedName() const {

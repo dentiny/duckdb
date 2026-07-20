@@ -43,8 +43,7 @@ unique_ptr<LogicalOperator> Binder::BindCopyDatabaseSchema(Catalog &from_databas
 			}
 			return result;
 		};
-		create_info->blocking_dependencies = update_catalog(create_info->blocking_dependencies);
-		create_info->recreation_only_dependencies = update_catalog(create_info->recreation_only_dependencies);
+		create_info->dependencies = update_catalog(create_info->dependencies);
 		create_info->on_conflict = on_conflict;
 		info->entries.push_back(std::move(create_info));
 	}

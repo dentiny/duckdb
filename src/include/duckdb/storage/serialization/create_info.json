@@ -69,8 +69,6 @@
         "id": 109,
         "name": "dependencies",
         "type": "LogicalDependencySet",
-        "serialize_property": "blocking_dependencies",
-        "deserialize_property": "blocking_dependencies",
         "default": "LogicalDependencySet()",
         "version": "v0.10.3"
       },
@@ -89,13 +87,6 @@
         "serialize_condition": "qualified_name.Path().size() > 3",
         "deserialize_default": "QualifiedName()",
         "deserialize_skip_assign": true
-      },
-      {
-        "id": 112,
-        "name": "recreation_only_dependencies",
-        "type": "LogicalDependencySet",
-        "default": "LogicalDependencySet()",
-        "version": "v2.0.0"
       }
     ],
     "methods": {

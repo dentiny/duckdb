@@ -12,8 +12,7 @@ MacroCatalogEntry::MacroCatalogEntry(Catalog &catalog, SchemaCatalogEntry &schem
 	this->temporary = info.temporary;
 	this->internal = info.internal;
 	this->extension_name = info.extension_name;
-	this->blocking_dependencies = info.blocking_dependencies;
-	this->recreation_only_dependencies = info.recreation_only_dependencies;
+	this->dependencies = info.dependencies;
 	this->comment = info.comment;
 	this->tags = info.tags;
 }
@@ -47,8 +46,7 @@ unique_ptr<CreateInfo> MacroCatalogEntry::GetInfo() const {
 		info->macros.push_back(function->Copy());
 	}
 	info->extension_name = extension_name;
-	info->blocking_dependencies = blocking_dependencies;
-	info->recreation_only_dependencies = recreation_only_dependencies;
+	info->dependencies = dependencies;
 	info->comment = comment;
 	info->tags = tags;
 	return std::move(info);

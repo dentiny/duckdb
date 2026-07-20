@@ -95,7 +95,6 @@ struct DependencyDependentFlags : public DependencyFlags {
 private:
 	static constexpr uint8_t BLOCKING = 0;
 	static constexpr uint8_t OWNED_BY = 1;
-	static constexpr uint8_t RECREATION_ONLY = 2;
 
 public:
 	DependencyDependentFlags &Apply(DependencyDependentFlags other) {
@@ -110,9 +109,6 @@ public:
 	bool IsOwnedBy() const {
 		return IsSet<OWNED_BY>();
 	}
-	bool IsRecreationOnly() const {
-		return IsSet<RECREATION_ONLY>() && !IsBlocking();
-	}
 
 public:
 	DependencyDependentFlags &SetBlocking() {
@@ -121,10 +117,6 @@ public:
 	}
 	DependencyDependentFlags &SetOwnedBy() {
 		Set<OWNED_BY>();
-		return *this;
-	}
-	DependencyDependentFlags &SetRecreationOnly() {
-		Set<RECREATION_ONLY>();
 		return *this;
 	}
 
@@ -140,9 +132,6 @@ public:
 		if (IsOwnedBy()) {
 			result += "OWNED BY";
 		}
-		if (IsRecreationOnly()) {
-			result += "RECREATION ONLY";
-		}
 		return result;
 	}
 };
@@ -154,6 +143,8 @@ public:
 	//! is the path of the *containing* schemas - for a schema entry it is the parent chain (not including itself).
 	vector<Identifier> schema_path;
 	Identifier name;
+	//! The name of the parent catalog entry for entries in a parent-local namespace (currently triggers only)
+	Identifier parent_name;
 
 public:
 	bool operator==(const CatalogEntryInfo &other) const {
@@ -164,6 +155,9 @@ public:
 			return false;
 		}
 		if (other.name != name) {
+			return false;
+		}
+		if (other.parent_name != parent_name) {
 			return false;
 		}
 		return true;

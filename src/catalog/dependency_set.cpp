@@ -14,11 +14,12 @@ uint64_t LogicalDependencyHashFunction::operator()(const LogicalDependency &a) c
 	auto &type = a.entry.type;
 	auto &catalog = a.catalog;
 
-	hash_t hash = duckdb::Hash(name.c_str());
+	hash_t hash = name.Hash();
 	for (auto &schema : a.entry.schema_path) {
-		hash = CombineHash(hash, duckdb::Hash(schema.c_str()));
+		hash = CombineHash(hash, schema.Hash());
 	}
-	hash = CombineHash(hash, duckdb::Hash(catalog.c_str()));
+	hash = CombineHash(hash, a.entry.parent_name.Hash());
+	hash = CombineHash(hash, catalog.Hash());
 	hash = CombineHash(hash, duckdb::Hash<uint8_t>(static_cast<uint8_t>(type)));
 	return hash;
 }
@@ -31,6 +32,9 @@ bool LogicalDependencyEquality::operator()(const LogicalDependency &a, const Log
 		return false;
 	}
 	if (a.entry.schema_path != b.entry.schema_path) {
+		return false;
+	}
+	if (a.entry.parent_name != b.entry.parent_name) {
 		return false;
 	}
 	if (a.catalog != b.catalog) {
@@ -49,11 +53,7 @@ LogicalDependency::LogicalDependency(CatalogEntry &entry) {
 
 		this->entry = dependency_entry.EntryInfo();
 	} else {
-		// use the same schema path as the dependency manager (the containing schema chain) so subjects and dependents
-		// resolve to the same mangled name
-		this->entry.schema_path = DependencyManager::GetSchemaPath(entry);
-		this->entry.name = entry.name;
-		this->entry.type = entry.type;
+		this->entry = DependencyManager::GetLookupProperties(entry);
 		catalog = entry.ParentCatalog().GetName();
 	}
 }
@@ -67,7 +67,7 @@ LogicalDependency::LogicalDependency(optional_ptr<Catalog> catalog_p, CatalogEnt
 
 bool LogicalDependency::operator==(const LogicalDependency &other) const {
 	return other.entry.name == entry.name && other.entry.schema_path == entry.schema_path &&
-	       other.entry.type == entry.type && other.catalog == catalog;
+	       other.entry.type == entry.type && other.entry.parent_name == entry.parent_name && other.catalog == catalog;
 }
 
 void LogicalDependencySet::Add(CatalogEntry &entry) {

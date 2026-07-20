@@ -13,6 +13,7 @@
 #include "duckdb/catalog/catalog_entry/duck_schema_entry.hpp"
 #include "duckdb/common/queue.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
+#include "duckdb/catalog/catalog_entry/trigger_catalog_entry.hpp"
 #include "duckdb/parser/constraints/foreign_key_constraint.hpp"
 #include "duckdb/catalog/dependency_catalog_set.hpp"
 #include "duckdb/parser/qualified_name.hpp"
@@ -42,9 +43,12 @@ MangledEntryName::MangledEntryName(const CatalogEntryInfo &info) {
 	for (auto &schema : schema_path) {
 		mangled += schema.GetIdentifierName() + '\0';
 	}
+	if (!info.parent_name.empty()) {
+		mangled += info.parent_name.GetIdentifierName() + '\0';
+	}
 	mangled += name;
 	this->name = Identifier(mangled);
-	AssertMangledName(this->name.GetIdentifierName(), 1 + schema_path.size());
+	AssertMangledName(this->name.GetIdentifierName(), 1 + schema_path.size() + !info.parent_name.empty());
 }
 
 MangledDependencyName::MangledDependencyName(const MangledEntryName &from, const MangledEntryName &to) {
@@ -92,9 +96,7 @@ MangledEntryName DependencyManager::MangleName(const CatalogEntry &entry) {
 		auto &dependency_entry = entry.Cast<DependencyEntry>();
 		return dependency_entry.EntryMangledName();
 	}
-	CatalogEntryInfo info {entry.type, GetSchemaPath(entry), entry.name};
-
-	return MangleName(info);
+	return MangleName(GetLookupProperties(entry));
 }
 
 DependencyInfo DependencyInfo::FromSubject(DependencyEntry &dep) {
@@ -286,11 +288,12 @@ void DependencyManager::CreateDependency(CatalogTransaction transaction, Depende
 }
 
 void DependencyManager::CreateDependencies(CatalogTransaction transaction, const CatalogEntry &object,
-                                           const LogicalDependencySet &dependencies,
-                                           DependencyDependentFlags dependency_flags) {
+	                                       const LogicalDependencySet &dependencies) {
+	DependencyDependentFlags dependency_flags;
 	if (object.type == CatalogType::INDEX_ENTRY) {
-		// indexes do not require CASCADE to be dropped, they are simply always dropped along with the table
-		dependency_flags = DependencyDependentFlags();
+		// Indexes are contained by their table and are always dropped with it, so they cannot become dangling.
+	} else {
+		dependency_flags.SetBlocking();
 	}
 	const auto object_info = GetLookupProperties(object);
 	// check for each object in the sources if they were not deleted yet
@@ -313,15 +316,12 @@ void DependencyManager::CreateDependencies(CatalogTransaction transaction, const
 }
 
 void DependencyManager::AddObject(CatalogTransaction transaction, CatalogEntry &object,
-                                  const LogicalDependencySet &blocking_dependencies,
-                                  const LogicalDependencySet &recreation_only_dependencies) {
+	                              const LogicalDependencySet &dependencies) {
 	if (IsSystemEntry(object)) {
 		// Don't do anything for this
 		return;
 	}
-	CreateDependencies(transaction, object, blocking_dependencies, DependencyDependentFlags().SetBlocking());
-	CreateDependencies(transaction, object, recreation_only_dependencies,
-	                   DependencyDependentFlags().SetRecreationOnly());
+	CreateDependencies(transaction, object, dependencies);
 }
 
 static bool CascadeDrop(bool cascade, const DependencyDependentFlags &flags) {
@@ -340,7 +340,11 @@ CatalogEntryInfo DependencyManager::GetLookupProperties(const CatalogEntry &entr
 		auto &dependency_entry = entry.Cast<DependencyEntry>();
 		return dependency_entry.EntryInfo();
 	}
-	return CatalogEntryInfo {entry.type, GetSchemaPath(entry), entry.name};
+	CatalogEntryInfo result {entry.type, GetSchemaPath(entry), entry.name};
+	if (entry.type == CatalogType::TRIGGER_ENTRY) {
+		result.parent_name = entry.Cast<TriggerCatalogEntry>().base_table->Table();
+	}
+	return result;
 }
 
 optional_ptr<SchemaCatalogEntry> DependencyManager::NavigateSchemaPath(CatalogTransaction transaction,
@@ -375,6 +379,19 @@ optional_ptr<CatalogEntry> DependencyManager::LookupEntry(CatalogTransaction tra
 	}
 	if (!schema) {
 		return nullptr;
+	}
+	if (type == CatalogType::TRIGGER_ENTRY) {
+		auto table = schema->GetEntry(transaction, CatalogType::TABLE_ENTRY, info.parent_name);
+		if (!table) {
+			return nullptr;
+		}
+		optional_ptr<CatalogEntry> result;
+		table->Cast<TableCatalogEntry>().ScanTriggers(transaction, [&](CatalogEntry &trigger) {
+			if (trigger.name == name) {
+				result = trigger;
+			}
+		});
+		return result;
 	}
 	return schema->GetEntry(transaction, type, name);
 }
@@ -477,9 +494,6 @@ string DependencyManager::CollectDependents(CatalogTransaction transaction, cata
 		result += StringUtil::Format("%s depends on %s.\n", EntryToString(other_info), EntryToString(info));
 		catalog_entry_set_t entry_dependents;
 		ScanDependents(transaction, other_info, [&](DependencyEntry &dep) {
-			if (dep.Dependent().flags.IsRecreationOnly()) {
-				return;
-			}
 			auto child = LookupEntry(transaction, dep);
 			if (!child) {
 				return;
@@ -516,6 +530,10 @@ void DependencyManager::VerifyExistence(CatalogTransaction transaction, Dependen
 		auto &container = schema ? schema->Cast<DuckSchemaEntry>().GetCatalogSet(CatalogType::SCHEMA_ENTRY)
 		                         : catalog.GetSchemaCatalogSet();
 		lookup_result = container.GetEntryDetailed(transaction, name);
+	} else if (type == CatalogType::TRIGGER_ENTRY) {
+		lookup_result.result = LookupEntry(transaction, info);
+		lookup_result.reason = lookup_result.result ? CatalogSet::EntryLookup::FailureReason::SUCCESS
+		                                           : CatalogSet::EntryLookup::FailureReason::DELETED;
 	} else if (schema) {
 		EntryLookupInfo lookup_info(type, QualifiedName(name));
 		lookup_result = schema->LookupEntryDetailed(transaction, lookup_info);
@@ -541,9 +559,6 @@ void DependencyManager::VerifyCommitDrop(CatalogTransaction transaction, transac
 	}
 	auto info = GetLookupProperties(object);
 	ScanDependents(transaction, info, [&](DependencyEntry &dep) {
-		if (dep.Dependent().flags.IsRecreationOnly()) {
-			return;
-		}
 		auto dep_committed_at = dep.timestamp.load();
 		if (dep_committed_at > start_time) {
 			// In the event of a CASCADE, the dependency drop has not committed yet
@@ -587,9 +602,6 @@ catalog_entry_set_t DependencyManager::CheckDropDependencies(CatalogTransaction 
 	auto info = GetLookupProperties(object);
 	// Look through all the objects that depend on the 'object'
 	ScanDependents(transaction, info, [&](DependencyEntry &dep) {
-		if (dep.Dependent().flags.IsRecreationOnly()) {
-			return;
-		}
 		// a nested schema depends on its parent schema; other schemas have no dependencies
 		auto entry = LookupEntry(transaction, dep);
 		if (!entry) {
@@ -708,7 +720,7 @@ void DependencyManager::AlterObject(CatalogTransaction transaction, CatalogEntry
 		// It makes no sense to have a schema depend on anything
 		D_ASSERT(dep.EntryInfo().type != CatalogType::SCHEMA_ENTRY);
 
-		bool disallow_alter = !dep.Dependent().flags.IsRecreationOnly();
+		bool disallow_alter = true;
 		switch (alter_info.type) {
 		case AlterType::ALTER_TABLE: {
 			auto &alter_table = alter_info.Cast<AlterTableInfo>();
@@ -749,11 +761,10 @@ void DependencyManager::AlterObject(CatalogTransaction transaction, CatalogEntry
 	});
 
 	// Keep old dependencies
-	bool has_new_blocking_dependencies = alter_info.new_blocking_dependencies.get();
+	bool has_new_dependencies = alter_info.new_dependencies.get();
 	ScanSubjects(transaction, old_info, [&](DependencyEntry &dep) {
-		if (has_new_blocking_dependencies && !dep.Subject().flags.IsOwnership() &&
-		    !dep.Dependent().flags.IsRecreationOnly()) {
-			// The alter provided updated blocking dependencies, which replace the old blocking dependencies.
+		if (has_new_dependencies && !dep.Subject().flags.IsOwnership()) {
+			// The alter provided updated dependencies, which replace the old dependencies.
 			return;
 		}
 		auto entry = LookupEntry(transaction, dep);
@@ -766,16 +777,15 @@ void DependencyManager::AlterObject(CatalogTransaction transaction, CatalogEntry
 		dependencies.emplace_back(dep_info);
 	});
 
-	if (has_new_blocking_dependencies || !(old_obj.name == new_obj.name)) {
+	if (has_new_dependencies || !(old_obj.name == new_obj.name)) {
 		// The dependencies have changed (e.g. SET DEFAULT) or the name has changed
 		// We need to recreate the dependency links
 		CleanupDependencies(transaction, old_obj);
 	}
 
-	if (has_new_blocking_dependencies) {
+	if (has_new_dependencies) {
 		// Add the new dependencies
-		CreateDependencies(transaction, new_obj, *alter_info.new_blocking_dependencies,
-		                   DependencyDependentFlags().SetBlocking());
+		CreateDependencies(transaction, new_obj, *alter_info.new_dependencies);
 	}
 
 	// Reinstate any old dependencies

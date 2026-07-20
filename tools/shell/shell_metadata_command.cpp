@@ -76,33 +76,31 @@ string GetDumpSQL(duckdb::CatalogEntry &entry) {
 	}
 }
 
-duckdb::LogicalDependencySet GetCatalogRecreationDependencies(duckdb::ClientContext &context,
-                                                              duckdb::CatalogEntry &entry) {
+duckdb::LogicalDependencySet GetCatalogDependencies(duckdb::ClientContext &context, duckdb::CatalogEntry &entry) {
 	auto info = entry.GetInfo();
-	auto recreation_dependencies = info->blocking_dependencies;
-	recreation_dependencies.AddAll(info->recreation_only_dependencies);
+	auto dependencies = info->dependencies;
 	try {
 		if (entry.type == duckdb::CatalogType::VIEW_ENTRY) {
 			auto &view = entry.Cast<duckdb::ViewCatalogEntry>();
 			vector<duckdb::LogicalType> result_types;
 			vector<duckdb::Identifier> result_names;
 			duckdb::Binder::BindView(context, view.GetQuery(), view.ParentCatalog().GetName(), view.ParentSchema().name,
-			                         recreation_dependencies, view.aliases, result_types, result_names);
+			                         dependencies, view.aliases, result_types, result_names);
 		} else if (entry.type == duckdb::CatalogType::MACRO_ENTRY ||
 		           entry.type == duckdb::CatalogType::TABLE_MACRO_ENTRY) {
 			auto binder = duckdb::Binder::CreateBinder(context);
 			binder->BindCreateFunctionInfo(*info);
-			recreation_dependencies = info->blocking_dependencies;
-			recreation_dependencies.AddAll(info->recreation_only_dependencies);
+			dependencies = info->dependencies;
 		}
-	} catch (duckdb::Exception &) {
-		// Invalid catalog objects should still be included in the dump.
+	} catch (duckdb::Exception &ex) {
+		throw duckdb::InvalidInputException("Cannot dump invalid catalog entry \"%s\": %s", entry.name,
+		                                    ex.what());
 	}
-	return recreation_dependencies;
+	return dependencies;
 }
 
 void OrderDumpEntry(idx_t entry_index, const duckdb::catalog_entry_vector_t &entries,
-                    const vector<duckdb::LogicalDependencySet> &recreation_dependencies,
+                    const vector<duckdb::LogicalDependencySet> &dependencies,
                     const duckdb::unordered_map<duckdb::LogicalDependency, idx_t, duckdb::LogicalDependencyHashFunction,
                                                 duckdb::LogicalDependencyEquality> &entry_indexes,
                     vector<uint8_t> &visited, duckdb::catalog_entry_vector_t &ordered) {
@@ -114,48 +112,48 @@ void OrderDumpEntry(idx_t entry_index, const duckdb::catalog_entry_vector_t &ent
 		                                    entries[entry_index].get().name);
 	}
 	visited[entry_index] = 1;
-	for (auto &dependency : recreation_dependencies[entry_index].Entries()) {
+	for (auto &dependency : dependencies[entry_index].Entries()) {
 		auto dependency_index = entry_indexes.find(dependency);
 		if (dependency_index != entry_indexes.end()) {
-			OrderDumpEntry(dependency_index->second, entries, recreation_dependencies, entry_indexes, visited, ordered);
+			OrderDumpEntry(dependency_index->second, entries, dependencies, entry_indexes, visited, ordered);
 		}
 	}
 	visited[entry_index] = 2;
 	ordered.push_back(entries[entry_index]);
 }
 
-vector<duckdb::LogicalDependencySet> GetDumpRecreationDependencies(duckdb::ClientContext &context,
-                                                                   const duckdb::catalog_entry_vector_t &entries) {
-	vector<duckdb::LogicalDependencySet> recreation_dependencies;
-	recreation_dependencies.reserve(entries.size());
+vector<duckdb::LogicalDependencySet> GetDumpDependencies(duckdb::ClientContext &context,
+                                                         const duckdb::catalog_entry_vector_t &entries) {
+	vector<duckdb::LogicalDependencySet> dependencies;
+	dependencies.reserve(entries.size());
 	for (auto &entry : entries) {
-		recreation_dependencies.push_back(GetCatalogRecreationDependencies(context, entry.get()));
+		dependencies.push_back(GetCatalogDependencies(context, entry.get()));
 	}
-	return recreation_dependencies;
+	return dependencies;
 }
 
 void SelectDumpDependencies(
     idx_t entry_index, const duckdb::catalog_entry_vector_t &entries,
-    const vector<duckdb::LogicalDependencySet> &recreation_dependencies,
+    const vector<duckdb::LogicalDependencySet> &dependencies,
     const duckdb::unordered_map<duckdb::LogicalDependency, idx_t, duckdb::LogicalDependencyHashFunction,
                                 duckdb::LogicalDependencyEquality> &entry_indexes,
     duckdb::unordered_set<idx_t> &selected, duckdb::unordered_set<idx_t> &visited) {
 	if (!visited.insert(entry_index).second) {
 		return;
 	}
-	for (auto &dependency : recreation_dependencies[entry_index].Entries()) {
+	for (auto &dependency : dependencies[entry_index].Entries()) {
 		auto dependency_index = entry_indexes.find(dependency);
 		if (dependency_index == entry_indexes.end()) {
 			continue;
 		}
 		selected.insert(entries[dependency_index->second].get().oid);
-		SelectDumpDependencies(dependency_index->second, entries, recreation_dependencies, entry_indexes, selected,
+		SelectDumpDependencies(dependency_index->second, entries, dependencies, entry_indexes, selected,
 		                       visited);
 	}
 }
 
 void ExpandDumpEntries(const duckdb::catalog_entry_vector_t &entries,
-                       const vector<duckdb::LogicalDependencySet> &recreation_dependencies,
+                       const vector<duckdb::LogicalDependencySet> &dependencies,
                        duckdb::unordered_set<idx_t> &selected) {
 	duckdb::unordered_map<duckdb::LogicalDependency, idx_t, duckdb::LogicalDependencyHashFunction,
 	                      duckdb::LogicalDependencyEquality>
@@ -167,13 +165,13 @@ void ExpandDumpEntries(const duckdb::catalog_entry_vector_t &entries,
 	duckdb::unordered_set<idx_t> visited;
 	for (idx_t entry_index = 0; entry_index < entries.size(); entry_index++) {
 		if (selected.find(entries[entry_index].get().oid) != selected.end()) {
-			SelectDumpDependencies(entry_index, entries, recreation_dependencies, entry_indexes, selected, visited);
+			SelectDumpDependencies(entry_index, entries, dependencies, entry_indexes, selected, visited);
 		}
 	}
 }
 
 void OrderDumpEntries(duckdb::catalog_entry_vector_t &entries,
-                      const vector<duckdb::LogicalDependencySet> &recreation_dependencies) {
+                      const vector<duckdb::LogicalDependencySet> &dependencies) {
 	duckdb::unordered_map<duckdb::LogicalDependency, idx_t, duckdb::LogicalDependencyHashFunction,
 	                      duckdb::LogicalDependencyEquality>
 	    entry_indexes;
@@ -183,7 +181,7 @@ void OrderDumpEntries(duckdb::catalog_entry_vector_t &entries,
 	vector<uint8_t> visited(entries.size(), 0);
 	duckdb::catalog_entry_vector_t ordered;
 	for (idx_t entry_index = 0; entry_index < entries.size(); entry_index++) {
-		OrderDumpEntry(entry_index, entries, recreation_dependencies, entry_indexes, visited, ordered);
+		OrderDumpEntry(entry_index, entries, dependencies, entry_indexes, visited, ordered);
 	}
 	entries = std::move(ordered);
 }
@@ -210,11 +208,11 @@ void DumpCatalog(ShellState &state, const string &like_clause) {
 	context.RunFunctionInTransaction([&]() {
 		auto &catalog = duckdb::Catalog::GetCatalog(context, duckdb::Identifier::InvalidCatalog());
 		auto entries = duckdb::PhysicalExport::GetNaiveExportOrder(context, catalog);
-		auto recreation_dependencies = GetDumpRecreationDependencies(context, entries);
+		auto dependencies = GetDumpDependencies(context, entries);
 		if (filter) {
-			ExpandDumpEntries(entries, recreation_dependencies, selected);
+			ExpandDumpEntries(entries, dependencies, selected);
 		}
-		OrderDumpEntries(entries, recreation_dependencies);
+		OrderDumpEntries(entries, dependencies);
 		for (auto &entry_ref : entries) {
 			auto &entry = entry_ref.get();
 			if (entry.internal || (filter && selected.find(entry.oid) == selected.end())) {

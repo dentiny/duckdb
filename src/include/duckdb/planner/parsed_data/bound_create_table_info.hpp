@@ -37,7 +37,7 @@ struct BoundCreateTableInfo {
 	//! List of constraints on the table
 	vector<unique_ptr<Constraint>> constraints;
 	//! Dependents of the table (in e.g. default values)
-	LogicalDependencySet blocking_dependencies;
+	LogicalDependencySet dependencies;
 	//! The existing table data on disk (if any)
 	unique_ptr<PersistentTableData> data;
 	//! CREATE TABLE from QUERY

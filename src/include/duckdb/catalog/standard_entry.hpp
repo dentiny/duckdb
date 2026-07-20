@@ -26,9 +26,7 @@ public:
 	//! The schema the entry belongs to
 	SchemaCatalogEntry &schema;
 	//! Dependencies that affect DROP/ALTER and catalog recreation order
-	LogicalDependencySet blocking_dependencies;
-	//! Additional dependencies used only for catalog recreation order
-	LogicalDependencySet recreation_only_dependencies;
+	LogicalDependencySet dependencies;
 
 public:
 	SchemaCatalogEntry &ParentSchema() override {

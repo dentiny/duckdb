@@ -118,23 +118,6 @@ def test_dump_creates_triggers_after_data(shell, tmp_path, pattern):
     restored.check_stdout("42")
 
 
-def test_dump_invalid_view(shell, tmp_path):
-    source_database = tmp_path / "invalid_view_source.db"
-    create = (
-        ShellTest(shell, [str(source_database)])
-        .statement("CREATE TABLE dependency(i INTEGER)")
-        .statement("CREATE VIEW invalid_view AS SELECT * FROM dependency")
-        .statement("DROP TABLE dependency")
-    )
-    create_result = create.run()
-    create_result.check_stdout(None)
-    create_result.check_stderr(None)
-
-    dump = ShellTest(shell, [str(source_database)]).statement(".dump").run()
-    dump.check_stdout("CREATE VIEW invalid_view")
-    dump.check_stderr(None)
-
-
 @pytest.mark.parametrize("pattern", [None, "nested index"])
 def test_dump_nested_schema_path(shell, tmp_path, pattern):
     source_database = tmp_path / "nested source.db"

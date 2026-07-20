@@ -32,14 +32,11 @@ void CreateInfo::Serialize(Serializer &serializer) const {
 	serializer.WritePropertyWithDefault<Value>(107, "comment", comment, Value());
 	serializer.WritePropertyWithDefault<InsertionOrderPreservingMap<string>>(108, "tags", tags, InsertionOrderPreservingMap<string>());
 	if (serializer.ShouldSerialize(StorageVersion::V0_10_3)) {
-		serializer.WritePropertyWithDefault<LogicalDependencySet>(109, "dependencies", blocking_dependencies, LogicalDependencySet());
+		serializer.WritePropertyWithDefault<LogicalDependencySet>(109, "dependencies", dependencies, LogicalDependencySet());
 	}
 	serializer.WritePropertyWithDefault<Identifier>(110, "extension_name", extension_name);
 	if (serializer.ShouldSerialize(StorageVersion::V2_0_0) || (qualified_name.Path().size() > 3)) {
 		serializer.WriteProperty<QualifiedName>(111, "qualified_name", qualified_name);
-	}
-	if (serializer.ShouldSerialize(StorageVersion::V2_0_0)) {
-		serializer.WritePropertyWithDefault<LogicalDependencySet>(112, "recreation_only_dependencies", recreation_only_dependencies, LogicalDependencySet());
 	}
 }
 
@@ -53,10 +50,9 @@ unique_ptr<CreateInfo> CreateInfo::Deserialize(Deserializer &deserializer) {
 	auto sql = deserializer.ReadPropertyWithDefault<string>(106, "sql");
 	auto comment = deserializer.ReadPropertyWithExplicitDefault<Value>(107, "comment", Value());
 	auto tags = deserializer.ReadPropertyWithExplicitDefault<InsertionOrderPreservingMap<string>>(108, "tags", InsertionOrderPreservingMap<string>());
-	auto blocking_dependencies = deserializer.ReadPropertyWithExplicitDefault<LogicalDependencySet>(109, "dependencies", LogicalDependencySet());
+	auto dependencies = deserializer.ReadPropertyWithExplicitDefault<LogicalDependencySet>(109, "dependencies", LogicalDependencySet());
 	auto extension_name = deserializer.ReadPropertyWithDefault<Identifier>(110, "extension_name");
 	auto qualified_name = deserializer.ReadPropertyWithExplicitDefault<QualifiedName>(111, "qualified_name", QualifiedName());
-	auto recreation_only_dependencies = deserializer.ReadPropertyWithExplicitDefault<LogicalDependencySet>(112, "recreation_only_dependencies", LogicalDependencySet());
 	deserializer.Set<CatalogType>(type);
 	unique_ptr<CreateInfo> result;
 	switch (type) {
@@ -97,9 +93,8 @@ unique_ptr<CreateInfo> CreateInfo::Deserialize(Deserializer &deserializer) {
 	result->sql = std::move(sql);
 	result->comment = comment;
 	result->tags = std::move(tags);
-	result->blocking_dependencies = blocking_dependencies;
+	result->dependencies = dependencies;
 	result->extension_name = std::move(extension_name);
-	result->recreation_only_dependencies = recreation_only_dependencies;
 	result->SetQualification(std::move(catalog), std::move(schema));
 	if (!qualified_name.Path().empty()) {
 		result->qualified_name = std::move(qualified_name);

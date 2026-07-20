@@ -16,6 +16,21 @@ CREATE TABLE log(i INTEGER);
 statement ok
 CREATE TRIGGER log_insert AFTER INSERT ON data FOR EACH ROW INSERT INTO log VALUES (new.i);
 
+# Trigger names are scoped to their owning table.
+statement ok
+CREATE TABLE data2(i INTEGER);
+
+statement ok
+CREATE TABLE log2(i INTEGER);
+
+statement ok
+CREATE TRIGGER log_insert AFTER INSERT ON data2 FOR EACH ROW INSERT INTO log2 VALUES (new.i);
+
+statement error
+DROP TABLE log;
+----
+trigger "log_insert" depends on table "log".
+
 statement ok
 INSERT INTO data VALUES (42);
 
@@ -36,4 +51,25 @@ SELECT * FROM log ORDER BY ALL;
 query I
 SELECT COUNT(*) FROM duckdb_triggers() WHERE trigger_name = 'log_insert';
 ----
+2
+
+statement ok
+DROP TABLE log CASCADE;
+
+query I
+SELECT COUNT(*) FROM duckdb_triggers() WHERE trigger_name = 'log_insert';
+----
 1
+
+query I
+SELECT * FROM data;
+----
+42
+
+statement ok
+INSERT INTO data2 VALUES (84);
+
+query I
+SELECT * FROM log2;
+----
+84

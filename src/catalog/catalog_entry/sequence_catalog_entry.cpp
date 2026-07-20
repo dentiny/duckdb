@@ -23,8 +23,7 @@ SequenceData::SequenceData(CreateSequenceInfo &info)
 SequenceCatalogEntry::SequenceCatalogEntry(Catalog &catalog, SchemaCatalogEntry &schema, CreateSequenceInfo &info)
     : StandardEntry(CatalogType::SEQUENCE_ENTRY, schema, catalog, info.GetSequenceName()), data(info) {
 	this->temporary = info.temporary;
-	this->blocking_dependencies = info.blocking_dependencies;
-	this->recreation_only_dependencies = info.recreation_only_dependencies;
+	this->dependencies = info.dependencies;
 	this->comment = info.comment;
 	this->tags = info.tags;
 }
@@ -103,8 +102,7 @@ unique_ptr<CreateInfo> SequenceCatalogEntry::GetInfo() const {
 	result->start_value = seq_data.counter;
 	result->cycle = seq_data.cycle;
 	result->last_value = seq_data.last_value;
-	result->blocking_dependencies = blocking_dependencies;
-	result->recreation_only_dependencies = recreation_only_dependencies;
+	result->dependencies = dependencies;
 	result->comment = comment;
 	result->tags = tags;
 	return std::move(result);

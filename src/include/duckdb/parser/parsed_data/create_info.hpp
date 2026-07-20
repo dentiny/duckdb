@@ -46,9 +46,7 @@ public:
 	//! The SQL string of the CREATE statement
 	string sql;
 	//! Dependencies that affect DROP/ALTER and catalog recreation order
-	LogicalDependencySet blocking_dependencies;
-	//! Additional dependencies used only for catalog recreation order
-	LogicalDependencySet recreation_only_dependencies;
+	LogicalDependencySet dependencies;
 	//! User provided comment
 	Value comment;
 	//! Key-value tags with additional metadata

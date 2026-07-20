@@ -20,8 +20,7 @@ public:
 	    : StandardEntry(type, schema, catalog, info.GetFunctionName()) {
 		descriptions = std::move(info.descriptions);
 		alias_of = std::move(info.alias_of);
-		this->blocking_dependencies = info.blocking_dependencies;
-		this->recreation_only_dependencies = info.recreation_only_dependencies;
+		this->dependencies = info.dependencies;
 		this->internal = info.internal;
 		this->extension_name = info.extension_name;
 	}

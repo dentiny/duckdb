@@ -103,9 +103,7 @@ void DuckDBDependenciesFunction(ClientContext &context, TableFunctionInput &data
 		refobjid.Append(Value::BIGINT(NumericCast<int64_t>(entry.dependent.oid)));
 		refobjsubid.Append(Value::INTEGER(0));
 		string dependency_type_str;
-		if (entry.flags.IsRecreationOnly()) {
-			dependency_type_str = "o";
-		} else if (entry.flags.IsBlocking()) {
+		if (entry.flags.IsBlocking()) {
 			dependency_type_str = "n";
 		} else {
 			dependency_type_str = "a";

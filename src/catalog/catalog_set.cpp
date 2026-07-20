@@ -197,19 +197,13 @@ bool CatalogSet::CreateEntryInternal(CatalogTransaction transaction, const Ident
 }
 
 bool CatalogSet::CreateEntry(CatalogTransaction transaction, const Identifier &name, unique_ptr<CatalogEntry> value,
-                             const LogicalDependencySet &blocking_dependencies) {
-	return CreateEntry(transaction, name, std::move(value), blocking_dependencies, LogicalDependencySet());
-}
-
-bool CatalogSet::CreateEntry(CatalogTransaction transaction, const Identifier &name, unique_ptr<CatalogEntry> value,
-                             const LogicalDependencySet &blocking_dependencies,
-                             const LogicalDependencySet &recreation_only_dependencies) {
+                             const LogicalDependencySet &dependencies) {
 	CheckCatalogEntryInvariants(*value, name);
 
 	// Mark this entry as being created by the current active transaction
 	value->timestamp = transaction.transaction_id;
 	value->set = this;
-	catalog.GetDependencyManager()->AddObject(transaction, *value, blocking_dependencies, recreation_only_dependencies);
+	catalog.GetDependencyManager()->AddObject(transaction, *value, dependencies);
 
 	// lock the catalog for writing
 	lock_guard<mutex> write_lock(catalog.GetWriteLock());
@@ -220,8 +214,8 @@ bool CatalogSet::CreateEntry(CatalogTransaction transaction, const Identifier &n
 }
 
 bool CatalogSet::CreateEntry(ClientContext &context, const Identifier &name, unique_ptr<CatalogEntry> value,
-                             const LogicalDependencySet &blocking_dependencies) {
-	return CreateEntry(catalog.GetCatalogTransaction(context), name, std::move(value), blocking_dependencies);
+                             const LogicalDependencySet &dependencies) {
+	return CreateEntry(catalog.GetCatalogTransaction(context), name, std::move(value), dependencies);
 }
 
 //! This method is used to retrieve an entry for the purpose of making a new version, through an alter/drop/create

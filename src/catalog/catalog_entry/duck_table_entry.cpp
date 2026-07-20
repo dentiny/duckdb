@@ -816,8 +816,8 @@ unique_ptr<CatalogEntry> DuckTableEntry::RemoveColumn(ClientContext &context, Re
 	                              dropped_column_is_generated);
 
 	auto bound_create_info = binder->BindCreateTableInfo(std::move(create_info), schema, info.bind_mode);
-	info.new_blocking_dependencies =
-	    make_uniq<LogicalDependencySet>(std::move(bound_create_info->blocking_dependencies));
+	info.new_dependencies =
+	    make_uniq<LogicalDependencySet>(std::move(bound_create_info->dependencies));
 	if (columns.GetColumn(LogicalIndex(removed_index)).Generated()) {
 		return make_uniq<DuckTableEntry>(catalog, schema, *bound_create_info, storage, triggers);
 	}
@@ -1041,8 +1041,8 @@ unique_ptr<CatalogEntry> DuckTableEntry::SetDefault(ClientContext &context, SetD
 
 	auto binder = Binder::CreateBinder(context);
 	auto bound_create_info = binder->BindCreateTableInfo(std::move(create_info), schema, info.bind_mode);
-	info.new_blocking_dependencies =
-	    make_uniq<LogicalDependencySet>(std::move(bound_create_info->blocking_dependencies));
+	info.new_dependencies =
+	    make_uniq<LogicalDependencySet>(std::move(bound_create_info->dependencies));
 	return make_uniq<DuckTableEntry>(catalog, schema, *bound_create_info, storage, triggers);
 }
 
@@ -1430,7 +1430,7 @@ TableStorageInfo DuckTableEntry::GetStorageInfo(ClientContext &context) {
 optional_ptr<CatalogEntry> DuckTableEntry::CreateTrigger(CatalogTransaction transaction, CreateTriggerInfo &info) {
 	auto trigger = make_uniq<TriggerCatalogEntry>(catalog, schema, info);
 	auto entry_name = trigger->name;
-	LogicalDependencySet no_blocking_dependencies;
+	auto dependencies = trigger->dependencies;
 	if (info.on_conflict == OnCreateConflict::IGNORE_ON_CONFLICT) {
 		auto old_entry = triggers->GetEntry(transaction, entry_name);
 		if (old_entry) {
@@ -1442,7 +1442,7 @@ optional_ptr<CatalogEntry> DuckTableEntry::CreateTrigger(CatalogTransaction tran
 			triggers->DropEntry(transaction, entry_name, false);
 		}
 	}
-	if (!triggers->CreateEntry(transaction, entry_name, std::move(trigger), no_blocking_dependencies)) {
+	if (!triggers->CreateEntry(transaction, entry_name, std::move(trigger), dependencies)) {
 		throw CatalogException::EntryAlreadyExists(CatalogType::TRIGGER_ENTRY, entry_name);
 	}
 	return triggers->GetEntry(transaction, entry_name);
