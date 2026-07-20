@@ -2,8 +2,15 @@
 # description: Test behavior of 'sql' on various different views
 # group: [view]
 
+require skip_reload
+
 statement ok
-set storage_compatibility_version='v0.10.2'
+set storage_compatibility_version='v1.0.0'
+
+statement ok
+set enable_view_dependencies=false
+
+# The legacy setting is ignored: views always create catalog dependencies.
 
 statement ok
 create schema my_schema;
@@ -48,8 +55,21 @@ select trim(sql, chr(10)) from duckdb_views() where internal = false;
 ----
 CREATE VIEW vw AS SELECT * FROM tbl;
 
+statement error
+alter table tbl rename column b to x;
+----
+Dependency Error: Cannot alter entry "tbl" because there are entries that depend on it.
+
+# The VIEW has to be dropped before the table can be altered
+statement ok
+drop view vw;
+
 statement ok
 alter table tbl rename column b to x;
+
+# Recreate the view
+statement ok
+CREATE VIEW vw AS SELECT * FROM tbl;
 
 # sql is not affected by the column names of the table
 query I

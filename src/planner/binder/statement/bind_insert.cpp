@@ -599,8 +599,9 @@ BoundStatement Binder::BindNode(InsertQueryNode &node) {
 	result.names = {"Count"};
 	result.types = {LogicalType::BIGINT};
 
-	BindSchemaOrCatalog(node.qualified_name);
-	auto &table = Catalog::GetEntry<TableCatalogEntry>(context, node.qualified_name);
+	BindSchemaOrCatalog(entry_retriever, node.qualified_name);
+	auto table_entry = entry_retriever.GetEntry(EntryLookupInfo(CatalogType::TABLE_ENTRY, node.qualified_name));
+	auto &table = table_entry->Cast<TableCatalogEntry>();
 
 	if (auto expanded = TryExpandTriggers(node, table, TriggerEventType::INSERT_EVENT)) {
 		return std::move(*expanded);

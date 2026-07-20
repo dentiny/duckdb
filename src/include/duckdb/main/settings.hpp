@@ -1011,8 +1011,7 @@ struct EnableLogging {
 struct EnableMacroDependenciesSetting {
 	using RETURN_TYPE = bool;
 	static constexpr const char *Name = "enable_macro_dependencies";
-	static constexpr const char *Description =
-	    "Enable created MACROs to create dependencies on the referenced objects (such as tables)";
+	static constexpr const char *Description = "Deprecated compatibility setting; has no effect";
 	static constexpr const char *InputType = "BOOLEAN";
 	static constexpr const char *DefaultValue = "false";
 	static constexpr SettingScopeTarget Scope = SettingScopeTarget::GLOBAL_DEFAULT;
@@ -1077,8 +1076,7 @@ struct EnableProgressBarPrintSetting {
 struct EnableViewDependenciesSetting {
 	using RETURN_TYPE = bool;
 	static constexpr const char *Name = "enable_view_dependencies";
-	static constexpr const char *Description =
-	    "Enable created VIEWs to create dependencies on the referenced objects (such as tables)";
+	static constexpr const char *Description = "Deprecated compatibility setting; has no effect";
 	static constexpr const char *InputType = "BOOLEAN";
 	static constexpr const char *DefaultValue = "false";
 	static constexpr SettingScopeTarget Scope = SettingScopeTarget::GLOBAL_DEFAULT;

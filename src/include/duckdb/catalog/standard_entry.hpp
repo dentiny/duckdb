@@ -25,7 +25,7 @@ public:
 
 	//! The schema the entry belongs to
 	SchemaCatalogEntry &schema;
-	//! The dependencies of the entry, can be empty
+	//! Dependencies that affect DROP/ALTER and catalog recreation order
 	LogicalDependencyList dependencies;
 
 public:

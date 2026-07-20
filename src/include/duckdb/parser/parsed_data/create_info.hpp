@@ -45,7 +45,7 @@ public:
 	Identifier extension_name;
 	//! The SQL string of the CREATE statement
 	string sql;
-	//! The inherent dependencies of the created entry
+	//! Dependencies that affect DROP/ALTER and catalog recreation order
 	LogicalDependencyList dependencies;
 	//! User provided comment
 	Value comment;

@@ -3,7 +3,10 @@
 # group: [view]
 
 statement ok
-set storage_compatibility_version='v0.10.2'
+set storage_compatibility_version='v1.0.0'
+
+statement ok
+set enable_view_dependencies=true
 
 statement ok
 CREATE TABLE IF NOT EXISTS test (val INTEGER);
@@ -15,13 +18,10 @@ INSERT INTO test(val) VALUES (1), (2), (3);
 statement ok
 CREATE OR REPLACE VIEW foo AS (SELECT * FROM test);
 
-statement ok
-CREATE OR REPLACE VIEW foo AS (SELECT * FROM foo);
-
 statement error
-SELECT * FROM foo;
+CREATE OR REPLACE VIEW foo AS (SELECT * FROM foo);
 ----
-<REGEX>:.*Binder Error.*infinite recursion detected.*
+Catalog Error: CREATE OR REPLACE is not allowed to depend on itself
 
 # more complex recursive view definition
 statement ok
@@ -30,10 +30,7 @@ CREATE OR REPLACE VIEW foo AS (SELECT * FROM test);
 statement ok
 CREATE OR REPLACE VIEW foo2 AS (SELECT * FROM foo);
 
-statement ok
-CREATE OR REPLACE VIEW foo AS (SELECT (SELECT * FROM foo2));
-
 statement error
-SELECT * FROM foo;
+CREATE OR REPLACE VIEW foo AS (SELECT (SELECT * FROM foo2));
 ----
-<REGEX>:.*Binder Error.*infinite recursion detected.*
+Catalog Error: CREATE OR REPLACE is not allowed to depend on itself

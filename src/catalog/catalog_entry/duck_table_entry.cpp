@@ -1428,7 +1428,7 @@ TableStorageInfo DuckTableEntry::GetStorageInfo(ClientContext &context) {
 optional_ptr<CatalogEntry> DuckTableEntry::CreateTrigger(CatalogTransaction transaction, CreateTriggerInfo &info) {
 	auto trigger = make_uniq<TriggerCatalogEntry>(catalog, schema, info);
 	auto entry_name = trigger->name;
-	LogicalDependencyList dependencies = trigger->dependencies;
+	auto dependencies = trigger->dependencies;
 	if (info.on_conflict == OnCreateConflict::IGNORE_ON_CONFLICT) {
 		auto old_entry = triggers->GetEntry(transaction, entry_name);
 		if (old_entry) {

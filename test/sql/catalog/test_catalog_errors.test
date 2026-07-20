@@ -91,7 +91,7 @@ CREATE UNIQUE INDEX i_index ON integers(i);
 statement ok
 CREATE UNIQUE INDEX IF NOT EXISTS i_index ON integers(i);
 
-# dropping the table also drops the index
+# Indexes are contained by their table: dropping the table also drops the index without requiring CASCADE.
 statement ok
 DROP TABLE integers;
 
