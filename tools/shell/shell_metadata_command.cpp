@@ -122,7 +122,7 @@ void OrderDumpEntry(idx_t entry_index, const duckdb::catalog_entry_vector_t &ent
 }
 
 vector<duckdb::LogicalDependencyList> GetDumpDependencies(duckdb::ClientContext &context,
-                                                         const duckdb::catalog_entry_vector_t &entries) {
+                                                          const duckdb::catalog_entry_vector_t &entries) {
 	vector<duckdb::LogicalDependencyList> dependencies;
 	dependencies.reserve(entries.size());
 	for (auto &entry : entries) {
@@ -217,8 +217,7 @@ void DumpCatalog(ShellState &state, const string &like_clause) {
 			    entry.Cast<duckdb::TableCatalogEntry>().IsDuckTable()) {
 				auto &table = entry.Cast<duckdb::DuckTableEntry>();
 				auto transaction = duckdb::CatalogTransaction(table.ParentCatalog(), context);
-				table.ScanTriggers(transaction,
-				                   [&](duckdb::CatalogEntry &trigger) { entries.push_back(trigger); });
+				table.ScanTriggers(transaction, [&](duckdb::CatalogEntry &trigger) { entries.push_back(trigger); });
 			}
 		}
 		auto dependencies = GetDumpDependencies(context, entries);
