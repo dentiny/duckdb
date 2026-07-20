@@ -133,11 +133,13 @@ optional_ptr<CatalogEntry> DuckSchemaEntry::CreateSchema(CatalogTransaction tran
 
 optional_ptr<CatalogEntry> DuckSchemaEntry::AddEntryInternal(CatalogTransaction transaction,
                                                              unique_ptr<StandardEntry> entry,
-                                                             OnCreateConflict on_conflict,
-                                                             LogicalDependencyList dependencies) {
+                                                             OnCreateConflict on_conflict) {
 	auto entry_name = entry->name;
 	auto entry_type = entry->type;
 	auto result = entry.get();
+	auto dependencies = entry->dependencies;
+	// Every schema-owned entry has a blocking dependency on its containing schema.
+	dependencies.AddDependency(*this);
 
 	if (transaction.context) {
 		auto &meta = MetaTransaction::Get(transaction.GetContext());
@@ -152,8 +154,6 @@ optional_ptr<CatalogEntry> DuckSchemaEntry::AddEntryInternal(CatalogTransaction 
 	}
 	// first find the set for this entry
 	auto &set = GetCatalogSet(entry_type);
-	dependencies.AddDependency(*this);
-	dependencies.AddDependencies(entry->dependencies);
 	if (on_conflict == OnCreateConflict::IGNORE_ON_CONFLICT) {
 		auto old_entry = set.GetEntry(transaction, entry_name);
 		if (old_entry) {
@@ -209,7 +209,7 @@ optional_ptr<CatalogEntry> DuckSchemaEntry::CreateTable(CatalogTransaction trans
 		table->dependencies.AddDependency(dep);
 	}
 
-	auto entry = AddEntryInternal(transaction, std::move(table), info.Base().on_conflict, info.dependencies);
+	auto entry = AddEntryInternal(transaction, std::move(table), info.Base().on_conflict);
 	if (!entry) {
 		return nullptr;
 	}
@@ -269,8 +269,7 @@ optional_ptr<CatalogEntry> DuckSchemaEntry::CreateFunction(CatalogTransaction tr
 
 optional_ptr<CatalogEntry> DuckSchemaEntry::AddEntry(CatalogTransaction transaction, unique_ptr<StandardEntry> entry,
                                                      OnCreateConflict on_conflict) {
-	LogicalDependencyList dependencies = entry->dependencies;
-	return AddEntryInternal(transaction, std::move(entry), on_conflict, dependencies);
+	return AddEntryInternal(transaction, std::move(entry), on_conflict);
 }
 
 optional_ptr<CatalogEntry> DuckSchemaEntry::CreateSequence(CatalogTransaction transaction, CreateSequenceInfo &info) {
@@ -300,8 +299,7 @@ optional_ptr<CatalogEntry> DuckSchemaEntry::CreateIndex(CatalogTransaction trans
 	}
 
 	auto index = make_uniq<DuckIndexEntry>(catalog, *this, info, table);
-	auto dependencies = index->dependencies;
-	return AddEntryInternal(transaction, std::move(index), info.on_conflict, dependencies);
+	return AddEntryInternal(transaction, std::move(index), info.on_conflict);
 }
 
 optional_ptr<CatalogEntry> DuckSchemaEntry::CreateCollation(CatalogTransaction transaction, CreateCollationInfo &info) {
