@@ -252,8 +252,8 @@ void Binder::SetCatalogLookupCallback(catalog_entry_callback_t callback) {
 
 void Binder::BindView(ClientContext &context, const SelectStatement &stmt, const Identifier &catalog_name,
                       const Identifier &schema_name, optional_ptr<LogicalDependencySet> dependencies,
-	                  const vector<Identifier> &aliases, vector<LogicalType> &result_types,
-	                  vector<Identifier> &result_names) {
+                      const vector<Identifier> &aliases, vector<LogicalType> &result_types,
+                      vector<Identifier> &result_names) {
 	auto view_binder = Binder::CreateBinder(context);
 	auto &catalog = Catalog::GetCatalog(context, catalog_name);
 
@@ -298,9 +298,9 @@ void Binder::BindCreateViewInfo(CreateViewInfo &base) {
 		}
 	}
 	auto &dependencies = Settings::Get<EnableViewDependenciesSetting>(context) ? base.blocking_dependencies
-	                                                                         : base.recreation_only_dependencies;
-	BindView(context, *base.query, base.GetQualifiedName().Catalog(), base.GetQualifiedName().Schema(),
-	         dependencies, base.aliases, base.types, base.names);
+	                                                                           : base.recreation_only_dependencies;
+	BindView(context, *base.query, base.GetQualifiedName().Catalog(), base.GetQualifiedName().Schema(), dependencies,
+	         base.aliases, base.types, base.names);
 }
 
 SchemaCatalogEntry &Binder::BindCreateFunctionInfo(CreateInfo &info) {
@@ -443,7 +443,8 @@ SchemaCatalogEntry &Binder::BindCreateFunctionInfo(CreateInfo &info) {
 		macro_binding = this_macro_binding.get();
 
 		const auto should_create_dependencies = Settings::Get<EnableMacroDependenciesSetting>(context);
-		auto &dependencies = should_create_dependencies ? base.blocking_dependencies : base.recreation_only_dependencies;
+		auto &dependencies =
+		    should_create_dependencies ? base.blocking_dependencies : base.recreation_only_dependencies;
 		const auto binder_callback = [&dependencies, &catalog](CatalogEntry &entry) {
 			if (&catalog != &entry.ParentCatalog()) {
 				// Don't register any cross-catalog dependencies

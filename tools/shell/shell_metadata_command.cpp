@@ -77,7 +77,7 @@ string GetDumpSQL(duckdb::CatalogEntry &entry) {
 }
 
 duckdb::LogicalDependencySet GetCatalogRecreationDependencies(duckdb::ClientContext &context,
-	                                                          duckdb::CatalogEntry &entry) {
+                                                              duckdb::CatalogEntry &entry) {
 	auto info = entry.GetInfo();
 	auto recreation_dependencies = info->blocking_dependencies;
 	recreation_dependencies.AddAll(info->recreation_only_dependencies);
@@ -102,7 +102,7 @@ duckdb::LogicalDependencySet GetCatalogRecreationDependencies(duckdb::ClientCont
 }
 
 void OrderDumpEntry(idx_t entry_index, const duckdb::catalog_entry_vector_t &entries,
-	                const vector<duckdb::LogicalDependencySet> &recreation_dependencies,
+                    const vector<duckdb::LogicalDependencySet> &recreation_dependencies,
                     const duckdb::unordered_map<duckdb::LogicalDependency, idx_t, duckdb::LogicalDependencyHashFunction,
                                                 duckdb::LogicalDependencyEquality> &entry_indexes,
                     vector<uint8_t> &visited, duckdb::catalog_entry_vector_t &ordered) {
@@ -124,8 +124,8 @@ void OrderDumpEntry(idx_t entry_index, const duckdb::catalog_entry_vector_t &ent
 	ordered.push_back(entries[entry_index]);
 }
 
-vector<duckdb::LogicalDependencySet> GetDumpRecreationDependencies(
-    duckdb::ClientContext &context, const duckdb::catalog_entry_vector_t &entries) {
+vector<duckdb::LogicalDependencySet> GetDumpRecreationDependencies(duckdb::ClientContext &context,
+                                                                   const duckdb::catalog_entry_vector_t &entries) {
 	vector<duckdb::LogicalDependencySet> recreation_dependencies;
 	recreation_dependencies.reserve(entries.size());
 	for (auto &entry : entries) {
@@ -136,7 +136,7 @@ vector<duckdb::LogicalDependencySet> GetDumpRecreationDependencies(
 
 void SelectDumpDependencies(
     idx_t entry_index, const duckdb::catalog_entry_vector_t &entries,
-	const vector<duckdb::LogicalDependencySet> &recreation_dependencies,
+    const vector<duckdb::LogicalDependencySet> &recreation_dependencies,
     const duckdb::unordered_map<duckdb::LogicalDependency, idx_t, duckdb::LogicalDependencyHashFunction,
                                 duckdb::LogicalDependencyEquality> &entry_indexes,
     duckdb::unordered_set<idx_t> &selected, duckdb::unordered_set<idx_t> &visited) {
@@ -155,7 +155,7 @@ void SelectDumpDependencies(
 }
 
 void ExpandDumpEntries(const duckdb::catalog_entry_vector_t &entries,
-	                   const vector<duckdb::LogicalDependencySet> &recreation_dependencies,
+                       const vector<duckdb::LogicalDependencySet> &recreation_dependencies,
                        duckdb::unordered_set<idx_t> &selected) {
 	duckdb::unordered_map<duckdb::LogicalDependency, idx_t, duckdb::LogicalDependencyHashFunction,
 	                      duckdb::LogicalDependencyEquality>
@@ -173,7 +173,7 @@ void ExpandDumpEntries(const duckdb::catalog_entry_vector_t &entries,
 }
 
 void OrderDumpEntries(duckdb::catalog_entry_vector_t &entries,
-	                  const vector<duckdb::LogicalDependencySet> &recreation_dependencies) {
+                      const vector<duckdb::LogicalDependencySet> &recreation_dependencies) {
 	duckdb::unordered_map<duckdb::LogicalDependency, idx_t, duckdb::LogicalDependencyHashFunction,
 	                      duckdb::LogicalDependencyEquality>
 	    entry_indexes;

@@ -49,8 +49,7 @@ struct LogicalDependencyEquality {
 
 //! A set of LogicalDependency objects that have not been looked up in the catalog yet.
 class LogicalDependencySet {
-	using dependency_set_t =
-	    unordered_set<LogicalDependency, LogicalDependencyHashFunction, LogicalDependencyEquality>;
+	using dependency_set_t = unordered_set<LogicalDependency, LogicalDependencyHashFunction, LogicalDependencyEquality>;
 
 public:
 	DUCKDB_API void Add(CatalogEntry &entry);
