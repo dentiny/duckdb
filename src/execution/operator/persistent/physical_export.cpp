@@ -29,6 +29,15 @@ PhysicalExport::PhysicalExport(PhysicalPlan &physical_plan, vector<LogicalType> 
       function(std::move(function)), info(std::move(info)), exported_tables(std::move(exported_tables)) {
 }
 
+static QualifiedName GetExportQualifiedName(CatalogEntry &entry) {
+	auto schema_path = DependencyManager::GetSchemaPath(entry);
+	if (entry.type == CatalogType::SCHEMA_ENTRY) {
+		schema_path.push_back(entry.name);
+		return QualifiedName(std::move(schema_path), Identifier());
+	}
+	return QualifiedName(std::move(schema_path), entry.name);
+}
+
 static void WriteCatalogEntries(stringstream &ss, catalog_entry_vector_t &entries) {
 	for (auto &entry : entries) {
 		if (entry.get().internal) {
@@ -38,8 +47,7 @@ static void WriteCatalogEntries(stringstream &ss, catalog_entry_vector_t &entrie
 		string sql;
 		try {
 			// Strip the catalog from the info
-			create_info->SetQualifiedName(QualifiedName(Identifier(), create_info->GetQualifiedName().Schema(),
-			                                            create_info->GetQualifiedName().Name()));
+			create_info->SetQualifiedName(GetExportQualifiedName(entry.get()));
 			sql = create_info->ToString();
 		} catch (const NotImplementedException &) {
 			sql = entry.get().ToSQL();

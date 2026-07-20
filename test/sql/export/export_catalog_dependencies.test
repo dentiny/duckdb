@@ -35,6 +35,13 @@ CREATE TABLE a_table(i INTEGER DEFAULT z_macro(21));
 statement ok
 INSERT INTO a_table DEFAULT VALUES;
 
+# Preserve complete nested schema paths in exported DDL.
+statement ok
+CREATE SCHEMA "parent.schema";
+
+statement ok
+CREATE SCHEMA "parent.schema"."child schema";
+
 statement ok
 EXPORT DATABASE '{TEST_DIR}/export_catalog_dependencies' (FORMAT CSV);
 
@@ -53,3 +60,10 @@ query I
 SELECT * FROM a_table;
 ----
 42
+
+query II
+SELECT schema_name, parent_schema FROM duckdb_schemas()
+WHERE schema_name IN ('parent.schema', 'child schema') ORDER BY schema_name;
+----
+child schema	parent.schema
+parent.schema	NULL

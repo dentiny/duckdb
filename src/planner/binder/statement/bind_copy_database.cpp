@@ -21,6 +21,17 @@
 
 namespace duckdb {
 
+static QualifiedName GetCopyTargetQualifiedName(CatalogEntry &entry, const Identifier &target_database_name) {
+	vector<Identifier> target_path {target_database_name};
+	auto schema_path = DependencyManager::GetSchemaPath(entry);
+	target_path.insert(target_path.end(), schema_path.begin(), schema_path.end());
+	if (entry.type == CatalogType::SCHEMA_ENTRY) {
+		target_path.push_back(entry.name);
+		return QualifiedName(std::move(target_path), Identifier());
+	}
+	return QualifiedName(std::move(target_path), entry.name);
+}
+
 unique_ptr<LogicalOperator> Binder::BindCopyDatabaseSchema(Catalog &from_database,
                                                            const Identifier &target_database_name) {
 	catalog_entry_vector_t catalog_entries;
@@ -29,8 +40,7 @@ unique_ptr<LogicalOperator> Binder::BindCopyDatabaseSchema(Catalog &from_databas
 	auto info = make_uniq<CopyDatabaseInfo>(target_database_name);
 	for (auto &entry : catalog_entries) {
 		auto create_info = entry.get().GetInfo();
-		create_info->SetQualifiedName(QualifiedName(target_database_name, create_info->GetQualifiedName().Schema(),
-		                                            create_info->GetQualifiedName().Name()));
+		create_info->SetQualifiedName(GetCopyTargetQualifiedName(entry.get(), target_database_name));
 		auto on_conflict = create_info->type == CatalogType::SCHEMA_ENTRY ? OnCreateConflict::IGNORE_ON_CONFLICT
 		                                                                  : OnCreateConflict::ERROR_ON_CONFLICT;
 		// Update all the dependencies of the entry to point to the newly created entries on the target database
