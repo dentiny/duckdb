@@ -47,6 +47,7 @@
 #include "duckdb/common/types/data_chunk.hpp"
 #include "duckdb/common/types/vector.hpp"
 #include "duckdb/common/vector_size.hpp"
+#include "duckdb/function/scalar/struct_utils.hpp"
 #include "duckdb/logging/log_type.hpp"
 #include "duckdb/logging/logger.hpp"
 #include "duckdb/main/client_context.hpp"
@@ -1366,6 +1367,158 @@ static FilterPropagateResult CheckParquetFloatFilter(ClientContext &context, Col
 	return FilterPropagateResult::NO_PRUNING_POSSIBLE;
 }
 
+static bool TryGetNestedBloomFilterLeaf(ColumnReader &column_reader, const Expression &expr,
+                                        optional_ptr<ColumnReader> &leaf_reader) {
+	if (expr.GetExpressionClass() == ExpressionClass::BOUND_REF) {
+		if (expr.Cast<BoundReferenceExpression>().Index() != 0) {
+			return false;
+		}
+		leaf_reader = &column_reader;
+		return true;
+	}
+	if (expr.GetExpressionClass() != ExpressionClass::BOUND_FUNCTION) {
+		return false;
+	}
+
+	auto &function = expr.Cast<BoundFunctionExpression>();
+	if (function.GetChildren().empty() ||
+	    !TryGetNestedBloomFilterLeaf(column_reader, *function.GetChildren()[0], leaf_reader)) {
+		return false;
+	}
+
+	// Handle LIST type.
+	if (leaf_reader->Type().id() == LogicalTypeId::LIST &&
+	    (function.Function().GetName() == "list_extract" || function.Function().GetName() == "array_extract")) {
+		leaf_reader = &leaf_reader->Cast<ListColumnReader>().GetChildReader();
+		return true;
+	}
+
+	// Handle STRUCT type.
+	if (leaf_reader->Type().id() == LogicalTypeId::STRUCT) {
+		idx_t child_idx;
+		if (!TryGetStructExtractChildIndex(function, child_idx)) {
+			return false;
+		}
+		auto &struct_reader = leaf_reader->Cast<StructColumnReader>();
+		if (child_idx >= struct_reader.child_readers.size() || !struct_reader.child_readers[child_idx]) {
+			return false;
+		}
+		leaf_reader = struct_reader.child_readers[child_idx].get();
+		return true;
+	}
+
+	return false;
+}
+
+static bool TryGetBloomFilterLeaf(ColumnReader &column_reader, const TableFilter &filter,
+                                  optional_ptr<ColumnReader> &leaf_reader, unique_ptr<TableFilter> &leaf_filter) {
+	auto &expr_filter = ExpressionFilter::GetExpressionFilter(filter, "ParquetReader::TryGetBloomFilterLeaf");
+	auto &expr = *expr_filter.expr;
+	if (!BoundComparisonExpression::IsComparison(expr) || expr.GetExpressionType() != ExpressionType::COMPARE_EQUAL) {
+		return false;
+	}
+
+	auto &comparison = expr.Cast<BoundFunctionExpression>();
+	auto &left = BoundComparisonExpression::Left(comparison);
+	auto &right = BoundComparisonExpression::Right(comparison);
+	optional_ptr<const Expression> column_expr;
+	optional_ptr<const BoundConstantExpression> constant;
+	if (left.GetExpressionClass() == ExpressionClass::BOUND_CONSTANT) {
+		constant = left.Cast<BoundConstantExpression>();
+		column_expr = &right;
+	} else if (right.GetExpressionClass() == ExpressionClass::BOUND_CONSTANT) {
+		constant = right.Cast<BoundConstantExpression>();
+		column_expr = &left;
+	} else {
+		return false;
+	}
+	if (constant->GetValue().IsNull()) {
+		return false;
+	}
+
+	if (!TryGetNestedBloomFilterLeaf(column_reader, *column_expr, leaf_reader) ||
+	    leaf_reader->Type() != constant->GetValue().type()) {
+		return false;
+	}
+
+	auto leaf_comparison = BoundComparisonExpression::Create(
+	    ExpressionType::COMPARE_EQUAL, make_uniq<BoundReferenceExpression>(leaf_reader->Type(), 0ULL),
+	    make_uniq<BoundConstantExpression>(constant->GetValue()));
+	leaf_filter = make_uniq<ExpressionFilter>(std::move(leaf_comparison));
+	return true;
+}
+
+static bool IsIdentityRemap(const Value &remap) {
+	if (remap.IsNull()) {
+		return true;
+	}
+	if (!StructType::IsStruct(remap.type())) {
+		return false;
+	}
+	auto &types = StructType::GetChildTypes(remap.type());
+	auto &values = StructValue::GetChildren(remap);
+	for (idx_t child_idx = 0; child_idx < values.size(); child_idx++) {
+		auto &target_name = types[child_idx].first;
+		auto &mapping = values[child_idx];
+		if (mapping.type().id() == LogicalTypeId::VARCHAR) {
+			if (!StringUtil::CIEquals(target_name.GetIdentifierName(), mapping.ToString())) {
+				return false;
+			}
+			continue;
+		}
+		if (mapping.type().id() != LogicalTypeId::TUPLE) {
+			return false;
+		}
+		auto &mapping_children = StructValue::GetChildren(mapping);
+		if (mapping_children.size() != 2 || mapping_children[0].type().id() != LogicalTypeId::VARCHAR ||
+		    !StringUtil::CIEquals(target_name.GetIdentifierName(), mapping_children[0].ToString()) ||
+		    !IsIdentityRemap(mapping_children[1])) {
+			return false;
+		}
+	}
+	return true;
+}
+
+static optional_idx GetIdentityExpressionChild(const ExpressionColumnReader &reader) {
+	if (reader.expr->GetExpressionClass() == ExpressionClass::BOUND_REF) {
+		return reader.expr->Cast<BoundReferenceExpression>().Index();
+	}
+	if (reader.expr->GetExpressionClass() != ExpressionClass::BOUND_FUNCTION) {
+		return optional_idx();
+	}
+	auto &function = reader.expr->Cast<BoundFunctionExpression>();
+	if (function.Function().GetName() != "remap_struct" || function.GetChildren().size() != 4 ||
+	    function.GetChildren()[0]->GetExpressionClass() != ExpressionClass::BOUND_REF ||
+	    function.GetChildren()[2]->GetExpressionClass() != ExpressionClass::BOUND_CONSTANT ||
+	    function.GetChildren()[3]->GetExpressionClass() != ExpressionClass::BOUND_CONSTANT) {
+		return optional_idx();
+	}
+	auto &remap = function.GetChildren()[2]->Cast<BoundConstantExpression>().GetValue();
+	auto &defaults = function.GetChildren()[3]->Cast<BoundConstantExpression>().GetValue();
+	if (!defaults.IsNull() || !IsIdentityRemap(remap)) {
+		return optional_idx();
+	}
+	return function.GetChildren()[0]->Cast<BoundReferenceExpression>().Index();
+}
+
+static ColumnReader &GetPruningReader(ColumnReader &column_reader) {
+	auto reader = optional_ptr<ColumnReader>(column_reader);
+	while (reader->Schema().schema_type == ParquetColumnSchemaType::EXPRESSION) {
+		auto &expression_reader = reader->Cast<ExpressionColumnReader>();
+		auto child_idx = GetIdentityExpressionChild(expression_reader);
+		if (!child_idx.IsValid()) {
+			break;
+		}
+		if (child_idx.GetIndex() >= expression_reader.child_readers.size() ||
+		    !expression_reader.child_readers[child_idx.GetIndex()] ||
+		    expression_reader.child_readers[child_idx.GetIndex()]->Type() != reader->Type()) {
+			break;
+		}
+		reader = expression_reader.child_readers[child_idx.GetIndex()].get();
+	}
+	return *reader;
+}
+
 ColumnReader &ParquetReaderScanState::GetColumnReader(idx_t i) {
 	return *column_readers[i];
 }
@@ -1374,6 +1527,7 @@ void ParquetReader::PrepareRowGroupBuffer(ClientContext &context, ParquetReaderS
 	auto &group = GetGroup(state);
 	auto col_idx = MultiFileLocalIndex(i);
 	auto &column_reader = state.GetColumnReader(col_idx);
+	auto &pruning_reader = GetPruningReader(column_reader);
 
 	// keep track of column and row group ordinal if data is encrypted
 	if (metadata->crypto_metadata->encryption_algorithm.__isset.AES_GCM_CTR_V1) {
@@ -1382,17 +1536,17 @@ void ParquetReader::PrepareRowGroupBuffer(ClientContext &context, ParquetReaderS
 	}
 
 	if (filters) {
-		auto stats = column_reader.Stats(state.group_index, group.columns);
+		auto stats = pruning_reader.Stats(state.group_index, group.columns);
 		// filters contain output chunk index, not file col idx!
 		auto filter_entry = filters->TryGetFilterByColumnIndex(col_idx);
 		if (stats && filter_entry) {
 			auto &filter = *filter_entry;
 
-			auto schema_column_index = column_reader.ColumnIndex();
+			auto schema_column_index = pruning_reader.ColumnIndex();
 			FilterPropagateResult prune_result;
 			bool is_generated_column = schema_column_index >= group.columns.size();
-			bool is_column = column_reader.Schema().schema_type == ParquetColumnSchemaType::COLUMN;
-			bool is_expression = column_reader.Schema().schema_type == ParquetColumnSchemaType::EXPRESSION;
+			bool is_column = pruning_reader.Schema().schema_type == ParquetColumnSchemaType::COLUMN;
+			bool is_expression = pruning_reader.Schema().schema_type == ParquetColumnSchemaType::EXPRESSION;
 			bool has_min_max = false;
 			if (!is_generated_column) {
 				has_min_max = group.columns[schema_column_index].meta_data.statistics.__isset.min_value &&
@@ -1402,13 +1556,13 @@ void ParquetReader::PrepareRowGroupBuffer(ClientContext &context, ParquetReaderS
 				// no pruning possible for expressions
 				prune_result = FilterPropagateResult::NO_PRUNING_POSSIBLE;
 			} else if (!is_generated_column && has_min_max &&
-			           (column_reader.Type().id() == LogicalTypeId::FLOAT ||
-			            column_reader.Type().id() == LogicalTypeId::DOUBLE) &&
+			           (pruning_reader.Type().id() == LogicalTypeId::FLOAT ||
+			            pruning_reader.Type().id() == LogicalTypeId::DOUBLE) &&
 			           parquet_options.can_have_nan) {
 				// floating point columns can have NaN values in addition to the min/max bounds defined in the file
 				// in order to do optimal pruning - we prune based on the [min, max] of the file followed by pruning
 				// based on nan
-				prune_result = CheckParquetFloatFilter(context, column_reader,
+				prune_result = CheckParquetFloatFilter(context, pruning_reader,
 				                                       group.columns[schema_column_index].meta_data.statistics, filter);
 			} else {
 				auto &expr_filter =
@@ -1416,12 +1570,26 @@ void ParquetReader::PrepareRowGroupBuffer(ClientContext &context, ParquetReaderS
 				prune_result = expr_filter.CheckStatistics(context, *stats);
 			}
 			// check the bloom filter if present
-			if (prune_result == FilterPropagateResult::NO_PRUNING_POSSIBLE && !column_reader.Type().IsNested() &&
-			    is_column && ParquetStatisticsUtils::BloomFilterSupported(column_reader.Schema()) &&
-			    ParquetStatisticsUtils::BloomFilterExcludes(filter, group.columns[schema_column_index].meta_data,
-			                                                *state.thrift_file_proto, allocator,
-			                                                column_reader.Schema())) {
-				prune_result = FilterPropagateResult::FILTER_ALWAYS_FALSE;
+			if (prune_result == FilterPropagateResult::NO_PRUNING_POSSIBLE && is_column) {
+				optional_ptr<ColumnReader> bloom_reader = &pruning_reader;
+				optional_ptr<const TableFilter> bloom_filter = &filter;
+				unique_ptr<TableFilter> leaf_filter;
+				if (pruning_reader.Type().IsNested()) {
+					if (!TryGetBloomFilterLeaf(pruning_reader, filter, bloom_reader, leaf_filter)) {
+						bloom_reader = nullptr;
+					} else {
+						bloom_filter = leaf_filter.get();
+					}
+				}
+				if (bloom_reader && bloom_filter &&
+				    bloom_reader->Schema().schema_type == ParquetColumnSchemaType::COLUMN &&
+				    bloom_reader->ColumnIndex() < group.columns.size() &&
+				    ParquetStatisticsUtils::BloomFilterSupported(bloom_reader->Schema()) &&
+				    ParquetStatisticsUtils::BloomFilterExcludes(
+				        *bloom_filter, group.columns[bloom_reader->ColumnIndex()].meta_data, *state.thrift_file_proto,
+				        allocator, bloom_reader->Schema())) {
+					prune_result = FilterPropagateResult::FILTER_ALWAYS_FALSE;
+				}
 			}
 
 			if (prune_result == FilterPropagateResult::FILTER_ALWAYS_FALSE) {
