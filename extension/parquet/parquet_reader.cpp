@@ -1366,6 +1366,70 @@ static FilterPropagateResult CheckParquetFloatFilter(ClientContext &context, Col
 	return FilterPropagateResult::NO_PRUNING_POSSIBLE;
 }
 
+static bool TryGetListBloomFilterLeaf(ColumnReader &column_reader, const Expression &expr,
+                                      optional_ptr<ColumnReader> &leaf_reader) {
+	if (expr.GetExpressionClass() == ExpressionClass::BOUND_REF) {
+		if (expr.Cast<BoundReferenceExpression>().Index() != 0) {
+			return false;
+		}
+		leaf_reader = &column_reader;
+		return true;
+	}
+	if (expr.GetExpressionClass() != ExpressionClass::BOUND_FUNCTION) {
+		return false;
+	}
+
+	auto &function = expr.Cast<BoundFunctionExpression>();
+	if (function.GetChildren().empty() ||
+	    !TryGetListBloomFilterLeaf(column_reader, *function.GetChildren()[0], leaf_reader)) {
+		return false;
+	}
+	if (leaf_reader->Type().id() == LogicalTypeId::LIST &&
+	    (function.Function().GetName() == "list_extract" || function.Function().GetName() == "array_extract")) {
+		leaf_reader = &leaf_reader->Cast<ListColumnReader>().GetChildReader();
+		return true;
+	}
+	return false;
+}
+
+static bool TryGetBloomFilterLeaf(ColumnReader &column_reader, const TableFilter &filter,
+                                  optional_ptr<ColumnReader> &leaf_reader, unique_ptr<TableFilter> &leaf_filter) {
+	auto &expr_filter = ExpressionFilter::GetExpressionFilter(filter, "ParquetReader::TryGetBloomFilterLeaf");
+	auto &expr = *expr_filter.expr;
+	if (!BoundComparisonExpression::IsComparison(expr) || expr.GetExpressionType() != ExpressionType::COMPARE_EQUAL) {
+		return false;
+	}
+
+	auto &comparison = expr.Cast<BoundFunctionExpression>();
+	auto &left = BoundComparisonExpression::Left(comparison);
+	auto &right = BoundComparisonExpression::Right(comparison);
+	optional_ptr<const Expression> column_expr;
+	optional_ptr<const BoundConstantExpression> constant;
+	if (left.GetExpressionClass() == ExpressionClass::BOUND_CONSTANT) {
+		constant = left.Cast<BoundConstantExpression>();
+		column_expr = &right;
+	} else if (right.GetExpressionClass() == ExpressionClass::BOUND_CONSTANT) {
+		constant = right.Cast<BoundConstantExpression>();
+		column_expr = &left;
+	} else {
+		return false;
+	}
+	if (constant->GetValue().IsNull()) {
+		return false;
+	}
+
+	if (!TryGetListBloomFilterLeaf(column_reader, *column_expr, leaf_reader) ||
+	    leaf_reader->Type() != constant->GetValue().type()) {
+		return false;
+	}
+
+	auto leaf_comparison = BoundComparisonExpression::Create(
+	    ExpressionType::COMPARE_EQUAL, make_uniq<BoundReferenceExpression>(leaf_reader->Type(), 0ULL),
+	    make_uniq<BoundConstantExpression>(constant->GetValue()));
+	leaf_filter = make_uniq<ExpressionFilter>(std::move(leaf_comparison));
+	return true;
+}
+
 ColumnReader &ParquetReaderScanState::GetColumnReader(idx_t i) {
 	return *column_readers[i];
 }
@@ -1416,12 +1480,26 @@ void ParquetReader::PrepareRowGroupBuffer(ClientContext &context, ParquetReaderS
 				prune_result = expr_filter.CheckStatistics(context, *stats);
 			}
 			// check the bloom filter if present
-			if (prune_result == FilterPropagateResult::NO_PRUNING_POSSIBLE && !column_reader.Type().IsNested() &&
-			    is_column && ParquetStatisticsUtils::BloomFilterSupported(column_reader.Schema()) &&
-			    ParquetStatisticsUtils::BloomFilterExcludes(filter, group.columns[schema_column_index].meta_data,
-			                                                *state.thrift_file_proto, allocator,
-			                                                column_reader.Schema())) {
-				prune_result = FilterPropagateResult::FILTER_ALWAYS_FALSE;
+			if (prune_result == FilterPropagateResult::NO_PRUNING_POSSIBLE && is_column) {
+				optional_ptr<ColumnReader> bloom_reader = &column_reader;
+				optional_ptr<const TableFilter> bloom_filter = &filter;
+				unique_ptr<TableFilter> leaf_filter;
+				if (column_reader.Type().IsNested()) {
+					if (!TryGetBloomFilterLeaf(column_reader, filter, bloom_reader, leaf_filter)) {
+						bloom_reader = nullptr;
+					} else {
+						bloom_filter = leaf_filter.get();
+					}
+				}
+				if (bloom_reader && bloom_filter &&
+				    bloom_reader->Schema().schema_type == ParquetColumnSchemaType::COLUMN &&
+				    bloom_reader->ColumnIndex() < group.columns.size() &&
+				    ParquetStatisticsUtils::BloomFilterSupported(bloom_reader->Schema()) &&
+				    ParquetStatisticsUtils::BloomFilterExcludes(
+				        *bloom_filter, group.columns[bloom_reader->ColumnIndex()].meta_data, *state.thrift_file_proto,
+				        allocator, bloom_reader->Schema())) {
+					prune_result = FilterPropagateResult::FILTER_ALWAYS_FALSE;
+				}
 			}
 
 			if (prune_result == FilterPropagateResult::FILTER_ALWAYS_FALSE) {
