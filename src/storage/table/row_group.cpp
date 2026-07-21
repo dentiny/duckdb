@@ -14,6 +14,7 @@
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/planner/filter/expression_filter.hpp"
 #include "duckdb/planner/table_filter.hpp"
+#include "duckdb/planner/table_filter_set.hpp"
 #include "duckdb/storage/checkpoint/table_data_writer.hpp"
 #include "duckdb/storage/metadata/metadata_reader.hpp"
 #include "duckdb/storage/statistics/base_statistics.hpp"
@@ -734,6 +735,32 @@ bool RowGroup::CheckZonemap(optional_ptr<ClientContext> context, ScanFilterInfo 
 			// filter is always true - no need to check it
 			// label the filter as always true so we don't need to check it anymore
 			filters.SetFilterAlwaysTrue(i);
+		}
+	}
+	auto table_filters = filters.GetTableFilters();
+	if (!table_filters) {
+		return true;
+	}
+	auto &column_ids = filters.GetColumnIds();
+	for (auto &row_group_filter : table_filters->GetRowGroupFilters()) {
+		bool all_filters_are_false = true;
+		for (auto &row_group_entry : row_group_filter.filters) {
+			auto &filter = *row_group_entry.filter;
+			const auto &base_column_index = column_ids[row_group_entry.column_index];
+
+			FilterPropagateResult prune_result;
+			if (base_column_index.IsRowIdColumn()) {
+				prune_result = CheckRowIdFilter(filter, row_start, row_start + count);
+			} else {
+				prune_result = GetColumn(base_column_index).CheckZonemap(context, base_column_index, filter);
+			}
+			if (prune_result != FilterPropagateResult::FILTER_ALWAYS_FALSE) {
+				all_filters_are_false = false;
+				break;
+			}
+		}
+		if (all_filters_are_false) {
+			return false;
 		}
 	}
 	return true;

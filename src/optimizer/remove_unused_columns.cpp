@@ -865,6 +865,16 @@ void RemoveUnusedColumns::RemoveColumnsFromLogicalGet(LogicalGet &get, unique_pt
 			}
 			remapped_filters.PushFilter(it->second, entry.TakeFilter());
 		}
+		for (auto &row_group_filter : get.table_filters.TakeRowGroupFilters()) {
+			for (auto &filter : row_group_filter.filters) {
+				auto it = old_to_new_pos.find(filter.column_index);
+				if (it == old_to_new_pos.end()) {
+					throw InternalException("RemoveUnusedColumns: removed a row-group filter column");
+				}
+				filter.column_index = it->second;
+			}
+			remapped_filters.PushRowGroupFilter(std::move(row_group_filter.filters));
+		}
 		get.table_filters = std::move(remapped_filters);
 	}
 

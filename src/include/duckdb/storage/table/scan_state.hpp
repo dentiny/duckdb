@@ -194,6 +194,15 @@ public:
 		return filter_list;
 	}
 
+	optional_ptr<TableFilterSet> GetTableFilters() const {
+		return table_filters;
+	}
+
+	const vector<StorageIndex> &GetColumnIds() const {
+		D_ASSERT(column_ids);
+		return *column_ids;
+	}
+
 	optional_ptr<AdaptiveFilter> GetAdaptiveFilter();
 	AdaptiveFilterState BeginFilter() const;
 	void EndFilter(AdaptiveFilterState state);
@@ -213,6 +222,8 @@ public:
 private:
 	//! The table filters (if any)
 	optional_ptr<TableFilterSet> table_filters;
+	//! The scan column ids
+	optional_ptr<const vector<StorageIndex>> column_ids;
 	//! Adaptive filter info (if any)
 	unique_ptr<AdaptiveFilter> adaptive_filter;
 	//! The set of filters

@@ -20,6 +20,7 @@ unique_ptr<TableFilterSet> MoveTableFilters(TableFilterSet &table_filters) {
 	for (auto &entry : table_filters) {
 		table_filter_set->SetFilterByColumnIndex(entry.GetIndex(), entry.TakeFilter());
 	}
+	table_filter_set->SetRowGroupFilters(table_filters.TakeRowGroupFilters());
 	return table_filter_set;
 }
 
@@ -87,7 +88,7 @@ PhysicalOperator &PhysicalPlanGenerator::CreatePlan(LogicalGet &op) {
 	optional_ptr<PhysicalOperator> filter;
 	auto &projection_ids = op.projection_ids;
 
-	if (table_filters && op.function.supports_pushdown_type) {
+	if (table_filters && table_filters->FilterCount() > 0 && op.function.supports_pushdown_type) {
 		vector<unique_ptr<Expression>> select_list;
 		unique_ptr<Expression> unsupported_filter;
 		unordered_set<ProjectionIndex> to_remove;

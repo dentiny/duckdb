@@ -82,8 +82,11 @@ void ScanFilterInfo::Initialize(ClientContext &context, TableFilterSet &filters,
                                 const vector<StorageIndex> &column_ids) {
 	D_ASSERT(filters.HasFilters());
 	table_filters = &filters;
-	adaptive_filter = make_uniq<AdaptiveFilter>(filters);
-	adaptive_filter->SetLogger(context.logger);
+	this->column_ids = &column_ids;
+	if (filters.FilterCount() > 0) {
+		adaptive_filter = make_uniq<AdaptiveFilter>(filters);
+		adaptive_filter->SetLogger(context.logger);
+	}
 	filter_list.reserve(filters.FilterCount());
 	for (auto &entry : filters) {
 		filter_list.emplace_back(context, entry.GetIndex(), column_ids, entry.Filter());
