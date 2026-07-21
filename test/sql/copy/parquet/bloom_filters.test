@@ -43,6 +43,17 @@ COPY (
     SELECT
         [v, v + 2] AS list_value,
         [[[v, v + 2]]] AS deep_list,
+        {
+            'level_1': {'level_2': {'value': v}},
+            'values': [v, v + 2],
+            'nested_values': [[[v, v + 2]]]
+        } AS struct_value,
+        [{'value': v, 'present': i}, {'value': v + 2, 'present': i}] AS struct_list,
+        [
+            {'level_1': {'level_2': {'value': v}}},
+            {'level_1': {'level_2': {'value': v + 2}}}
+        ] AS nested_struct_list,
+        {'items': [{'values': [v, v + 2]}, {'values': [v + 4, v + 6]}]} AS deep_mixed,
         i::BIGINT AS payload
     FROM (
         SELECT i, ((i % 100) * 2)::INTEGER AS v
@@ -118,6 +129,102 @@ FROM read_parquet('{TEST_DIR}/bloom_list.parquet')
 WHERE list_value[2] = 102;
 ----
 205
+
+# Deeply nested structs
+query I
+SELECT count(*)
+FROM read_parquet('{TEST_DIR}/bloom_list.parquet')
+WHERE struct_value.level_1.level_2.value = 101;
+----
+0
+
+query II
+EXPLAIN ANALYZE
+SELECT struct_value, payload
+FROM read_parquet('{TEST_DIR}/bloom_list.parquet')
+WHERE struct_value.level_1.level_2.value = 101;
+----
+analyzed_plan	<REGEX>:(?s).*Row Groups Scanned: 0 / 10.*
+
+# List inside a struct
+query I
+SELECT count(*)
+FROM read_parquet('{TEST_DIR}/bloom_list.parquet')
+WHERE struct_value.values[1] = 101;
+----
+0
+
+query II
+EXPLAIN ANALYZE
+SELECT struct_value, payload
+FROM read_parquet('{TEST_DIR}/bloom_list.parquet')
+WHERE struct_value.values[1] = 101;
+----
+analyzed_plan	<REGEX>:(?s).*Row Groups Scanned: 0 / 10.*
+
+# Nested list inside a struct
+query I
+SELECT count(*)
+FROM read_parquet('{TEST_DIR}/bloom_list.parquet')
+WHERE struct_value.nested_values[1][1][1] = 101;
+----
+0
+
+query II
+EXPLAIN ANALYZE
+SELECT struct_value, payload
+FROM read_parquet('{TEST_DIR}/bloom_list.parquet')
+WHERE struct_value.nested_values[1][1][1] = 101;
+----
+analyzed_plan	<REGEX>:(?s).*Row Groups Scanned: 0 / 10.*
+
+# Struct inside a list
+query I
+SELECT count(*)
+FROM read_parquet('{TEST_DIR}/bloom_list.parquet')
+WHERE struct_list[1].value = 101;
+----
+0
+
+query II
+EXPLAIN ANALYZE
+SELECT struct_list, payload
+FROM read_parquet('{TEST_DIR}/bloom_list.parquet')
+WHERE struct_list[1].value = 101;
+----
+analyzed_plan	<REGEX>:(?s).*Row Groups Scanned: 0 / 10.*
+
+# Nested struct inside a list
+query I
+SELECT count(*)
+FROM read_parquet('{TEST_DIR}/bloom_list.parquet')
+WHERE nested_struct_list[1].level_1.level_2.value = 101;
+----
+0
+
+query II
+EXPLAIN ANALYZE
+SELECT nested_struct_list, payload
+FROM read_parquet('{TEST_DIR}/bloom_list.parquet')
+WHERE nested_struct_list[1].level_1.level_2.value = 101;
+----
+analyzed_plan	<REGEX>:(?s).*Row Groups Scanned: 0 / 10.*
+
+# Alternating struct -> list -> struct -> list nesting
+query I
+SELECT count(*)
+FROM read_parquet('{TEST_DIR}/bloom_list.parquet')
+WHERE deep_mixed.items[1].values[1] = 101;
+----
+0
+
+query II
+EXPLAIN ANALYZE
+SELECT deep_mixed, payload
+FROM read_parquet('{TEST_DIR}/bloom_list.parquet')
+WHERE deep_mixed.items[1].values[1] = 101;
+----
+analyzed_plan	<REGEX>:(?s).*Row Groups Scanned: 0 / 10.*
 
 statement ok
 CREATE MACRO assert_bloom_filter_hit(file, col, val) AS TABLE
