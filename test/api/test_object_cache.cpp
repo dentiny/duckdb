@@ -67,21 +67,63 @@ TEST_CASE("Test ObjectCache", "[api][object_cache]") {
 	auto &context = *con.context;
 
 	auto &cache = ObjectCache::GetObjectCache(context);
+	auto database_id = DatabaseInstance::GetDatabase(context).GetDatabaseId();
 
-	REQUIRE(cache.GetObject("test") == nullptr);
-	cache.Put("test", make_shared_ptr<TestObject>(42));
+	REQUIRE(cache.GetObject(database_id, "test") == nullptr);
+	cache.Put(database_id, "test", make_shared_ptr<TestObject>(42));
 
-	REQUIRE(cache.GetObject("test") != nullptr);
+	REQUIRE(cache.GetObject(database_id, "test") != nullptr);
 
-	cache.Delete("test");
-	REQUIRE(cache.GetObject("test") == nullptr);
+	cache.Delete(database_id, "test");
+	REQUIRE(cache.GetObject(database_id, "test") == nullptr);
 
-	REQUIRE(cache.GetOrCreate<TestObject>("test", 42) != nullptr);
-	REQUIRE(cache.Get<TestObject>("test") != nullptr);
-	REQUIRE(cache.GetOrCreate<TestObject>("test", 1337)->value == 42);
-	REQUIRE(cache.Get<TestObject>("test")->value == 42);
+	REQUIRE(cache.GetOrCreate<TestObject>(database_id, "test", 42) != nullptr);
+	REQUIRE(cache.Get<TestObject>(database_id, "test") != nullptr);
+	REQUIRE(cache.GetOrCreate<TestObject>(database_id, "test", 1337)->value == 42);
+	REQUIRE(cache.Get<TestObject>(database_id, "test")->value == 42);
 
-	REQUIRE(cache.GetOrCreate<AnotherTestObject>("test", 13) == nullptr);
+	REQUIRE(cache.GetOrCreate<AnotherTestObject>(database_id, "test", 13) == nullptr);
+}
+
+TEST_CASE("Database instances share isolated memory managers and object cache",
+          "[api][object_cache][buffer_pool]") {
+	auto first = make_uniq<DuckDB>();
+	DBConfig second_config;
+	second_config.ShareMemoryWith(*first->instance);
+	DuckDB second(nullptr, &second_config);
+
+	REQUIRE(first->instance->GetMemoryManager() == second.instance->GetMemoryManager());
+	REQUIRE(&first->instance->GetBufferPool() == &second.instance->GetBufferPool());
+	REQUIRE(&first->instance->GetBufferManager() != &second.instance->GetBufferManager());
+	REQUIRE(&first->instance->GetObjectCache() == &second.instance->GetObjectCache());
+	REQUIRE(first->instance->GetDatabaseId() != second.instance->GetDatabaseId());
+	{
+		auto &first_buffer_manager = first->instance->GetBufferManager();
+		auto &second_buffer_manager = second.instance->GetBufferManager();
+		auto first_pin = first_buffer_manager.Allocate(MemoryTag::EXTENSION, 1024, true);
+		auto first_block = first_pin.GetBlockHandle();
+		REQUIRE_THROWS(second_buffer_manager.Pin(first_block));
+	}
+
+	first->instance->GetObjectCache().Put(first->instance->GetDatabaseId(), "first-only",
+	                                     make_shared_ptr<TestObject>(42));
+	REQUIRE(second.instance->GetObjectCache().Get<TestObject>(second.instance->GetDatabaseId(), "first-only") ==
+	        nullptr);
+
+	auto &shared_pool = second.instance->GetBufferPool();
+	const auto initial_memory = shared_pool.GetUsedMemory();
+	constexpr idx_t cache_entry_size = 1024 * 1024;
+	first->instance->GetObjectCache().Put(first->instance->GetDatabaseId(), "first-memory",
+	                                     make_shared_ptr<EvictableTestObject>(1, cache_entry_size));
+	second.instance->GetObjectCache().Put(second.instance->GetDatabaseId(), "second-memory",
+	                                    make_shared_ptr<EvictableTestObject>(2, cache_entry_size));
+	REQUIRE(shared_pool.GetUsedMemory() == initial_memory + cache_entry_size * 2);
+
+	first.reset();
+	Connection connection(second);
+	auto result = connection.Query("SELECT sum(i) FROM range(10000) t(i)");
+	REQUIRE_NO_FAIL(*result);
+	REQUIRE(result->GetValue(0, 0) == Value::BIGINT(49995000));
 }
 
 TEST_CASE("Test ObjectCache memory accounting", "[api][object_cache]") {
@@ -89,17 +131,18 @@ TEST_CASE("Test ObjectCache memory accounting", "[api][object_cache]") {
 	Connection con(db);
 	auto &context = *con.context;
 	auto &cache = ObjectCache::GetObjectCache(context);
+	auto database_id = DatabaseInstance::GetDatabase(context).GetDatabaseId();
 	auto &buffer_pool = DatabaseInstance::GetDatabase(context).GetBufferPool();
 	const idx_t initial_memory = buffer_pool.GetUsedMemory();
 
 	// Put and check accountable memory for buffer pool.
 	constexpr idx_t obj_size = 1024 * 1024;
-	cache.Put("evictable1", make_shared_ptr<EvictableTestObject>(1, obj_size));
+	cache.Put(database_id, "evictable1", make_shared_ptr<EvictableTestObject>(1, obj_size));
 	const idx_t after_put_memory = buffer_pool.GetUsedMemory();
 	REQUIRE(after_put_memory == initial_memory + obj_size);
 
 	// Delete and check accountable memory for buffer pool.
-	cache.Delete("evictable1");
+	cache.Delete(database_id, "evictable1");
 	const idx_t after_delete_memory = buffer_pool.GetUsedMemory();
 	REQUIRE(after_delete_memory == initial_memory);
 }
@@ -109,6 +152,7 @@ TEST_CASE("Test ObjectCache Manual Eviction", "[api][object_cache]") {
 	Connection con(db);
 	auto &context = *con.context;
 	auto &cache = ObjectCache::GetObjectCache(context);
+	auto database_id = DatabaseInstance::GetDatabase(context).GetDatabaseId();
 	auto &buffer_pool = DatabaseInstance::GetDatabase(context).GetBufferPool();
 	const idx_t initial_memory = buffer_pool.GetUsedMemory();
 	REQUIRE(cache.IsEmpty());
@@ -117,7 +161,8 @@ TEST_CASE("Test ObjectCache Manual Eviction", "[api][object_cache]") {
 	constexpr idx_t obj_size = 1024 * 1024;
 	constexpr idx_t obj_count = 10;
 	for (idx_t idx = 0; idx < obj_count; ++idx) {
-		cache.Put(StringUtil::Format("evictable%llu", idx), make_shared_ptr<EvictableTestObject>(idx, obj_size));
+		cache.Put(database_id, StringUtil::Format("evictable%llu", idx),
+		          make_shared_ptr<EvictableTestObject>(idx, obj_size));
 	}
 	REQUIRE(cache.GetEntryCount() == 10);
 	const idx_t after_put_memory = buffer_pool.GetUsedMemory();
@@ -132,13 +177,13 @@ TEST_CASE("Test ObjectCache Manual Eviction", "[api][object_cache]") {
 
 	// First five items should be evicted.
 	for (idx_t idx = 0; idx < 5; ++idx) {
-		auto value = cache.GetObject(StringUtil::Format("evictable%llu", idx));
+		auto value = cache.GetObject(database_id, StringUtil::Format("evictable%llu", idx));
 		REQUIRE(value == nullptr);
 	}
 
 	// Later five items should be kept.
 	for (idx_t idx = 5; idx < 10; ++idx) {
-		auto value = cache.GetObject(StringUtil::Format("evictable%llu", idx));
+		auto value = cache.GetObject(database_id, StringUtil::Format("evictable%llu", idx));
 		REQUIRE(value != nullptr);
 	}
 	REQUIRE(!cache.IsEmpty());

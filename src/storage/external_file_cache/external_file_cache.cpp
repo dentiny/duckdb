@@ -286,10 +286,11 @@ vector<CachedFileInformation> ExternalFileCache::GetCachedFileInformation() cons
 		}
 	}
 
-	auto &object_cache = buffer_manager.GetDatabase().GetObjectCache();
+	auto &database = buffer_manager.GetDatabase();
+	auto &object_cache = database.GetObjectCache();
 	vector<CachedFileInformation> result;
 	for (const auto &key : keys) {
-		auto entry = object_cache.GetWithTypePrefix<ExternalFileCacheObjectCacheEntry>(key);
+		auto entry = object_cache.GetWithTypePrefix<ExternalFileCacheObjectCacheEntry>(database.GetDatabaseId(), key);
 		if (!entry) {
 			continue;
 		}
@@ -331,30 +332,32 @@ BufferManager &ExternalFileCache::GetBufferManager() const {
 }
 
 void ExternalFileCache::DeleteObjectCacheEntries(const vector<string> &paths) {
-	auto &object_cache = buffer_manager.GetDatabase().GetObjectCache();
+	auto &database = buffer_manager.GetDatabase();
+	auto &object_cache = database.GetObjectCache();
 	for (auto &path : paths) {
-		object_cache.DeleteWithTypePrefix<ExternalFileCacheObjectCacheEntry>(path);
+		object_cache.DeleteWithTypePrefix<ExternalFileCacheObjectCacheEntry>(database.GetDatabaseId(), path);
 	}
 }
 
 shared_ptr<ExternalFileCache::CachedFile> ExternalFileCache::GetOrCreateCachedFile(const string &path) {
-	auto &object_cache = buffer_manager.GetDatabase().GetObjectCache();
+	auto &database = buffer_manager.GetDatabase();
+	auto &object_cache = database.GetObjectCache();
 	while (true) {
 		const auto current_generation = generation.load();
 		if (!enable) {
 			return make_shared_ptr<CachedFile>(path, current_generation);
 		}
 
-		auto entry = object_cache.GetOrCreateWithTypePrefix<ExternalFileCacheObjectCacheEntry>(path, *this, path,
-		                                                                                       current_generation);
+		auto entry = object_cache.GetOrCreateWithTypePrefix<ExternalFileCacheObjectCacheEntry>(
+		    database.GetDatabaseId(), path, *this, path, current_generation);
 		auto cached_file = entry->GetCachedFile();
 
 		if (!enable) {
-			object_cache.DeleteWithTypePrefix<ExternalFileCacheObjectCacheEntry>(path);
+			object_cache.DeleteWithTypePrefix<ExternalFileCacheObjectCacheEntry>(database.GetDatabaseId(), path);
 			return make_shared_ptr<CachedFile>(path, current_generation);
 		}
 		if (cached_file->generation != current_generation) {
-			object_cache.DeleteWithTypePrefix<ExternalFileCacheObjectCacheEntry>(path);
+			object_cache.DeleteWithTypePrefix<ExternalFileCacheObjectCacheEntry>(database.GetDatabaseId(), path);
 			continue;
 		}
 		return cached_file;

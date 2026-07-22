@@ -28,11 +28,16 @@ class BlockAllocator {
 
 public:
 	BlockAllocator(Allocator &allocator, idx_t block_size, idx_t virtual_memory_size, idx_t physical_memory_size);
+	BlockAllocator(shared_ptr<Allocator> allocator, idx_t block_size, idx_t virtual_memory_size,
+	               idx_t physical_memory_size);
 	~BlockAllocator();
 
 public:
 	static BlockAllocator &Get(DatabaseInstance &db);
 	static BlockAllocator &Get(AttachedDatabase &db);
+	const shared_ptr<Allocator> &GetAllocatorHandle() const {
+		return allocator;
+	}
 
 	//! Resize physical memory (can only be increased)
 	void Resize(idx_t new_physical_memory_size);
@@ -67,7 +72,7 @@ private:
 	//! Identifier
 	const hugeint_t uuid;
 	//! Fallback allocator
-	Allocator &allocator;
+	shared_ptr<Allocator> allocator;
 
 	//! Block size (power of two)
 	const idx_t block_size;

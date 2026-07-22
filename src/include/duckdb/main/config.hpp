@@ -62,6 +62,9 @@ class HTTPUtil;
 class DatabaseFilePathManager;
 class ExtensionCallbackManager;
 class TypeManager;
+class DatabaseInstance;
+class DatabaseMemoryManager;
+class ObjectCache;
 
 struct CompressionFunctionSet;
 struct DatabaseCacheEntry;
@@ -177,9 +180,9 @@ public:
 	//! Secret manager
 	unique_ptr<SecretManager> secret_manager;
 	//! The allocator used by the system
-	unique_ptr<Allocator> allocator;
+	shared_ptr<Allocator> allocator;
 	//! The block allocator used by the system
-	unique_ptr<BlockAllocator> block_allocator;
+	shared_ptr<BlockAllocator> block_allocator;
 	//! Database configuration options
 	DBConfigOptions options;
 	//! Error manager
@@ -188,6 +191,10 @@ public:
 	shared_ptr<Allocator> default_allocator;
 	//! A buffer pool can be shared across multiple databases (if desired).
 	shared_ptr<BufferPool> buffer_pool;
+	//! The shared owner of the allocator, block allocator and buffer pool.
+	shared_ptr<DatabaseMemoryManager> memory_manager;
+	//! The object cache shared by all databases in the memory domain.
+	shared_ptr<ObjectCache> object_cache;
 	//! Provide a custom buffer manager implementation (if desired).
 	shared_ptr<BufferManager> buffer_manager;
 	//! Encryption Util for OpenSSL and MbedTLS
@@ -280,6 +287,8 @@ public:
 	static optional_idx ParseMemoryLimitSlurm(const string &arg);
 	void SetDefaultMaxMemory();
 	void SetDefaultTempDirectory();
+	//! Share the complete memory-management domain with an existing database instance.
+	DUCKDB_API void ShareMemoryWith(DatabaseInstance &db);
 
 	OrderType ResolveOrder(ClientContext &context, OrderType order_type) const;
 	OrderByNullType ResolveNullOrder(ClientContext &context, OrderType order_type, OrderByNullType null_type) const;

@@ -11,6 +11,7 @@
 #include "duckdb/common/winapi.hpp"
 #include "duckdb/main/capi/extension_api.hpp"
 #include "duckdb/main/config.hpp"
+#include "duckdb/main/database_memory_manager.hpp"
 #include "duckdb/main/extension.hpp"
 #include "duckdb/main/valid_checker.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
@@ -52,6 +53,8 @@ public:
 
 public:
 	BufferPool &GetBufferPool() const;
+	DUCKDB_API const shared_ptr<DatabaseMemoryManager> &GetMemoryManager() const;
+	DUCKDB_API idx_t GetDatabaseId() const;
 	DUCKDB_API SecretManager &GetSecretManager();
 	DUCKDB_API BufferManager &GetBufferManager();
 	DUCKDB_API const BufferManager &GetBufferManager() const;
@@ -96,12 +99,12 @@ private:
 	void Configure(DBConfig &config, const char *path);
 
 private:
+	const idx_t database_id;
 	shared_ptr<BufferManager> buffer_manager;
 	unique_ptr<DatabaseManager> db_manager;
 	unique_ptr<ExternalResourceTypeRegistry> external_resource_type_registry;
 	unique_ptr<ExternalResourcesManager> external_resources_manager;
 	unique_ptr<TaskScheduler> scheduler;
-	unique_ptr<ObjectCache> object_cache;
 	unique_ptr<ConnectionManager> connection_manager;
 	unique_ptr<ExtensionManager> extension_manager;
 	ValidChecker db_validity;

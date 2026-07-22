@@ -60,24 +60,27 @@ public:
 	//! Default max memory 8GiB for non-evictable cache entries.
 	static constexpr idx_t DEFAULT_MAX_MEMORY = 8ULL * 1024 * 1024 * 1024;
 
-	explicit ObjectCache(BufferPool &buffer_pool_p) : ObjectCache(DEFAULT_MAX_MEMORY, buffer_pool_p) {
+	explicit ObjectCache(shared_ptr<BufferPool> buffer_pool_p)
+	    : ObjectCache(DEFAULT_MAX_MEMORY, std::move(buffer_pool_p)) {
 	}
 
-	ObjectCache(idx_t max_memory, BufferPool &buffer_pool_p) : lru_cache(max_memory), buffer_pool(buffer_pool_p) {
+	ObjectCache(idx_t max_memory, shared_ptr<BufferPool> buffer_pool_p)
+	    : lru_cache(max_memory), buffer_pool(std::move(buffer_pool_p)) {
 	}
 
-	shared_ptr<ObjectCacheEntry> GetObject(const string &key) {
+	shared_ptr<ObjectCacheEntry> GetObject(idx_t database_id, const string &key) {
 		const lock_guard<mutex> lock(lock_mutex);
-		auto non_evictable_it = non_evictable_entries.find(key);
+		auto cache_key = MakeCacheKey(database_id, key);
+		auto non_evictable_it = non_evictable_entries.find(cache_key);
 		if (non_evictable_it != non_evictable_entries.end()) {
 			return non_evictable_it->second;
 		}
-		return lru_cache.Get(key);
+		return lru_cache.Get(cache_key);
 	}
 
 	template <class T>
-	shared_ptr<T> Get(const string &key) {
-		shared_ptr<ObjectCacheEntry> object = GetObject(key);
+	shared_ptr<T> Get(idx_t database_id, const string &key) {
+		shared_ptr<ObjectCacheEntry> object = GetObject(database_id, key);
 		if (!object || object->GetObjectType() != T::ObjectType()) {
 			return nullptr;
 		}
@@ -85,11 +88,12 @@ public:
 	}
 
 	template <class T, class... ARGS>
-	shared_ptr<T> GetOrCreate(const string &key, ARGS &&... args) {
+	shared_ptr<T> GetOrCreate(idx_t database_id, const string &key, ARGS &&... args) {
 		const lock_guard<mutex> lock(lock_mutex);
+		auto cache_key = MakeCacheKey(database_id, key);
 
 		// Check non-evictable entries first
-		auto non_evictable_it = non_evictable_entries.find(key);
+		auto non_evictable_it = non_evictable_entries.find(cache_key);
 		if (non_evictable_it != non_evictable_entries.end()) {
 			auto &existing = non_evictable_it->second;
 			if (existing->GetObjectType() != T::ObjectType()) {
@@ -99,7 +103,7 @@ public:
 		}
 
 		// Check evictable cache
-		auto existing = lru_cache.Get(key);
+		auto existing = lru_cache.Get(cache_key);
 		if (existing) {
 			if (existing->GetObjectType() != T::ObjectType()) {
 				return nullptr;
@@ -112,66 +116,81 @@ public:
 		const auto estimated_memory = value->GetEstimatedCacheMemory();
 		const bool is_evictable = estimated_memory.IsValid();
 		if (!is_evictable) {
-			non_evictable_entries[key] = value;
+			non_evictable_entries[cache_key] = value;
 			return value;
 		}
 
 		auto reservation =
-		    make_uniq<TempBufferPoolReservation>(MemoryTag::OBJECT_CACHE, buffer_pool, estimated_memory.GetIndex());
-		lru_cache.Put(key, value, std::move(reservation));
+		    make_uniq<TempBufferPoolReservation>(MemoryTag::OBJECT_CACHE, *buffer_pool, estimated_memory.GetIndex());
+		lru_cache.Put(std::move(cache_key), value, std::move(reservation));
 		return value;
 	}
 
-	void Put(string key, shared_ptr<ObjectCacheEntry> value) {
+	void Put(idx_t database_id, string key, shared_ptr<ObjectCacheEntry> value) {
 		if (!value) {
 			return;
 		}
 
 		const lock_guard<mutex> lock(lock_mutex);
+		auto cache_key = MakeCacheKey(database_id, key);
 		const auto estimated_memory = value->GetEstimatedCacheMemory();
 		const bool is_evictable = estimated_memory.IsValid();
 		if (!is_evictable) {
-			non_evictable_entries[std::move(key)] = std::move(value);
+			non_evictable_entries[std::move(cache_key)] = std::move(value);
 			return;
 		}
 
 		auto reservation =
-		    make_uniq<TempBufferPoolReservation>(MemoryTag::OBJECT_CACHE, buffer_pool, estimated_memory.GetIndex());
-		lru_cache.Put(std::move(key), std::move(value), std::move(reservation));
+		    make_uniq<TempBufferPoolReservation>(MemoryTag::OBJECT_CACHE, *buffer_pool, estimated_memory.GetIndex());
+		lru_cache.Put(std::move(cache_key), std::move(value), std::move(reservation));
 	}
 
-	void Delete(const string &key) {
+	void Delete(idx_t database_id, const string &key) {
 		const lock_guard<mutex> lock(lock_mutex);
-		auto iter = non_evictable_entries.find(key);
+		auto cache_key = MakeCacheKey(database_id, key);
+		auto iter = non_evictable_entries.find(cache_key);
 		if (iter != non_evictable_entries.end()) {
 			non_evictable_entries.erase(iter);
 			return;
 		}
-		lru_cache.Delete(key);
+		lru_cache.Delete(cache_key);
+	}
+
+	void EraseDatabase(idx_t database_id) {
+		const lock_guard<mutex> lock(lock_mutex);
+		auto prefix = StringUtil::Format("%llu-", database_id);
+		for (auto entry = non_evictable_entries.begin(); entry != non_evictable_entries.end();) {
+			if (!StringUtil::StartsWith(entry->first, prefix)) {
+				entry++;
+				continue;
+			}
+			entry = non_evictable_entries.erase(entry);
+		}
+		lru_cache.DeleteMatching([&](const string &key) { return StringUtil::StartsWith(key, prefix); });
 	}
 
 	//! Type-prefixed variants of the methods above. These namespace the caller-provided key with the entry's
 	//! ObjectType so that callers can pass a natural key (e.g. a file path) without having to build a unique
 	//! cache key themselves.
 	template <class T>
-	shared_ptr<T> GetWithTypePrefix(const string &key) {
-		return Get<T>(MakeCacheKey<T>(key));
+	shared_ptr<T> GetWithTypePrefix(idx_t database_id, const string &key) {
+		return Get<T>(database_id, MakeTypedCacheKey<T>(key));
 	}
 
 	template <class T, class... ARGS>
-	shared_ptr<T> GetOrCreateWithTypePrefix(const string &key, ARGS &&... args) {
-		return GetOrCreate<T>(MakeCacheKey<T>(key), std::forward<ARGS>(args)...);
+	shared_ptr<T> GetOrCreateWithTypePrefix(idx_t database_id, const string &key, ARGS &&... args) {
+		return GetOrCreate<T>(database_id, MakeTypedCacheKey<T>(key), std::forward<ARGS>(args)...);
 	}
 
 	template <class T>
-	void PutWithTypePrefix(const string &key,
+	void PutWithTypePrefix(idx_t database_id, const string &key,
 	                       shared_ptr<ObjectCacheEntry> value) { // NOLINT(performance-unnecessary-value-param)
-		Put(MakeCacheKey<T>(key), std::move(value));
+		Put(database_id, MakeTypedCacheKey<T>(key), std::move(value));
 	}
 
 	template <class T>
-	void DeleteWithTypePrefix(const string &key) {
-		Delete(MakeCacheKey<T>(key));
+	void DeleteWithTypePrefix(idx_t database_id, const string &key) {
+		Delete(database_id, MakeTypedCacheKey<T>(key));
 	}
 
 	DUCKDB_API static ObjectCache &GetObjectCache(ClientContext &context);
@@ -202,8 +221,11 @@ private:
 	//! Build the internal cache key for a typed entry by namespacing the caller-provided key with the entry's
 	//! ObjectType.
 	template <class T>
-	static string MakeCacheKey(const string &key) {
+	static string MakeTypedCacheKey(const string &key) {
 		return StringUtil::Format("%s-%s", T::ObjectType(), key);
+	}
+	static string MakeCacheKey(idx_t database_id, const string &key) {
+		return StringUtil::Format("%llu-%s", database_id, key);
 	}
 
 private:
@@ -214,7 +236,7 @@ private:
 	//! Separate storage for non-evictable entries (i.e., encryption keys)
 	unordered_map<string, shared_ptr<ObjectCacheEntry>> non_evictable_entries;
 	//! Used to create buffer pool reservation on entries creation.
-	BufferPool &buffer_pool;
+	shared_ptr<BufferPool> buffer_pool;
 };
 
 } // namespace duckdb

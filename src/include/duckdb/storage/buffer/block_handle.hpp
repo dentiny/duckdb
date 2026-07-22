@@ -45,6 +45,9 @@ public:
 	BufferManager &GetBufferManager() {
 		return buffer_manager;
 	}
+	idx_t GetDatabaseId() const {
+		return database_id;
+	}
 	//! Returns the block ID.
 	block_id_t BlockId() const {
 		return block_id;
@@ -212,6 +215,8 @@ public:
 private:
 	//! A reference to the buffer manager.
 	BufferManager &buffer_manager;
+	//! Database instance that owns this block.
+	const idx_t database_id;
 	//! The block id of the block.
 	const block_id_t block_id;
 	//! The block-level lock.
