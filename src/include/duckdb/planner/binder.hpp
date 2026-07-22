@@ -292,6 +292,8 @@ public:
 	//! Check usage, and cast named parameters to their types
 	static void BindNamedParameters(named_parameter_type_map_t &types, named_parameter_map_t &values,
 	                                QueryErrorContext &error_context, const Identifier &func_name);
+	static void ValidateTableFunctionParameters(const TableFunction &function, const vector<Value> &parameters,
+	                                            const named_parameter_map_t &named_parameters);
 	unique_ptr<BoundPragmaInfo> BindPragma(PragmaInfo &info, QueryErrorContext error_context);
 
 	BoundStatement Bind(TableRef &ref);

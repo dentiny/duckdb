@@ -29,6 +29,10 @@ static unique_ptr<FunctionData> RepeatRowBind(ClientContext &context, TableFunct
 	if (entry == input.named_parameters.end()) {
 		throw BinderException("repeat_rows requires num_rows to be specified");
 	}
+	if (entry->second.IsNull()) {
+		throw InvalidInputException(
+		    "Table function \"repeat_row\" does not support NULL for named parameter \"num_rows\"");
+	}
 	if (inputs.empty()) {
 		throw BinderException("repeat_rows requires at least one column to be specified");
 	}
@@ -59,6 +63,7 @@ static unique_ptr<NodeStatistics> RepeatRowCardinality(ClientContext &context, c
 void RepeatRowTableFunction::RegisterFunction(BuiltinFunctions &set) {
 	TableFunction repeat_row("repeat_row", {}, RepeatRowFunction, RepeatRowBind, RepeatRowInit);
 	repeat_row.SetVarArgs(LogicalType::ANY);
+	repeat_row.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	repeat_row.named_parameters["num_rows"] = LogicalType::BIGINT;
 	repeat_row.cardinality = RepeatRowCardinality;
 	set.AddFunction(repeat_row);

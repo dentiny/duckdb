@@ -168,6 +168,7 @@ static bool PushdownProjectionExpression(ClientContext &context, const TableFunc
 
 TableFunction ReadCSVTableFunction::GetFunction() {
 	MultiFileFunction<CSVMultiFileInfo> read_csv("read_csv");
+	read_csv.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	read_csv.serialize = CSVReaderSerialize;
 	read_csv.deserialize = CSVReaderDeserialize;
 	read_csv.projection_expression_pushdown = PushdownProjectionExpression;
