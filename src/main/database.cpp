@@ -40,6 +40,7 @@
 #include "duckdb/storage/standard_buffer_manager.hpp"
 #include "duckdb/storage/storage_extension.hpp"
 #include "duckdb/storage/storage_manager.hpp"
+#include "duckdb/storage/temporary_memory_manager.hpp"
 #include "duckdb/transaction/transaction_manager.hpp"
 #include "mbedtls_wrapper.hpp"
 
@@ -48,6 +49,71 @@
 #endif
 
 namespace duckdb {
+
+DatabaseMemoryManager::DatabaseMemoryManager(shared_ptr<Allocator> allocator_p,
+                                             shared_ptr<BlockAllocator> block_allocator_p,
+                                             shared_ptr<TemporaryMemoryManager> temporary_memory_manager_p,
+                                             shared_ptr<BufferPool> buffer_pool_p,
+                                             shared_ptr<ObjectCache> object_cache_p)
+    : allocator(std::move(allocator_p)), block_allocator(std::move(block_allocator_p)),
+      temporary_memory_manager(std::move(temporary_memory_manager_p)), buffer_pool(std::move(buffer_pool_p)),
+      object_cache(std::move(object_cache_p)) {
+	if (!allocator || !block_allocator || !temporary_memory_manager || !buffer_pool || !object_cache) {
+		throw InternalException("DatabaseMemoryManager cannot contain null components");
+	}
+	if (block_allocator->GetAllocatorHandle().get() != allocator.get() ||
+	    buffer_pool->GetBlockAllocatorHandle().get() != block_allocator.get() ||
+	    buffer_pool->GetTemporaryMemoryManagerHandle().get() != temporary_memory_manager.get()) {
+		throw InternalException("DatabaseMemoryManager components belong to different memory domains");
+	}
+	buffer_pool->RegisterObjectCache(object_cache);
+}
+
+DatabaseMemoryManager::~DatabaseMemoryManager() {
+	buffer_pool->UnregisterObjectCache(*object_cache);
+}
+
+Allocator &DatabaseMemoryManager::GetAllocator() const {
+	return *allocator;
+}
+
+BlockAllocator &DatabaseMemoryManager::GetBlockAllocator() const {
+	return *block_allocator;
+}
+
+TemporaryMemoryManager &DatabaseMemoryManager::GetTemporaryMemoryManager() const {
+	return *temporary_memory_manager;
+}
+
+BufferPool &DatabaseMemoryManager::GetBufferPool() const {
+	return *buffer_pool;
+}
+
+ObjectCache &DatabaseMemoryManager::GetObjectCache() const {
+	return *object_cache;
+}
+
+const shared_ptr<Allocator> &DatabaseMemoryManager::GetAllocatorHandle() const {
+	return allocator;
+}
+
+const shared_ptr<BlockAllocator> &DatabaseMemoryManager::GetBlockAllocatorHandle() const {
+	return block_allocator;
+}
+
+const shared_ptr<TemporaryMemoryManager> &DatabaseMemoryManager::GetTemporaryMemoryManagerHandle() const {
+	return temporary_memory_manager;
+}
+
+const shared_ptr<BufferPool> &DatabaseMemoryManager::GetBufferPoolHandle() const {
+	return buffer_pool;
+}
+
+const shared_ptr<ObjectCache> &DatabaseMemoryManager::GetObjectCacheHandle() const {
+	return object_cache;
+}
+
+static atomic<idx_t> next_database_id {0};
 
 DBConfig::DBConfig() {
 	compression_functions = make_uniq<CompressionFunctionSet>();
@@ -77,7 +143,7 @@ DBConfig::DBConfig(const case_insensitive_map_t<Value> &config_dict, bool read_o
 DBConfig::~DBConfig() {
 }
 
-DatabaseInstance::DatabaseInstance() : db_validity(*this) {
+DatabaseInstance::DatabaseInstance() : database_id(next_database_id.fetch_add(1)), db_validity(*this) {
 	config.is_user_config = false;
 	create_api_v1 = nullptr;
 	parser_cache = make_uniq<ParserCache>();
@@ -94,7 +160,9 @@ DatabaseInstance::~DatabaseInstance() {
 	}
 	// destroy child elements
 	connection_manager.reset();
-	object_cache.reset();
+	if (config.object_cache) {
+		config.object_cache->EraseDatabase(database_id);
+	}
 	scheduler.reset();
 	db_manager.reset();
 
@@ -315,7 +383,7 @@ void DatabaseInstance::Initialize(const char *database_path, DBConfig *user_conf
 	if (config.buffer_manager) {
 		buffer_manager = config.buffer_manager;
 	} else {
-		buffer_manager = make_uniq<StandardBufferManager>(*this, config.options.temporary_directory);
+		buffer_manager = make_shared_ptr<StandardBufferManager>(*this, config.options.temporary_directory);
 	}
 
 	log_manager = make_uniq<LogManager>(*this, LogConfig());
@@ -328,8 +396,6 @@ void DatabaseInstance::Initialize(const char *database_path, DBConfig *user_conf
 	result_set_manager = make_uniq<ResultSetManager>(*this);
 
 	scheduler = make_uniq<TaskScheduler>(*this);
-	object_cache = make_uniq<ObjectCache>(*config.buffer_pool);
-	config.buffer_pool->SetObjectCache(object_cache.get());
 	connection_manager = make_uniq<ConnectionManager>();
 	extension_manager = make_uniq<ExtensionManager>(*this);
 
@@ -396,7 +462,15 @@ const BufferManager &DatabaseInstance::GetBufferManager() const {
 }
 
 BufferPool &DatabaseInstance::GetBufferPool() const {
-	return *config.buffer_pool;
+	return config.memory_manager->GetBufferPool();
+}
+
+const shared_ptr<DatabaseMemoryManager> &DatabaseInstance::GetMemoryManager() const {
+	return config.memory_manager;
+}
+
+idx_t DatabaseInstance::GetDatabaseId() const {
+	return database_id;
 }
 
 DatabaseManager &DatabaseManager::Get(DatabaseInstance &db) {
@@ -412,7 +486,7 @@ TaskScheduler &DatabaseInstance::GetScheduler() {
 }
 
 ObjectCache &DatabaseInstance::GetObjectCache() {
-	return *object_cache;
+	return config.memory_manager->GetObjectCache();
 }
 
 FileSystem &DatabaseInstance::GetFileSystem() {
@@ -469,7 +543,7 @@ Allocator &Allocator::Get(ClientContext &context) {
 }
 
 Allocator &Allocator::Get(DatabaseInstance &db) {
-	return *db.config.allocator;
+	return db.config.memory_manager->GetAllocator();
 }
 
 Allocator &Allocator::Get(AttachedDatabase &db) {
@@ -527,16 +601,24 @@ void DatabaseInstance::Configure(DBConfig &new_config, const char *database_path
 	if (new_config.options.async_threads == DConstants::INVALID_INDEX) {
 		config.options.async_threads = config.GetSystemMaxAsyncThreads(*config.file_system);
 	}
-	config.allocator = std::move(new_config.allocator);
-	if (!config.allocator) {
-		config.allocator = make_uniq<Allocator>();
-	}
-	config.block_allocator = std::move(new_config.block_allocator);
-	if (!config.block_allocator) {
-		auto default_block_size = Settings::Get<DefaultBlockSizeSetting>(config);
-		config.block_allocator = make_uniq<BlockAllocator>(
-		    *config.allocator, default_block_size, DBConfig::GetSystemAvailableMemory(*config.file_system) * 8 / 10,
-		    config.options.block_allocator_size);
+	config.memory_manager = std::move(new_config.memory_manager);
+	if (config.memory_manager) {
+		config.allocator = config.memory_manager->GetAllocatorHandle();
+		config.block_allocator = config.memory_manager->GetBlockAllocatorHandle();
+		config.buffer_pool = config.memory_manager->GetBufferPoolHandle();
+		config.object_cache = config.memory_manager->GetObjectCacheHandle();
+	} else {
+		config.allocator = std::move(new_config.allocator);
+		if (!config.allocator) {
+			config.allocator = make_shared_ptr<Allocator>();
+		}
+		config.block_allocator = std::move(new_config.block_allocator);
+		if (!config.block_allocator) {
+			auto default_block_size = Settings::Get<DefaultBlockSizeSetting>(config);
+			config.block_allocator = make_shared_ptr<BlockAllocator>(
+			    config.allocator, default_block_size,
+			    DBConfig::GetSystemAvailableMemory(*config.file_system) * 8 / 10, config.options.block_allocator_size);
+		}
 	}
 	config.replacement_scans = std::move(new_config.replacement_scans);
 	if (new_config.callback_manager) {
@@ -553,15 +635,41 @@ void DatabaseInstance::Configure(DBConfig &new_config, const char *database_path
 	if (!config.default_allocator) {
 		config.default_allocator = Allocator::DefaultAllocatorReference();
 	}
-	if (new_config.buffer_pool) {
-		config.buffer_pool = std::move(new_config.buffer_pool);
-	} else {
-		config.buffer_pool = make_shared_ptr<BufferPool>(*config.block_allocator, config.options.maximum_memory,
-		                                                 config.options.buffer_manager_track_eviction_timestamps,
-		                                                 config.options.allocator_bulk_deallocation_flush_threshold);
+	if (!config.memory_manager) {
+		shared_ptr<TemporaryMemoryManager> temporary_memory_manager;
+		if (new_config.buffer_pool) {
+			config.buffer_pool = std::move(new_config.buffer_pool);
+			config.block_allocator = config.buffer_pool->GetBlockAllocatorHandle();
+			config.allocator = config.block_allocator->GetAllocatorHandle();
+			temporary_memory_manager = config.buffer_pool->GetTemporaryMemoryManagerHandle();
+		} else {
+			temporary_memory_manager = make_shared_ptr<TemporaryMemoryManager>();
+			config.buffer_pool = make_shared_ptr<BufferPool>(
+			    config.block_allocator, temporary_memory_manager, config.options.maximum_memory,
+			    config.options.buffer_manager_track_eviction_timestamps,
+			    config.options.allocator_bulk_deallocation_flush_threshold);
+		}
+		config.memory_manager = make_shared_ptr<DatabaseMemoryManager>(
+		    config.allocator, config.block_allocator, temporary_memory_manager, config.buffer_pool,
+		    make_shared_ptr<ObjectCache>(config.buffer_pool));
+		config.object_cache = config.memory_manager->GetObjectCacheHandle();
 	}
 	config.db_cache_entry = std::move(new_config.db_cache_entry);
 	config.path_manager = std::move(new_config.path_manager);
+}
+
+void DBConfig::ShareMemoryWith(DatabaseInstance &db) {
+	auto &source = DBConfig::GetConfig(db);
+	memory_manager = db.GetMemoryManager();
+	allocator = memory_manager->GetAllocatorHandle();
+	block_allocator = memory_manager->GetBlockAllocatorHandle();
+	buffer_pool = memory_manager->GetBufferPoolHandle();
+	object_cache = memory_manager->GetObjectCacheHandle();
+	options.maximum_memory = source.options.maximum_memory;
+	options.block_allocator_size = source.options.block_allocator_size;
+	options.buffer_manager_track_eviction_timestamps = source.options.buffer_manager_track_eviction_timestamps;
+	options.allocator_bulk_deallocation_flush_threshold =
+	    source.options.allocator_bulk_deallocation_flush_threshold;
 }
 
 DBConfig &DBConfig::GetConfig(ClientContext &context) {

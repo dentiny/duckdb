@@ -51,6 +51,7 @@
 #include "duckdb/logging/log_type.hpp"
 #include "duckdb/logging/logger.hpp"
 #include "duckdb/main/client_context.hpp"
+#include "duckdb/main/database.hpp"
 #include "duckdb/main/setting_info.hpp"
 #include "duckdb/original/std/memory.hpp"
 #include "duckdb/planner/expression.hpp"
@@ -1272,11 +1273,14 @@ ParquetReader::ParquetReader(ClientContext &context_p, OpenFileInfo file_p, Parq
 			metadata = LoadMetadata(context_p, allocator, *file_handle, parquet_options.encryption_config,
 			                        encryption_util, footer_size);
 		} else {
-			metadata = ObjectCache::GetObjectCache(context_p).GetWithTypePrefix<ParquetFileMetadataCache>(file.path);
+			auto database_id = DatabaseInstance::GetDatabase(context_p).GetDatabaseId();
+			metadata = ObjectCache::GetObjectCache(context_p).GetWithTypePrefix<ParquetFileMetadataCache>(database_id,
+			                                                                                              file.path);
 			if (!metadata || !metadata->IsValid(*file_handle)) {
 				metadata = LoadMetadata(context_p, allocator, *file_handle, parquet_options.encryption_config,
 				                        encryption_util, footer_size);
-				ObjectCache::GetObjectCache(context_p).PutWithTypePrefix<ParquetFileMetadataCache>(file.path, metadata);
+				ObjectCache::GetObjectCache(context_p).PutWithTypePrefix<ParquetFileMetadataCache>(database_id, file.path,
+				                                                                                       metadata);
 			}
 		}
 	} else {
@@ -1305,7 +1309,8 @@ bool ParquetReader::MetadataCacheEnabled(ClientContext &context) {
 
 shared_ptr<ParquetFileMetadataCache> ParquetReader::GetMetadataCacheEntry(ClientContext &context,
                                                                           const OpenFileInfo &file) {
-	return ObjectCache::GetObjectCache(context).GetWithTypePrefix<ParquetFileMetadataCache>(file.path);
+	return ObjectCache::GetObjectCache(context).GetWithTypePrefix<ParquetFileMetadataCache>(
+	    DatabaseInstance::GetDatabase(context).GetDatabaseId(), file.path);
 }
 
 ParquetUnionData::~ParquetUnionData() {

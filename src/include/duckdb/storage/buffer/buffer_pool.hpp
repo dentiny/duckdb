@@ -45,8 +45,8 @@ class BufferPool {
 	friend class StandardBufferManager;
 
 public:
-	BufferPool(BlockAllocator &block_allocator, idx_t maximum_memory, bool track_eviction_timestamps,
-	           idx_t allocator_bulk_deallocation_flush_threshold);
+	BufferPool(shared_ptr<BlockAllocator> block_allocator, shared_ptr<TemporaryMemoryManager> temporary_memory_manager,
+	           idx_t maximum_memory, bool track_eviction_timestamps, idx_t allocator_bulk_deallocation_flush_threshold);
 	virtual ~BufferPool();
 
 	//! Set a new memory limit to the buffer pool, throws an exception if the new limit is too low and not enough
@@ -66,17 +66,19 @@ public:
 	virtual idx_t GetOperatorMemoryLimit() const;
 
 	TemporaryMemoryManager &GetTemporaryMemoryManager();
+	const shared_ptr<BlockAllocator> &GetBlockAllocatorHandle() const {
+		return block_allocator;
+	}
+	const shared_ptr<TemporaryMemoryManager> &GetTemporaryMemoryManagerHandle() const {
+		return temporary_memory_manager;
+	}
 
 	vector<EvictionQueueInformation> GetEvictionQueueInfo() const;
 
-	//! Take per-database ObjectCache under buffer pool's memory management.
-	//! Notice, object cache should be registered for at most once, otherwise InvalidInput exception is thrown.
-	void SetObjectCache(ObjectCache *object_cache_p) {
-		if (object_cache != nullptr) {
-			throw InvalidInputException("Object cache has already been registered in buffer pool, cannot re-register!");
-		}
-		object_cache = object_cache_p;
-	}
+	//! Register a per-database ObjectCache for eviction only.
+	void RegisterObjectCache(const shared_ptr<ObjectCache> &object_cache);
+	//! Stop eviction through this cache and wait for an in-progress eviction to finish.
+	void UnregisterObjectCache(ObjectCache &object_cache);
 
 protected:
 	//! Evict blocks until the currently used memory + extra_memory fit, returns false if this was not possible
@@ -176,15 +178,16 @@ protected:
 	//! Eviction queues
 	vector<unique_ptr<EvictionQueue>> queues;
 	//! Memory manager for concurrently used temporary memory, e.g., for physical operators
-	unique_ptr<TemporaryMemoryManager> temporary_memory_manager;
+	shared_ptr<TemporaryMemoryManager> temporary_memory_manager;
 	//! To improve performance, MemoryUsage maintains counter caches based on current cpu or thread id,
 	//! and only updates the global counter when the cache value exceeds a threshold.
 	//! Therefore, the statistics may have slight differences from the actual memory usage.
 	mutable MemoryUsage memory_usage;
 	//! The block allocator
-	BlockAllocator &block_allocator;
-	//! Per-database singleton object cache managed by buffer pool.
-	optional_ptr<ObjectCache> object_cache = nullptr;
+	shared_ptr<BlockAllocator> block_allocator;
+	//! Per-database object caches participating in this pool's eviction domain.
+	mutex object_caches_lock;
+	vector<weak_ptr<ObjectCache>> object_caches;
 };
 
 } // namespace duckdb

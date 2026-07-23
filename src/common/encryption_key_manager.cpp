@@ -52,18 +52,18 @@ void EncryptionKey::UnlockEncryptionKey(data_ptr_t key, idx_t key_len) {
 #endif
 }
 
-EncryptionKeyManager &EncryptionKeyManager::GetInternal(ObjectCache &cache) {
-	return *cache.GetOrCreate<EncryptionKeyManager>(EncryptionKeyManager::ObjectType());
+EncryptionKeyManager &EncryptionKeyManager::GetInternal(ObjectCache &cache, idx_t database_id) {
+	return *cache.GetOrCreate<EncryptionKeyManager>(database_id, EncryptionKeyManager::ObjectType());
 }
 
 EncryptionKeyManager &EncryptionKeyManager::Get(ClientContext &context) {
 	auto &cache = ObjectCache::GetObjectCache(context);
-	return GetInternal(cache);
+	return GetInternal(cache, DatabaseInstance::GetDatabase(context).GetDatabaseId());
 }
 
 EncryptionKeyManager &EncryptionKeyManager::Get(DatabaseInstance &db) {
 	auto &cache = db.GetObjectCache();
-	return GetInternal(cache);
+	return GetInternal(cache, db.GetDatabaseId());
 }
 
 string EncryptionKeyManager::GenerateRandomKeyID() {

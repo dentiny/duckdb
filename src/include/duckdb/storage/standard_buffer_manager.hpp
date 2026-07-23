@@ -190,8 +190,10 @@ protected:
 protected:
 	//! The database instance
 	DatabaseInstance &db;
+	//! The database identity used to validate block ownership.
+	const idx_t database_id;
 	//! The buffer pool
-	BufferPool &buffer_pool;
+	shared_ptr<BufferPool> buffer_pool;
 	//! The variables related to temporary file management
 	TemporaryFileData temporary_directory;
 	//! The temporary id used for managed buffers
