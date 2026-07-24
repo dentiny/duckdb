@@ -86,3 +86,45 @@ statement error
 DELETE FROM a USING a b WHERE a.i=b.j;
 ----
 <REGEX>:.*Binder Error.*does not have a column.*
+
+# DELETE ... USING must keep rowid and unique-index columns mapped after the USING join.
+statement ok
+CREATE TABLE delete_using_pk(id INT PRIMARY KEY, payload VARCHAR);
+
+statement ok
+INSERT INTO delete_using_pk SELECT range, range::VARCHAR FROM range(10);
+
+query I
+DELETE FROM delete_using_pk USING range(100) d(i) WHERE d.i = 0;
+----
+10
+
+query I
+SELECT count(*) FROM delete_using_pk;
+----
+0
+
+statement ok
+CREATE TABLE delete_using_pk_returning(id INT PRIMARY KEY, payload VARCHAR);
+
+statement ok
+INSERT INTO delete_using_pk_returning SELECT range, range::VARCHAR FROM range(10);
+
+query II nosort
+DELETE FROM delete_using_pk_returning USING range(100) d(i) RETURNING id, payload;
+----
+0	0
+1	1
+2	2
+3	3
+4	4
+5	5
+6	6
+7	7
+8	8
+9	9
+
+query I
+SELECT count(*) FROM delete_using_pk_returning;
+----
+0

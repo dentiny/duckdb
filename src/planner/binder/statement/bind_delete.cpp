@@ -7,6 +7,8 @@
 #include "duckdb/planner/operator/logical_filter.hpp"
 #include "duckdb/planner/operator/logical_get.hpp"
 #include "duckdb/planner/operator/logical_cross_product.hpp"
+#include "duckdb/planner/operator/logical_projection.hpp"
+#include "duckdb/planner/expression/bound_columnref_expression.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include "duckdb/storage/data_table.hpp"
 
@@ -81,21 +83,35 @@ BoundStatement Binder::BindNode(DeleteQueryNode &node) {
 	// Add columns to the scan to avoid fetching by row ID in PhysicalDelete:
 	// - If RETURNING: add all physical columns (for RETURNING projection)
 	// - Else if unique indexes exist: add only indexed columns (for delete index tracking)
+	vector<unique_ptr<Expression>> projection_expressions;
 	if (!node.returning_list.empty()) {
 		// Add all physical columns for RETURNING
-		BindDeleteReturningColumns(table, get, del->return_columns);
+		BindDeleteReturningColumns(table, get, del->return_columns, projection_expressions, *root);
 	} else if (table.IsDuckTable()) {
 		// Only optimize for DuckDB tables (not attached external tables like SQLite)
 		auto &storage = table.GetStorage();
 		if (storage.HasUniqueIndexes()) {
-			BindDeleteIndexColumns(table, get, del->return_columns);
+			BindDeleteIndexColumns(table, get, del->return_columns, projection_expressions, *root);
 		}
 	}
 
-	del->AddChild(std::move(root));
-
 	// bind the row id columns and add them to the projection list
-	BindRowIdColumns(table, get, del->expressions);
+	if (projection_expressions.empty()) {
+		BindRowIdColumns(table, get, del->expressions);
+	} else {
+		auto proj_index = GenerateTableIndex();
+		auto row_id_projection_index = projection_expressions.size();
+		BindRowIdColumns(table, get, projection_expressions);
+		auto &row_id_expr = projection_expressions[row_id_projection_index];
+		del->expressions.push_back(make_uniq<BoundColumnRefExpression>(
+		    row_id_expr->GetReturnType(), ColumnBinding(proj_index, ProjectionIndex(row_id_projection_index))));
+
+		auto proj = make_uniq<LogicalProjection>(proj_index, std::move(projection_expressions));
+		proj->AddChild(std::move(root));
+		root = std::move(proj);
+	}
+
+	del->AddChild(std::move(root));
 
 	if (!node.returning_list.empty()) {
 		del->return_chunk = true;
