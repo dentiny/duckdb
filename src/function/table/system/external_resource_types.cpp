@@ -153,6 +153,7 @@ void RegisterExternalResourceTypeFun::RegisterFunction(BuiltinFunctions &set) {
 	fn.named_parameters["status_function"] = LogicalType::VARCHAR;
 	fn.named_parameters["destroy_function"] = LogicalType::VARCHAR;
 	fn.named_parameters["resolve_function"] = LogicalType::VARCHAR;
+	fn.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	set.AddFunction(fn);
 }
 

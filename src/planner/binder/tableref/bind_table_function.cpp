@@ -136,7 +136,7 @@ bool Binder::BindTableFunctionParameters(TableFunctionCatalogEntry &table_functi
 			MoveCorrelatedExpressions(*binder);
 			seen_subquery = true;
 			arguments.emplace_back(LogicalTypeId::TABLE);
-			parameters.emplace_back();
+			parameters.emplace_back(LogicalType::TABLE);
 			continue;
 		}
 
@@ -186,6 +186,30 @@ static void ApplyPostgresSetofAliasCompatibility(const TableFunction &table_func
 	return_names[0] = ref.alias;
 }
 
+void Binder::ValidateTableFunctionParameters(const TableFunction &function, const vector<Value> &parameters,
+                                             const named_parameter_map_t &named_parameters) {
+	if (function.GetNullHandling() == FunctionNullHandling::SPECIAL_HANDLING) {
+		return;
+	}
+	for (idx_t parameter_idx = 0; parameter_idx < parameters.size(); parameter_idx++) {
+		if (!parameters[parameter_idx].IsNull()) {
+			continue;
+		}
+		if (parameters[parameter_idx].type() == LogicalType::TABLE && parameter_idx < function.GetArguments().size() &&
+		    function.GetArguments()[parameter_idx] == LogicalType::TABLE) {
+			continue;
+		}
+		throw InvalidInputException("Table function \"%s\" does not support NULL for positional parameter %llu",
+		                            function.name, parameter_idx + 1);
+	}
+	for (const auto &entry : named_parameters) {
+		if (entry.second.IsNull()) {
+			throw InvalidInputException("Table function \"%s\" does not support NULL for named parameter \"%s\"",
+			                            function.name, entry.first);
+		}
+	}
+}
+
 BoundStatement Binder::BindTableFunctionInternal(TableFunction &table_function, const TableFunctionRef &ref,
                                                  vector<Value> parameters, named_parameter_map_t named_parameters,
                                                  vector<LogicalType> input_table_types,
@@ -202,6 +226,7 @@ BoundStatement Binder::BindTableFunctionInternal(TableFunction &table_function, 
 	string ordinality_column_name = ordinality_name;
 	optional_idx ordinality_column_id;
 	if (table_function.bind || table_function.bind_replace || table_function.bind_operator) {
+		ValidateTableFunctionParameters(table_function, parameters, named_parameters);
 		TableFunctionBindInput bind_input(parameters, named_parameters, input_table_types, input_table_names,
 		                                  table_function.function_info.get(), this, table_function, ref, input_plan);
 		if (table_function.bind_operator) {

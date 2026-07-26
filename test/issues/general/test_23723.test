@@ -1,0 +1,31 @@
+# name: test/issues/general/test_23723.test
+# description: Table function NULL arguments are user errors by default
+# group: [general]
+
+statement ok
+CREATE TABLE storage_info_table(i INTEGER);
+
+# Default handling rejects positional NULL before the callback.
+statement error
+FROM pragma_storage_info(NULL)
+----
+<REGEX>:Invalid Input Error:.*pragma_storage_info.*NULL.*positional parameter 1
+
+# Default handling rejects named NULL before the callback.
+statement error
+FROM pragma_storage_info('storage_info_table', include_segment_info=NULL)
+----
+<REGEX>:Invalid Input Error:.*pragma_storage_info.*NULL.*named parameter.*include_segment_info
+
+# Special handling preserves NULL row values.
+query I
+FROM repeat_row(NULL, num_rows=2)
+----
+NULL
+NULL
+
+# Required values inside special-handling functions remain checked.
+statement error
+FROM repeat_row(42, num_rows=NULL)
+----
+<REGEX>:Invalid Input Error:.*repeat_row.*NULL.*named parameter.*num_rows

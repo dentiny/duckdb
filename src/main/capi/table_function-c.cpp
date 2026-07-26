@@ -178,6 +178,7 @@ using duckdb::GetCTableFunction;
 duckdb_table_function duckdb_create_table_function() {
 	auto function = new duckdb::TableFunction("", {}, duckdb::CTableFunction, duckdb::CTableFunctionBind,
 	                                          duckdb::CTableFunctionInit, duckdb::CTableFunctionLocalInit);
+	function->SetNullHandling(duckdb::FunctionNullHandling::SPECIAL_HANDLING);
 	function->function_info = duckdb::make_shared_ptr<duckdb::CTableFunctionInfo>();
 	function->cardinality = duckdb::CTableFunctionCardinality;
 	return reinterpret_cast<duckdb_table_function>(function);

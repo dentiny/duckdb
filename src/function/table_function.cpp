@@ -78,7 +78,8 @@ bool TableFunction::operator==(const TableFunction &rhs) const {
 	       verify_serialization == rhs.verify_serialization && projection_pushdown == rhs.projection_pushdown &&
 	       filter_pushdown == rhs.filter_pushdown && filter_prune == rhs.filter_prune &&
 	       sampling_pushdown == rhs.sampling_pushdown && late_materialization == rhs.late_materialization &&
-	       return_type == rhs.return_type && global_initialization == rhs.global_initialization;
+	       return_type == rhs.return_type && global_initialization == rhs.global_initialization &&
+	       null_handling == rhs.null_handling;
 }
 
 bool TableFunction::operator!=(const TableFunction &rhs) const {
