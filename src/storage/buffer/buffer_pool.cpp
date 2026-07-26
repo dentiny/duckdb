@@ -464,6 +464,7 @@ idx_t BufferPool::PurgeAgedBlocksInternal(EvictionQueue &queue, uint32_t max_age
 template <typename FN>
 void EvictionQueue::IterateUnloadableBlocks(FN fn) {
 	auto debug_sleep_micros = debug_eviction_queue_sleep.load(std::memory_order_relaxed);
+	vector<BufferEvictionNode> deferred_nodes;
 	for (;;) {
 		// get a block to unpin from the queue
 		BufferEvictionNode node;
@@ -471,7 +472,7 @@ void EvictionQueue::IterateUnloadableBlocks(FN fn) {
 			// we could not dequeue any eviction node, so we try one more time,
 			// but more aggressively
 			if (!TryDequeueWithLock(node)) {
-				return;
+				break;
 			}
 		}
 
@@ -494,18 +495,21 @@ void EvictionQueue::IterateUnloadableBlocks(FN fn) {
 			DecrementDeadNodes();
 			continue;
 		}
+		if (!handle->CanUnload()) {
+			deferred_nodes.push_back(std::move(node));
+			continue;
+		}
 		// This node is the block's live queue entry, and we just dequeued it: the block no longer
 		// has an entry in the queue. Live entries are never counted as dead, so no decrement.
 		handle->SetHasLiveQueueEntry(lock, false);
-		if (!handle->CanUnload()) {
-			// The block cannot be unloaded right now (e.g. it is pinned). It gets a new queue
-			// entry when it is unpinned again.
-			continue;
-		}
 
 		if (!fn(node, handle, lock)) {
 			break;
 		}
+	}
+	// Re-enqueue deferred nodes.
+	for (auto &node : deferred_nodes) {
+		q.enqueue(std::move(node));
 	}
 }
 
