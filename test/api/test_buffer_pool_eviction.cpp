@@ -263,6 +263,44 @@ TEST_CASE("Test buffer pool eviction: failed to allocate space if every page and
 	REQUIRE(final_memory_usage == total_memory_limit);
 }
 
+TEST_CASE("Test eviction queue: blocked unpinned blocks remain evictable after temporary directory is enabled",
+          "[storage][buffer_pool]") {
+	DBConfig config;
+	config.options.use_temporary_directory = false;
+	DuckDB db(nullptr, &config);
+	Connection con(db);
+	auto &context = *con.context;
+	auto &buffer_manager = BufferManager::GetBufferManager(context);
+	auto &buffer_pool = DatabaseInstance::GetDatabase(context).GetBufferPool();
+	const idx_t initial_memory = buffer_pool.GetUsedMemory();
+
+	constexpr idx_t buffer_size = 1024 * 1024; // 1 MiB
+	const idx_t actual_alloc_size = BufferManager::GetAllocSize(buffer_size + Storage::DEFAULT_BLOCK_HEADER_SIZE);
+	buffer_pool.SetLimit(initial_memory + actual_alloc_size, EXCEPTION_POSTSCRIPT);
+
+	shared_ptr<BlockHandle> non_destroyable_block;
+	{
+		auto pin = buffer_manager.Allocate(MemoryTag::EXTENSION, buffer_size, /*can_destroy=*/false);
+		non_destroyable_block = pin.GetBlockHandle();
+	}
+	REQUIRE(non_destroyable_block->GetMemory().GetReaders() == 0);
+	REQUIRE(!non_destroyable_block->GetMemory().IsUnloaded());
+	REQUIRE(!buffer_manager.HasTemporaryDirectory());
+
+	// This eviction attempt cannot unload the first block yet. The queue must keep its live entry so that a later
+	// eviction can use it after a temporary directory is configured.
+	REQUIRE_THROWS(buffer_manager.Allocate(MemoryTag::EXTENSION, buffer_size, /*can_destroy=*/true));
+	REQUIRE(!non_destroyable_block->GetMemory().IsUnloaded());
+
+	// Re-enable temporary directory, so the first block can be evicted.
+	buffer_manager.SetTemporaryDirectory(TestCreatePath("blocked_unpinned_eviction_temp"));
+
+	BufferHandle pin;
+	REQUIRE_NOTHROW(pin = buffer_manager.Allocate(MemoryTag::EXTENSION, buffer_size, /*can_destroy=*/true));
+	REQUIRE(pin.IsValid());
+	REQUIRE(non_destroyable_block->GetMemory().IsUnloaded());
+}
+
 namespace {
 
 idx_t SumDeadNodes(const vector<EvictionQueueInformation> &info) {
