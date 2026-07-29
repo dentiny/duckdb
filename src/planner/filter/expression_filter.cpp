@@ -336,8 +336,7 @@ static optional_ptr<const BaseStatistics> TryGetArrayExtractStats(const BoundFun
 	}
 	auto &cast_child = BoundCastExpression::Child(array_cast);
 	if (cast_child.GetExpressionClass() != ExpressionClass::BOUND_REF ||
-	    cast_child.GetReturnType().id() != LogicalTypeId::ARRAY ||
-	    stats.GetType().id() != LogicalTypeId::ARRAY) {
+	    cast_child.GetReturnType().id() != LogicalTypeId::ARRAY || stats.GetType().id() != LogicalTypeId::ARRAY) {
 		return nullptr;
 	}
 	auto &index_value = index_expr.Cast<BoundConstantExpression>().GetValue();
@@ -349,19 +348,15 @@ static optional_ptr<const BaseStatistics> TryGetArrayExtractStats(const BoundFun
 		return nullptr;
 	}
 	auto array_size = ArrayType::GetSize(stats.GetType());
-	idx_t child_index;
+	idx_t child_index = array_size;
 	if (index > 0) {
 		idx_t positive_index;
-		if (!TryCast::Operation(index, positive_index) || positive_index == 0 || positive_index > array_size) {
-			child_index = array_size;
-		} else {
+		if (TryCast::Operation(index, positive_index) && positive_index > 0 && positive_index <= array_size) {
 			child_index = positive_index - 1;
 		}
 	} else {
 		idx_t offset_from_end;
-		if (index == NumericLimits<int64_t>::Minimum() || !TryCast::Operation(-index, offset_from_end)) {
-			child_index = array_size;
-		} else {
+		if (index != NumericLimits<int64_t>::Minimum() && TryCast::Operation(-index, offset_from_end)) {
 			child_index = offset_from_end > array_size ? array_size : array_size - offset_from_end;
 		}
 	}
