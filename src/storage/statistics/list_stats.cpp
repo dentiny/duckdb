@@ -3,6 +3,7 @@
 #include "duckdb/storage/statistics/base_statistics.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/common/types/vector.hpp"
+#include "duckdb/storage/storage_index.hpp"
 
 #include "duckdb/common/serializer/serializer.hpp"
 #include "duckdb/common/serializer/deserializer.hpp"
@@ -57,6 +58,18 @@ void ListStats::SetChildStats(BaseStatistics &stats, unique_ptr<BaseStatistics> 
 	} else {
 		stats.child_stats[0].Copy(*new_stats);
 	}
+}
+
+unique_ptr<BaseStatistics> ListStats::PushdownExtract(const BaseStatistics &stats, const StorageIndex &index) {
+	if (index.HasPrimaryIndex() && index.GetPrimaryIndex() != 0) {
+		return nullptr;
+	}
+	auto child_stats = ListStats::GetChildStats(stats).Copy();
+	if (index.HasChildren()) {
+		return child_stats.PushdownExtract(index.GetChildIndex(0));
+	}
+	child_stats.Set(StatsInfo::CAN_HAVE_NULL_VALUES);
+	return child_stats.ToUnique();
 }
 
 void ListStats::Merge(BaseStatistics &stats, const BaseStatistics &other, StatsMergeType merge_type) {

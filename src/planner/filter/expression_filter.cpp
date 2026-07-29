@@ -19,9 +19,12 @@
 #include "duckdb/planner/filter/prefix_range_filter.hpp"
 #include "duckdb/planner/filter/selectivity_optional_filter.hpp"
 #include "duckdb/planner/filter/table_filter_functions.hpp"
+#include "duckdb/common/operator/cast_operators.hpp"
 #include "duckdb/common/types/data_chunk.hpp"
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/storage/statistics/base_statistics.hpp"
+#include "duckdb/storage/statistics/array_stats.hpp"
+#include "duckdb/storage/statistics/list_stats.hpp"
 #include "duckdb/storage/statistics/numeric_stats.hpp"
 #include "duckdb/storage/statistics/struct_stats.hpp"
 #include "duckdb/storage/statistics/string_stats.hpp"
@@ -201,6 +204,14 @@ static FilterPropagateResult CheckZonemapAgainstConstants(const BaseStatistics &
 	}
 }
 
+static optional_ptr<const BaseStatistics> TryGetArrayExtractStats(const BoundFunctionExpression &func,
+                                                                  const BaseStatistics &stats,
+                                                                  vector<unique_ptr<BaseStatistics>> &owned_stats);
+static optional_ptr<const BaseStatistics> TryGetListExtractStats(optional_ptr<ClientContext> context_p,
+                                                                 const BoundFunctionExpression &func,
+                                                                 const BaseStatistics &stats,
+                                                                 vector<unique_ptr<BaseStatistics>> &owned_stats);
+
 static optional_ptr<const BaseStatistics> TryGetFilterStats(optional_ptr<ClientContext> context_p,
                                                             const Expression &expr, const BaseStatistics &stats,
                                                             vector<unique_ptr<BaseStatistics>> &owned_stats) {
@@ -231,6 +242,21 @@ static optional_ptr<const BaseStatistics> TryGetFilterStats(optional_ptr<ClientC
 			}
 			owned_stats.push_back(std::move(cast_stats));
 			return owned_stats.back().get();
+		}
+
+		if ((func.Function().GetName() == "array_extract" || func.Function().GetName() == "list_extract") &&
+		    stats.GetType().id() == LogicalTypeId::ARRAY) {
+			auto array_extract_stats = TryGetArrayExtractStats(func, stats, owned_stats);
+			if (array_extract_stats) {
+				return array_extract_stats;
+			}
+		}
+		if ((func.Function().GetName() == "array_extract" || func.Function().GetName() == "list_extract") &&
+		    stats.GetType().id() == LogicalTypeId::LIST) {
+			auto list_extract_stats = TryGetListExtractStats(context_p, func, stats, owned_stats);
+			if (list_extract_stats) {
+				return list_extract_stats;
+			}
 		}
 
 		if (!context_p) {
@@ -289,6 +315,79 @@ static optional_ptr<const BaseStatistics> TryGetFilterStats(optional_ptr<ClientC
 	default:
 		return nullptr;
 	}
+}
+
+static optional_ptr<const BaseStatistics> TryGetArrayExtractStats(const BoundFunctionExpression &func,
+                                                                  const BaseStatistics &stats,
+                                                                  vector<unique_ptr<BaseStatistics>> &owned_stats) {
+	auto &children = func.GetChildren();
+	if (children.size() != 2) {
+		return nullptr;
+	}
+	auto &array_expr = *children[0];
+	auto &index_expr = *children[1];
+	if (array_expr.GetExpressionClass() != ExpressionClass::BOUND_FUNCTION ||
+	    index_expr.GetExpressionType() != ExpressionType::VALUE_CONSTANT) {
+		return nullptr;
+	}
+	auto &array_cast = array_expr.Cast<BoundFunctionExpression>();
+	if (!BoundCastExpression::IsCast(array_cast)) {
+		return nullptr;
+	}
+	auto &cast_child = BoundCastExpression::Child(array_cast);
+	if (cast_child.GetExpressionClass() != ExpressionClass::BOUND_REF ||
+	    cast_child.GetReturnType().id() != LogicalTypeId::ARRAY || stats.GetType().id() != LogicalTypeId::ARRAY) {
+		return nullptr;
+	}
+	auto &index_value = index_expr.Cast<BoundConstantExpression>().GetValue();
+	if (index_value.IsNull()) {
+		return nullptr;
+	}
+	auto index = index_value.GetValue<int64_t>();
+	if (index == 0) {
+		return nullptr;
+	}
+	auto array_size = ArrayType::GetSize(stats.GetType());
+	idx_t child_index = array_size;
+	if (index > 0) {
+		idx_t positive_index;
+		if (TryCast::Operation(index, positive_index) && positive_index > 0 && positive_index <= array_size) {
+			child_index = positive_index - 1;
+		}
+	} else {
+		idx_t offset_from_end;
+		if (index != NumericLimits<int64_t>::Minimum() && TryCast::Operation(-index, offset_from_end)) {
+			child_index = offset_from_end > array_size ? array_size : array_size - offset_from_end;
+		}
+	}
+	if (child_index >= array_size) {
+		auto result = BaseStatistics::CreateEmpty(func.GetReturnType());
+		result.Set(StatsInfo::CANNOT_HAVE_VALID_VALUES);
+		owned_stats.push_back(result.ToUnique());
+		return owned_stats.back().get();
+	}
+	auto child_stats = ArrayStats::GetChildStats(stats).Copy();
+	child_stats.Set(StatsInfo::CAN_HAVE_NULL_VALUES);
+	owned_stats.push_back(child_stats.ToUnique());
+	return owned_stats.back().get();
+}
+
+static optional_ptr<const BaseStatistics> TryGetListExtractStats(optional_ptr<ClientContext> context_p,
+                                                                 const BoundFunctionExpression &func,
+                                                                 const BaseStatistics &stats,
+                                                                 vector<unique_ptr<BaseStatistics>> &owned_stats) {
+	auto &children = func.GetChildren();
+	if (children.size() != 2) {
+		return nullptr;
+	}
+	auto list_stats = TryGetFilterStats(context_p, *children[0], stats, owned_stats);
+	if (!list_stats || list_stats->GetType().id() != LogicalTypeId::LIST) {
+		return nullptr;
+	}
+	auto child_stats = ListStats::GetChildStats(*list_stats).Copy();
+	child_stats.Set(StatsInfo::CAN_HAVE_NULL_VALUES);
+	owned_stats.push_back(child_stats.ToUnique());
+	return owned_stats.back().get();
 }
 
 static bool TryGetVariantComparisonStatsType(const LogicalType &typed_type, const LogicalType &constant_type,

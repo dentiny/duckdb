@@ -59,6 +59,7 @@ public:
 public:
 	void InitializeRead(idx_t row_group_idx_p, idx_t row_group_num_rows, const vector<ColumnChunk> &columns,
 	                    TProtocol &protocol_p) override;
+	unique_ptr<BaseStatistics> Stats(idx_t row_group_idx_p, const vector<ColumnChunk> &columns) override;
 
 	idx_t Read(ColumnReaderInput &input, Vector &result) override;
 

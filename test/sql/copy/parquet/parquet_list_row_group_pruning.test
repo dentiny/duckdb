@@ -1,0 +1,29 @@
+# name: test/sql/copy/parquet/parquet_list_row_group_pruning.test
+# description: Test row group pruning using Parquet LIST element statistics
+# group: [parquet]
+
+require parquet
+
+require no_vector_verification
+
+statement ok
+COPY (
+	SELECT i, [i] AS l
+	FROM range(0, 4096) t(i)
+) TO '{TEST_DIR}/list_row_group_pruning.parquet' (FORMAT parquet, ROW_GROUP_SIZE 2048);
+
+query ITT
+SELECT row_group_id, stats_min, stats_max
+FROM parquet_metadata('{TEST_DIR}/list_row_group_pruning.parquet')
+WHERE path_in_schema = 'l, list, element'
+ORDER BY row_group_id;
+----
+0	0	2047
+1	2048	4095
+
+query II
+EXPLAIN ANALYZE SELECT count(*)
+FROM read_parquet('{TEST_DIR}/list_row_group_pruning.parquet')
+WHERE l[1] = 3500;
+----
+analyzed_plan	<REGEX>:(?s).*Row Groups Scanned: 1 / 2.*

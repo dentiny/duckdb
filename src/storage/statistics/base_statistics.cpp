@@ -277,8 +277,12 @@ void BaseStatistics::Copy(const BaseStatistics &other) {
 unique_ptr<BaseStatistics> BaseStatistics::PushdownExtract(const StorageIndex &index) const {
 	auto stats_type = GetStatsType();
 	switch (stats_type) {
+	case StatisticsType::LIST_STATS:
+		return ListStats::PushdownExtract(*this, index);
 	case StatisticsType::STRUCT_STATS:
 		return StructStats::PushdownExtract(*this, index);
+	case StatisticsType::ARRAY_STATS:
+		return ArrayStats::PushdownExtract(*this, index);
 	case StatisticsType::VARIANT_STATS:
 		return VariantStats::PushdownExtract(*this, index);
 	default:

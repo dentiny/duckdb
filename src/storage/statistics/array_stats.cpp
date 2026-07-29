@@ -5,6 +5,7 @@
 #include "duckdb/common/types/vector.hpp"
 #include "duckdb/common/serializer/serializer.hpp"
 #include "duckdb/common/serializer/deserializer.hpp"
+#include "duckdb/storage/storage_index.hpp"
 
 namespace duckdb {
 
@@ -56,6 +57,23 @@ void ArrayStats::SetChildStats(BaseStatistics &stats, unique_ptr<BaseStatistics>
 	} else {
 		stats.child_stats[0].Copy(*new_stats);
 	}
+}
+
+unique_ptr<BaseStatistics> ArrayStats::PushdownExtract(const BaseStatistics &stats, const StorageIndex &index) {
+	if (!index.HasPrimaryIndex()) {
+		return nullptr;
+	}
+	auto array_size = ArrayType::GetSize(stats.GetType());
+	auto child_index = index.GetPrimaryIndex();
+	if (child_index >= array_size) {
+		return nullptr;
+	}
+	auto child_stats = ArrayStats::GetChildStats(stats).Copy();
+	if (index.HasChildren()) {
+		return child_stats.PushdownExtract(index.GetChildIndex(0));
+	}
+	child_stats.Set(StatsInfo::CAN_HAVE_NULL_VALUES);
+	return child_stats.ToUnique();
 }
 
 void ArrayStats::Merge(BaseStatistics &stats, const BaseStatistics &other, StatsMergeType merge_type) {
