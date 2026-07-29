@@ -4,8 +4,6 @@
 
 require parquet
 
-require json
-
 require no_vector_verification
 
 statement ok
@@ -23,27 +21,9 @@ ORDER BY row_group_id;
 0	0	2047
 1	2048	4095
 
-statement ok
-PRAGMA enable_profiling = 'json';
-
-statement ok
-PRAGMA profiling_output = '{TEST_DIR}/list_row_group_pruning_profile.json';
-
-statement ok
-SET tracked_metrics = ['operator.row_groups_scanned', 'operator.total_row_groups_to_scan', 'operator.type', 'query.total_row_groups_scanned', 'query.total_row_groups_to_scan'];
-
-query I
-SELECT count(*)
+query II
+EXPLAIN ANALYZE SELECT count(*)
 FROM read_parquet('{TEST_DIR}/list_row_group_pruning.parquet')
 WHERE l[1] = 3500;
 ----
-1
-
-statement ok
-PRAGMA disable_profiling;
-
-query II
-SELECT query.total_row_groups_scanned::BIGINT, query.total_row_groups_to_scan::BIGINT
-FROM '{TEST_DIR}/list_row_group_pruning_profile.json';
-----
-1	2
+analyzed_plan	<REGEX>:(?s).*Row Groups Scanned: 1 / 2.*

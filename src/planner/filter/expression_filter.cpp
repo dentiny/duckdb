@@ -19,6 +19,7 @@
 #include "duckdb/planner/filter/prefix_range_filter.hpp"
 #include "duckdb/planner/filter/selectivity_optional_filter.hpp"
 #include "duckdb/planner/filter/table_filter_functions.hpp"
+#include "duckdb/common/operator/cast_operators.hpp"
 #include "duckdb/common/types/data_chunk.hpp"
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/storage/statistics/base_statistics.hpp"
@@ -350,10 +351,19 @@ static optional_ptr<const BaseStatistics> TryGetArrayExtractStats(const BoundFun
 	auto array_size = ArrayType::GetSize(stats.GetType());
 	idx_t child_index;
 	if (index > 0) {
-		child_index = UnsafeNumericCast<idx_t>(index - 1);
+		idx_t positive_index;
+		if (!TryCast::Operation(index, positive_index) || positive_index == 0 || positive_index > array_size) {
+			child_index = array_size;
+		} else {
+			child_index = positive_index - 1;
+		}
 	} else {
-		auto offset_from_end = UnsafeNumericCast<idx_t>(-(index + 1)) + 1;
-		child_index = offset_from_end > array_size ? array_size : array_size - offset_from_end;
+		idx_t offset_from_end;
+		if (index == NumericLimits<int64_t>::Minimum() || !TryCast::Operation(-index, offset_from_end)) {
+			child_index = array_size;
+		} else {
+			child_index = offset_from_end > array_size ? array_size : array_size - offset_from_end;
+		}
 	}
 	if (child_index >= array_size) {
 		auto result = BaseStatistics::CreateEmpty(func.GetReturnType());
