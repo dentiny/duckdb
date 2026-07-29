@@ -5,6 +5,7 @@
 #include "parquet_reader.hpp"
 #include "duckdb/common/types/vector.hpp"
 #include "duckdb/common/vector/flat_vector.hpp"
+#include "duckdb/planner/expression/bound_reference_expression.hpp"
 
 namespace duckdb_apache {
 namespace thrift {
@@ -67,6 +68,17 @@ void ExpressionColumnReader::InitializeRead(idx_t row_group_idx_p, idx_t row_gro
 	for (auto &child_reader : child_readers) {
 		child_reader->InitializeRead(row_group_idx_p, row_group_num_rows, columns, protocol_p);
 	}
+}
+
+unique_ptr<BaseStatistics> ExpressionColumnReader::Stats(idx_t row_group_idx_p, const vector<ColumnChunk> &columns) {
+	if (child_readers.size() != 1 || expr->GetExpressionClass() != ExpressionClass::BOUND_REF) {
+		return nullptr;
+	}
+	auto &ref = expr->Cast<BoundReferenceExpression>();
+	if (ref.Index() != 0) {
+		return nullptr;
+	}
+	return child_readers[0]->Stats(row_group_idx_p, columns);
 }
 
 static void ReverseSelectionVector(const SelectionVector &input, SelectionVector &output, idx_t input_count,

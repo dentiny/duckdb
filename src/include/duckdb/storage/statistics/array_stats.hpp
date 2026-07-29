@@ -20,6 +20,7 @@ class Vector;
 class Serializer;
 class Deserializer;
 class Value;
+struct StorageIndex;
 
 struct ArrayStats {
 	DUCKDB_API static void Construct(BaseStatistics &stats);
@@ -29,6 +30,7 @@ struct ArrayStats {
 	DUCKDB_API static const BaseStatistics &GetChildStats(const BaseStatistics &stats);
 	DUCKDB_API static BaseStatistics &GetChildStats(BaseStatistics &stats);
 	DUCKDB_API static void SetChildStats(BaseStatistics &stats, unique_ptr<BaseStatistics> new_stats);
+	DUCKDB_API static unique_ptr<BaseStatistics> PushdownExtract(const BaseStatistics &stats, const StorageIndex &index);
 
 	DUCKDB_API static void Serialize(const BaseStatistics &stats, Serializer &serializer);
 	DUCKDB_API static void Deserialize(Deserializer &deserializer, BaseStatistics &base);
