@@ -103,12 +103,20 @@ TEST_CASE("Custom block allocator and shared memory manager are mutually exclusi
 
 TEST_CASE("Block allocator remains enabled without a detected memory limit", "[api][.]") {
 #if INTPTR_MAX > INT32_MAX
+	atomic<idx_t> memory_counter = 0;
 	DBConfig config;
 	DatabaseMemoryConfig memory_config;
 	memory_config.maximum_memory = DConstants::INVALID_INDEX;
 	memory_config.block_allocator_size = DEFAULT_BLOCK_ALLOC_SIZE;
+	memory_config.allocator = make_uniq<Allocator>(my_allocate_function, my_free_function, my_reallocate_function,
+	                                               make_uniq<MyAllocateData>(&memory_counter));
 
 	auto memory_manager = DatabaseMemoryManager::Create(std::move(memory_config), config);
-	REQUIRE(memory_manager->GetBlockAllocator().IsEnabled());
+	auto &block_allocator = memory_manager->GetBlockAllocator();
+	auto initial_memory = memory_counter.load();
+	auto pointer = block_allocator.AllocateData(DEFAULT_BLOCK_ALLOC_SIZE);
+	auto used_fallback_allocator = memory_counter.load() != initial_memory;
+	block_allocator.FreeData(pointer, DEFAULT_BLOCK_ALLOC_SIZE);
+	REQUIRE(!used_fallback_allocator);
 #endif
 }
