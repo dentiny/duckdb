@@ -123,7 +123,7 @@ private:
 
 	template <class T, class... ARGS>
 	shared_ptr<T> GetOrCreate(MemoryContextId context_id, const bool &context_active, const string &key,
-	                          ARGS &&... args) {
+	                          ARGS &&...args) {
 		const lock_guard<mutex> lock(lock_mutex);
 		if (!context_active) {
 			return nullptr;
@@ -201,15 +201,11 @@ private:
 		lru_cache.Delete(cache_key);
 	}
 
-	void DropEntries(MemoryContextId context_id, bool &context_active) {
+	void DropEntries(MemoryContextId context_id) {
 		vector<shared_ptr<ObjectCacheEntry>> deferred_non_evictable_entries;
-		vector<ObjectLruCache::RemovedEntry> deferred_evictable_entries;
+		vector<ObjectLruCache::ExtractedEntry> deferred_evictable_entries;
 		{
 			const lock_guard<mutex> lock(lock_mutex);
-			if (!context_active) {
-				return;
-			}
-			context_active = false;
 			size_t matching_non_evictable_entries = 0;
 			for (const auto &entry : non_evictable_entries) {
 				if (entry.first.context_id == context_id) {
@@ -226,7 +222,7 @@ private:
 				}
 			}
 			deferred_evictable_entries =
-			    lru_cache.RemoveIf([&](const ObjectCacheKey &key) { return key.context_id == context_id; });
+			    lru_cache.ExtractIf([&](const ObjectCacheKey &key) { return key.context_id == context_id; });
 		}
 	}
 
@@ -242,7 +238,7 @@ private:
 
 	template <class T, class... ARGS>
 	shared_ptr<T> GetOrCreateWithTypePrefix(MemoryContextId context_id, const bool &context_active, const string &key,
-	                                        ARGS &&... args) {
+	                                        ARGS &&...args) {
 		return GetOrCreate<T>(context_id, context_active, MakeTypedCacheKey<T>(key), std::forward<ARGS>(args)...);
 	}
 
@@ -302,6 +298,8 @@ private:
 
 class BoundObjectCache {
 public:
+	BoundObjectCache(ObjectCache &cache_p, MemoryContextId context_id_p) : cache(cache_p), context_id(context_id_p) {
+	}
 	BoundObjectCache(const BoundObjectCache &) = delete;
 	BoundObjectCache &operator=(const BoundObjectCache &) = delete;
 	~BoundObjectCache();
@@ -316,7 +314,7 @@ public:
 	}
 
 	template <class T, class... ARGS>
-	shared_ptr<T> GetOrCreate(const string &key, ARGS &&... args) {
+	shared_ptr<T> GetOrCreate(const string &key, ARGS &&...args) {
 		return cache.GetOrCreate<T>(context_id, active, key, std::forward<ARGS>(args)...);
 	}
 
@@ -334,7 +332,7 @@ public:
 	}
 
 	template <class T, class... ARGS>
-	shared_ptr<T> GetOrCreateWithTypePrefix(const string &key, ARGS &&... args) {
+	shared_ptr<T> GetOrCreateWithTypePrefix(const string &key, ARGS &&...args) {
 		return cache.GetOrCreateWithTypePrefix<T>(context_id, active, key, std::forward<ARGS>(args)...);
 	}
 
@@ -358,11 +356,6 @@ public:
 	}
 
 private:
-	friend class ObjectCache;
-
-	BoundObjectCache(ObjectCache &cache_p, MemoryContextId context_id_p) : cache(cache_p), context_id(context_id_p) {
-	}
-
 	ObjectCache &cache;
 	MemoryContextId context_id;
 	bool active = true;

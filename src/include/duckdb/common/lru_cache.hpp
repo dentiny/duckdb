@@ -37,7 +37,7 @@ public:
 	using hasher = KeyHash;
 	using key_equal = KeyEqual;
 
-	struct RemovedEntry {
+	struct ExtractedEntry {
 		unique_ptr<Payload> payload;
 		mapped_type value;
 	};
@@ -125,18 +125,18 @@ public:
 		return freed;
 	}
 
-	//! Remove and return every entry whose key matches the predicate.
+	//! Extract and return every entry whose key matches the predicate.
 	//! Returning ownership lets the caller destroy values and payloads outside its cache lock.
 	template <typename PREDICATE>
-	vector<RemovedEntry> RemoveIf(PREDICATE predicate) {
-		vector<RemovedEntry> result;
+	vector<ExtractedEntry> ExtractIf(PREDICATE predicate) {
+		vector<ExtractedEntry> result;
 		for (auto entry = entry_map.begin(); entry != entry_map.end();) {
 			if (!predicate(entry->first)) {
 				++entry;
 				continue;
 			}
-			auto entry_to_remove = entry++;
-			result.push_back(RemoveImpl(entry_to_remove));
+			auto entry_to_extract = entry++;
+			result.push_back(ExtractImpl(entry_to_extract));
 		}
 		return result;
 	}
@@ -172,10 +172,10 @@ private:
 		entry_map.erase(iter);
 	}
 
-	RemovedEntry RemoveImpl(typename EntryMap::iterator iter) {
+	ExtractedEntry ExtractImpl(typename EntryMap::iterator iter) {
 		current_total_weight -= iter->second.payload_weight;
 		lru_list.erase(iter->second.lru_iterator);
-		RemovedEntry result {std::move(iter->second.payload), std::move(iter->second.value)};
+		ExtractedEntry result {std::move(iter->second.payload), std::move(iter->second.value)};
 		entry_map.erase(iter);
 		return result;
 	}

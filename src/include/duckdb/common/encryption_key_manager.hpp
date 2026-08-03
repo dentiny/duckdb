@@ -48,6 +48,7 @@ private:
 
 class EncryptionKeyManager : public ObjectCacheEntry {
 public:
+	static EncryptionKeyManager &GetInternal(BoundObjectCache &cache);
 	static EncryptionKeyManager &Get(ClientContext &context);
 	static EncryptionKeyManager &Get(DatabaseInstance &db);
 
@@ -67,7 +68,6 @@ public:
 	}
 
 public:
-public:
 	static void DeriveKey(string &user_key, data_ptr_t salt, data_ptr_t derived_key);
 	static void KeyDerivationFunctionSHA256(const_data_ptr_t user_key, idx_t user_key_size, data_ptr_t salt,
 	                                        data_ptr_t derived_key);
@@ -82,9 +82,6 @@ public:
 	//! constants
 	static constexpr idx_t KEY_ID_BYTES = 8;
 	static constexpr idx_t DERIVED_KEY_LENGTH = 32;
-
-private:
-	static EncryptionKeyManager &GetInternal(BoundObjectCache &cache);
 
 private:
 	mutable mutex lock;

@@ -178,7 +178,7 @@ TEST_CASE("LRU Cache Clear", "[lru_cache]") {
 	REQUIRE(cache.Get("key2") == nullptr);
 }
 
-TEST_CASE("LRU Cache Remove If", "[lru_cache]") {
+TEST_CASE("LRU Cache Extract If", "[lru_cache]") {
 	DuckDB db;
 	Connection con(db);
 	auto &context = *con.context;
@@ -196,8 +196,8 @@ TEST_CASE("LRU Cache Remove If", "[lru_cache]") {
 	REQUIRE(cache.CurrentTotalWeight() == 1000);
 	REQUIRE(buffer_pool.GetUsedMemory() == initial_memory + 1000);
 
-	auto removed = cache.RemoveIf([](const string &key) { return key == "key1" || key == "key3"; });
-	REQUIRE(removed.size() == 2);
+	auto extracted = cache.ExtractIf([](const string &key) { return key == "key1" || key == "key3"; });
+	REQUIRE(extracted.size() == 2);
 	REQUIRE(cache.Size() == 2);
 	REQUIRE(cache.CurrentTotalWeight() == 600);
 	REQUIRE(cache.Get("key1") == nullptr);
@@ -205,19 +205,19 @@ TEST_CASE("LRU Cache Remove If", "[lru_cache]") {
 	REQUIRE(cache.Get("key3") == nullptr);
 	REQUIRE(cache.Get("key4") != nullptr);
 
-	idx_t removed_weight = 0;
-	int removed_value = 0;
-	for (const auto &entry : removed) {
+	idx_t extracted_weight = 0;
+	int extracted_value = 0;
+	for (const auto &entry : extracted) {
 		REQUIRE(entry.payload != nullptr);
 		REQUIRE(entry.value != nullptr);
-		removed_weight += entry.payload->GetWeight();
-		removed_value += entry.value->value;
+		extracted_weight += entry.payload->GetWeight();
+		extracted_value += entry.value->value;
 	}
-	REQUIRE(removed_weight == 400);
-	REQUIRE(removed_value == 4);
+	REQUIRE(extracted_weight == 400);
+	REQUIRE(extracted_value == 4);
 	REQUIRE(buffer_pool.GetUsedMemory() == initial_memory + 1000);
 
-	removed.clear();
+	extracted.clear();
 	REQUIRE(buffer_pool.GetUsedMemory() == initial_memory + 600);
 }
 

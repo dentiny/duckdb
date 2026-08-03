@@ -13,8 +13,8 @@ namespace duckdb {
 
 DatabaseMemoryManager::DatabaseMemoryManager(unique_ptr<Allocator> allocator_p,
                                              unique_ptr<BlockAllocator> block_allocator_p,
-                                             const DatabaseMemoryConfig &config_p)
-    : config(config_p), allocator(std::move(allocator_p)), block_allocator(std::move(block_allocator_p)) {
+                                             DatabaseMemoryConfig config_p)
+    : config(std::move(config_p)), allocator(std::move(allocator_p)), block_allocator(std::move(block_allocator_p)) {
 	if (!allocator || !block_allocator) {
 		throw InternalException("DatabaseMemoryManager cannot contain null allocator components");
 	}
@@ -33,25 +33,23 @@ DatabaseMemoryManager::~DatabaseMemoryManager() {
 	Allocator::SetBackgroundThreads(false);
 }
 
-shared_ptr<DatabaseMemoryManager> DatabaseMemoryManager::Create(unique_ptr<DatabaseMemoryManagerOptions> options,
-                                                                DBConfig &config) {
-	unique_ptr<Allocator> allocator;
-	unique_ptr<BlockAllocator> block_allocator;
-	if (options) {
-		allocator = std::move(options->allocator);
-		block_allocator = std::move(options->block_allocator);
-	}
+shared_ptr<DatabaseMemoryManager> DatabaseMemoryManager::Create(DatabaseMemoryConfig memory_config,
+                                                                DBConfig &db_config) {
+	auto allocator = std::move(memory_config.allocator);
+	auto block_allocator = std::move(memory_config.block_allocator);
 	if (!allocator) {
 		allocator = make_uniq<Allocator>();
 	}
 	if (!block_allocator) {
-		auto default_block_size = Settings::Get<DefaultBlockSizeSetting>(config);
-		block_allocator = make_uniq<BlockAllocator>(*allocator, default_block_size,
-		                                            DBConfig::GetSystemAvailableMemory(*config.file_system) * 8 / 10,
-		                                            config.GetMemoryConfig().block_allocator_size.load());
+		auto default_block_size = Settings::Get<DefaultBlockSizeSetting>(db_config);
+		auto available_memory = DBConfig::GetSystemAvailableMemory(*db_config.file_system);
+		auto maximum_memory =
+		    available_memory == DConstants::INVALID_INDEX ? available_memory : available_memory * 8 / 10;
+		block_allocator = make_uniq<BlockAllocator>(*allocator, default_block_size, maximum_memory,
+		                                            memory_config.block_allocator_size);
 	}
 	return make_shared_ptr<DatabaseMemoryManager>(std::move(allocator), std::move(block_allocator),
-	                                              config.GetMemoryConfig());
+	                                              std::move(memory_config));
 }
 
 Allocator &DatabaseMemoryManager::GetAllocator() const {

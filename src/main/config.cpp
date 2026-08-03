@@ -584,10 +584,10 @@ IndexTypeSet &DBConfig::GetIndexTypes() {
 void DBConfig::SetDefaultMaxMemory(optional_ptr<DatabaseInstance> db) {
 	auto memory = GetSystemAvailableMemory(*file_system);
 	if (memory == DConstants::INVALID_INDEX) {
-		// If GetSystemAvailableMemory returned the default, use it as is
+		// Leave the limit unset when available system memory cannot be detected.
 		SetMaximumMemory(memory, db);
 	} else {
-		// Otherwise, use 80% of the available memory
+		// Use 80% of the available system memory.
 		SetMaximumMemory(memory * 8 / 10, db);
 	}
 }

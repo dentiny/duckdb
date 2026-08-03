@@ -65,8 +65,6 @@ class ExtensionCallbackManager;
 class TypeManager;
 class DatabaseInstance;
 class DatabaseMemoryManager;
-struct DatabaseMemoryManagerOptions;
-class ObjectCache;
 
 struct CompressionFunctionSet;
 struct DatabaseCacheEntry;
@@ -267,6 +265,7 @@ public:
 	DUCKDB_API IndexTypeSet &GetIndexTypes();
 	static idx_t GetSystemMaxThreads(FileSystem &fs);
 	static idx_t GetSystemMaxAsyncThreads(FileSystem &fs);
+	//! Returns the available system memory, or INVALID_INDEX when it cannot be detected.
 	static idx_t GetSystemAvailableMemory(FileSystem &fs);
 	static optional_idx ParseMemoryLimitSlurm(const string &arg);
 	//! Returns the active memory limit from the shared memory manager, or the configured initialization value.
@@ -310,8 +309,8 @@ public:
 	HTTPUtil &GetHTTPUtil() const;
 
 private:
-	DatabaseMemoryConfig memory_config;
-	unique_ptr<DatabaseMemoryManagerOptions> memory_manager_options;
+	//! Memory-domain configuration used until a memory manager is selected or created.
+	DatabaseMemoryConfig pending_memory_config;
 	mutable mutex config_lock;
 	unique_ptr<CompressionFunctionSet> compression_functions;
 	unique_ptr<EncodingFunctionSet> encoding_functions;

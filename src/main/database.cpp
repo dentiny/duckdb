@@ -484,7 +484,7 @@ Allocator &Allocator::Get(AttachedDatabase &db) {
 
 void DatabaseInstance::Configure(DBConfig &new_config, const char *database_path) {
 	if (new_config.buffer_manager) {
-		if (new_config.memory_manager_options) {
+		if (new_config.pending_memory_config.allocator || new_config.pending_memory_config.block_allocator) {
 			throw InvalidInputException("Cannot combine a custom buffer manager with a custom allocator");
 		}
 		auto custom_memory_manager = new_config.buffer_manager->GetDatabase().GetMemoryManager();
@@ -496,9 +496,13 @@ void DatabaseInstance::Configure(DBConfig &new_config, const char *database_path
 		}
 		new_config.memory_manager = std::move(custom_memory_manager);
 	}
+	if (new_config.memory_manager && !new_config.pending_memory_config.IsDefault()) {
+		throw InvalidInputException("Cannot combine a memory manager with pending memory settings");
+	}
+	const auto maximum_memory = new_config.GetMaximumMemory();
 
 	config.options = new_config.options;
-	config.memory_config = new_config.memory_config;
+	config.pending_memory_config = std::move(new_config.pending_memory_config);
 	config.user_settings = new_config.user_settings;
 
 	if (Settings::Get<DuckDBAPISetting>(*this).empty()) {
@@ -539,7 +543,7 @@ void DatabaseInstance::Configure(DBConfig &new_config, const char *database_path
 	if (new_config.secret_manager) {
 		config.secret_manager = std::move(new_config.secret_manager);
 	}
-	if (new_config.GetMaximumMemory() == DConstants::INVALID_INDEX) {
+	if (!new_config.memory_manager && maximum_memory == DConstants::INVALID_INDEX) {
 		config.SetDefaultMaxMemory();
 	}
 	if (new_config.options.maximum_threads == DConstants::INVALID_INDEX) {
@@ -563,17 +567,17 @@ void DatabaseInstance::Configure(DBConfig &new_config, const char *database_path
 		config.error_manager = make_uniq<ErrorManager>();
 	}
 	if (!config.memory_manager) {
-		config.memory_manager = DatabaseMemoryManager::Create(std::move(new_config.memory_manager_options), config);
+		config.memory_manager = DatabaseMemoryManager::Create(std::move(config.pending_memory_config), config);
 	}
 	config.db_cache_entry = std::move(new_config.db_cache_entry);
 	config.path_manager = std::move(new_config.path_manager);
 }
 
 void DBConfig::ShareMemoryWith(DatabaseInstance &db) {
-	if (memory_manager_options) {
+	if (pending_memory_config.allocator || pending_memory_config.block_allocator) {
 		throw InvalidInputException("Cannot select a shared memory manager after setting an allocator");
 	}
-	if (!memory_config.IsDefault()) {
+	if (!pending_memory_config.IsDefault()) {
 		throw InvalidInputException("Cannot select a shared memory manager after configuring memory settings");
 	}
 	if (buffer_manager && buffer_manager->GetDatabase().GetMemoryManager() != db.GetMemoryManager()) {
@@ -590,7 +594,7 @@ const DatabaseMemoryConfig &DBConfig::GetMemoryConfig() const {
 	if (memory_manager) {
 		return memory_manager->GetConfig();
 	}
-	return memory_config;
+	return pending_memory_config;
 }
 
 void DBConfig::SetMaximumMemory(idx_t maximum_memory, optional_ptr<DatabaseInstance> db) {
@@ -599,7 +603,7 @@ void DBConfig::SetMaximumMemory(idx_t maximum_memory, optional_ptr<DatabaseInsta
 	} else if (memory_manager) {
 		memory_manager->SetMaximumMemory(maximum_memory, "");
 	} else {
-		memory_config.maximum_memory = maximum_memory;
+		pending_memory_config.maximum_memory = maximum_memory;
 	}
 }
 
@@ -607,7 +611,7 @@ void DBConfig::SetBlockAllocatorSize(idx_t block_allocator_size) {
 	if (memory_manager) {
 		memory_manager->SetBlockAllocatorSize(block_allocator_size);
 	} else {
-		memory_config.block_allocator_size = block_allocator_size;
+		pending_memory_config.block_allocator_size = block_allocator_size;
 	}
 }
 
@@ -615,14 +619,14 @@ void DBConfig::SetBufferManagerTrackEvictionTimestamps(bool enabled) {
 	if (memory_manager) {
 		throw InvalidInputException("Cannot change eviction timestamp tracking after the memory manager is created");
 	}
-	memory_config.buffer_manager_track_eviction_timestamps = enabled;
+	pending_memory_config.buffer_manager_track_eviction_timestamps = enabled;
 }
 
 void DBConfig::SetAllocatorBulkDeallocationFlushThreshold(idx_t threshold) {
 	if (memory_manager) {
 		memory_manager->SetAllocatorBulkDeallocationFlushThreshold(threshold);
 	} else {
-		memory_config.allocator_bulk_deallocation_flush_threshold = threshold;
+		pending_memory_config.allocator_bulk_deallocation_flush_threshold = threshold;
 	}
 }
 
@@ -633,10 +637,7 @@ void DBConfig::SetAllocator(unique_ptr<Allocator> allocator) {
 	if (buffer_manager) {
 		throw InvalidInputException("Cannot set a custom allocator after setting a custom buffer manager");
 	}
-	if (!memory_manager_options) {
-		memory_manager_options = make_uniq<DatabaseMemoryManagerOptions>();
-	}
-	memory_manager_options->allocator = std::move(allocator);
+	pending_memory_config.allocator = std::move(allocator);
 }
 
 void DBConfig::SetBlockAllocator(unique_ptr<BlockAllocator> block_allocator) {
@@ -646,10 +647,7 @@ void DBConfig::SetBlockAllocator(unique_ptr<BlockAllocator> block_allocator) {
 	if (buffer_manager) {
 		throw InvalidInputException("Cannot set a custom block allocator after setting a custom buffer manager");
 	}
-	if (!memory_manager_options) {
-		memory_manager_options = make_uniq<DatabaseMemoryManagerOptions>();
-	}
-	memory_manager_options->block_allocator = std::move(block_allocator);
+	pending_memory_config.block_allocator = std::move(block_allocator);
 }
 
 DBConfig &DBConfig::GetConfig(ClientContext &context) {

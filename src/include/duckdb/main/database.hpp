@@ -31,7 +31,6 @@ class ConnectionManager;
 class ExtensionManager;
 class FileSystem;
 class TaskScheduler;
-class ObjectCache;
 struct AttachInfo;
 struct AttachOptions;
 class DatabaseFileSystem;
@@ -102,21 +101,21 @@ private:
 
 private:
 	const MemoryContextId memory_context_id;
-	unique_ptr<BoundObjectCache> object_cache;
 	shared_ptr<BufferManager> buffer_manager;
+	unique_ptr<ResultSetManager> result_set_manager;
+	unique_ptr<LogManager> log_manager;
 	unique_ptr<DatabaseManager> db_manager;
 	unique_ptr<ExternalResourceTypeRegistry> external_resource_type_registry;
 	unique_ptr<ExternalResourcesManager> external_resources_manager;
 	unique_ptr<TaskScheduler> scheduler;
+	unique_ptr<ExternalFileCache> external_file_cache;
+	unique_ptr<BoundObjectCache> object_cache;
 	unique_ptr<ConnectionManager> connection_manager;
 	unique_ptr<ExtensionManager> extension_manager;
 	ValidChecker db_validity;
 	unique_ptr<DatabaseFileSystem> db_file_system;
 	unique_ptr<LocalDatabaseFileSystem> local_db_file_system;
-	unique_ptr<LogManager> log_manager;
 	unique_ptr<MetricsManager> metrics_manager;
-	unique_ptr<ExternalFileCache> external_file_cache;
-	unique_ptr<ResultSetManager> result_set_manager;
 	unique_ptr<ParserCache> parser_cache;
 
 	duckdb_ext_api_v1 (*create_api_v1)();

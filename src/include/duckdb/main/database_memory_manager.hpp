@@ -23,24 +23,14 @@ struct DBConfig;
 class TemporaryMemoryManager;
 class ObjectCache;
 
-//! Initialization-only ownership transferred into a DatabaseMemoryManager.
-struct DatabaseMemoryManagerOptions {
-	DatabaseMemoryManagerOptions() = default;
-	~DatabaseMemoryManagerOptions() = default;
-
-	unique_ptr<Allocator> allocator;
-	unique_ptr<BlockAllocator> block_allocator;
-};
-
 //! Owns the memory-management components shared by one or more DatabaseInstances.
 class DatabaseMemoryManager {
 public:
 	DatabaseMemoryManager(unique_ptr<Allocator> allocator, unique_ptr<BlockAllocator> block_allocator,
-	                      const DatabaseMemoryConfig &config);
+	                      DatabaseMemoryConfig config);
 	~DatabaseMemoryManager();
 
-	DUCKDB_API static shared_ptr<DatabaseMemoryManager> Create(unique_ptr<DatabaseMemoryManagerOptions> options,
-	                                                           DBConfig &config);
+	DUCKDB_API static shared_ptr<DatabaseMemoryManager> Create(DatabaseMemoryConfig config, DBConfig &db_config);
 
 	DUCKDB_API Allocator &GetAllocator() const;
 	DUCKDB_API BlockAllocator &GetBlockAllocator() const;
