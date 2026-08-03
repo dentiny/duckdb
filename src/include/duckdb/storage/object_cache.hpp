@@ -112,7 +112,7 @@ private:
 	}
 
 	template <class T, class... ARGS>
-	shared_ptr<T> GetOrCreate(MemoryContextId context_id, const string &key, ARGS &&...args) {
+	shared_ptr<T> GetOrCreate(MemoryContextId context_id, const string &key, ARGS &&... args) {
 		const lock_guard<mutex> lock(lock_mutex);
 		auto cache_key = MakeCacheKey(context_id, key);
 
@@ -259,7 +259,7 @@ public:
 	}
 
 	template <class T, class... ARGS>
-	shared_ptr<T> GetOrCreate(const string &key, ARGS &&...args) {
+	shared_ptr<T> GetOrCreate(const string &key, ARGS &&... args) {
 		return cache.GetOrCreate<T>(context_id, key, std::forward<ARGS>(args)...);
 	}
 
@@ -277,7 +277,7 @@ public:
 	}
 
 	template <class T, class... ARGS>
-	shared_ptr<T> GetOrCreateWithTypePrefix(const string &key, ARGS &&...args) {
+	shared_ptr<T> GetOrCreateWithTypePrefix(const string &key, ARGS &&... args) {
 		return GetOrCreate<T>(ObjectCache::MakeTypedCacheKey<T>(key), std::forward<ARGS>(args)...);
 	}
 
