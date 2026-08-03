@@ -2,6 +2,7 @@
 #include "test_helpers.hpp"
 #include "duckdb/main/appender.hpp"
 #include "duckdb/common/atomic.hpp"
+#include "duckdb/main/database_memory_manager.hpp"
 #include "duckdb/storage/block_allocator.hpp"
 #include "duckdb/storage/storage_info.hpp"
 
@@ -98,4 +99,16 @@ TEST_CASE("Custom block allocator and shared memory manager are mutually exclusi
 		config.SetBlockAllocator(std::move(block_allocator));
 		REQUIRE_THROWS_AS(config.ShareMemoryWith(*source.instance), InvalidInputException);
 	}
+}
+
+TEST_CASE("Block allocator remains enabled without a detected memory limit", "[api][.]") {
+#if INTPTR_MAX > INT32_MAX
+	DBConfig config;
+	DatabaseMemoryConfig memory_config;
+	memory_config.maximum_memory = DConstants::INVALID_INDEX;
+	memory_config.block_allocator_size = DEFAULT_BLOCK_ALLOC_SIZE;
+
+	auto memory_manager = DatabaseMemoryManager::Create(std::move(memory_config), config);
+	REQUIRE(memory_manager->GetBlockAllocator().IsEnabled());
+#endif
 }

@@ -42,9 +42,10 @@ shared_ptr<DatabaseMemoryManager> DatabaseMemoryManager::Create(DatabaseMemoryCo
 	}
 	if (!block_allocator) {
 		auto default_block_size = Settings::Get<DefaultBlockSizeSetting>(db_config);
-		auto available_memory = DBConfig::GetSystemAvailableMemory(*db_config.file_system);
-		auto maximum_memory =
-		    available_memory == DConstants::INVALID_INDEX ? available_memory : available_memory * 8 / 10;
+		idx_t maximum_memory = memory_config.maximum_memory;
+		if (maximum_memory == DConstants::INVALID_INDEX) {
+			maximum_memory = memory_config.block_allocator_size;
+		}
 		block_allocator = make_uniq<BlockAllocator>(*allocator, default_block_size, maximum_memory,
 		                                            memory_config.block_allocator_size);
 	}
