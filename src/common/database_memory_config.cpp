@@ -19,4 +19,10 @@ DatabaseMemoryConfig &DatabaseMemoryConfig::operator=(const DatabaseMemoryConfig
 	return *this;
 }
 
+bool DatabaseMemoryConfig::IsDefault() const {
+	return maximum_memory == DEFAULT_MAXIMUM_MEMORY && block_allocator_size == DEFAULT_BLOCK_ALLOCATOR_SIZE &&
+	       buffer_manager_track_eviction_timestamps == DEFAULT_BUFFER_MANAGER_TRACK_EVICTION_TIMESTAMPS &&
+	       allocator_bulk_deallocation_flush_threshold == DEFAULT_ALLOCATOR_BULK_DEALLOCATION_FLUSH_THRESHOLD;
+}
+
 } // namespace duckdb

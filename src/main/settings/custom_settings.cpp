@@ -94,7 +94,7 @@ void AllocatorBulkDeallocationFlushThresholdSetting::SetGlobal(DatabaseInstance 
 
 void AllocatorBulkDeallocationFlushThresholdSetting::ResetGlobal(DatabaseInstance *db, DBConfig &config) {
 	config.SetAllocatorBulkDeallocationFlushThreshold(
-	    DatabaseMemoryConfig().allocator_bulk_deallocation_flush_threshold.load());
+	    DatabaseMemoryConfig::DEFAULT_ALLOCATOR_BULK_DEALLOCATION_FLUSH_THRESHOLD);
 }
 
 Value AllocatorBulkDeallocationFlushThresholdSetting::GetSetting(const ClientContext &context) {
@@ -290,7 +290,7 @@ void BlockAllocatorMemorySetting::SetGlobal(DatabaseInstance *db, DBConfig &conf
 }
 
 void BlockAllocatorMemorySetting::ResetGlobal(DatabaseInstance *db, DBConfig &config) {
-	config.SetBlockAllocatorSize(DatabaseMemoryConfig().block_allocator_size.load());
+	config.SetBlockAllocatorSize(DatabaseMemoryConfig::DEFAULT_BLOCK_ALLOCATOR_SIZE);
 }
 
 Value BlockAllocatorMemorySetting::GetSetting(const ClientContext &context) {

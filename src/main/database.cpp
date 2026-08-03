@@ -573,6 +573,9 @@ void DBConfig::ShareMemoryWith(DatabaseInstance &db) {
 	if (memory_manager_options) {
 		throw InvalidInputException("Cannot select a shared memory manager after setting an allocator");
 	}
+	if (!memory_config.IsDefault()) {
+		throw InvalidInputException("Cannot select a shared memory manager after configuring memory settings");
+	}
 	if (buffer_manager && buffer_manager->GetDatabase().GetMemoryManager() != db.GetMemoryManager()) {
 		throw InvalidInputException("Cannot combine a custom buffer manager with a different memory manager");
 	}

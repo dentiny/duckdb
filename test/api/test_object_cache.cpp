@@ -245,6 +245,34 @@ TEST_CASE("Shared memory manager rejects a buffer manager from another memory do
 	}
 }
 
+TEST_CASE("Shared memory manager rejects pending memory settings", "[api][object_cache][buffer_pool]") {
+	DuckDB source;
+
+	SECTION("Maximum memory") {
+		DBConfig config;
+		config.SetMaximumMemory(128ULL * 1024 * 1024);
+		REQUIRE_THROWS_AS(config.ShareMemoryWith(*source.instance), InvalidInputException);
+	}
+
+	SECTION("Block allocator size") {
+		DBConfig config;
+		config.SetBlockAllocatorSize(128ULL * 1024 * 1024);
+		REQUIRE_THROWS_AS(config.ShareMemoryWith(*source.instance), InvalidInputException);
+	}
+
+	SECTION("Eviction timestamp tracking") {
+		DBConfig config;
+		config.SetBufferManagerTrackEvictionTimestamps(true);
+		REQUIRE_THROWS_AS(config.ShareMemoryWith(*source.instance), InvalidInputException);
+	}
+
+	SECTION("Allocator bulk deallocation flush threshold") {
+		DBConfig config;
+		config.SetAllocatorBulkDeallocationFlushThreshold(128ULL * 1024 * 1024);
+		REQUIRE_THROWS_AS(config.ShareMemoryWith(*source.instance), InvalidInputException);
+	}
+}
+
 TEST_CASE("Shared memory manager settings are consistent across database instances",
           "[api][object_cache][buffer_pool]") {
 	DuckDB first;
