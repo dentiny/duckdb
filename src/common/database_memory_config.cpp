@@ -5,6 +5,10 @@
 
 namespace duckdb {
 
+DatabaseMemoryConfig::DatabaseMemoryConfig() = default;
+
+DatabaseMemoryConfig::~DatabaseMemoryConfig() = default;
+
 DatabaseMemoryConfig::DatabaseMemoryConfig(DatabaseMemoryConfig &&other) noexcept
     : maximum_memory(other.maximum_memory.load()), block_allocator_size(other.block_allocator_size.load()),
       buffer_manager_track_eviction_timestamps(other.buffer_manager_track_eviction_timestamps),

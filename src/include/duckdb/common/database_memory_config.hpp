@@ -24,7 +24,8 @@ struct DatabaseMemoryConfig {
 	static constexpr bool DEFAULT_BUFFER_MANAGER_TRACK_EVICTION_TIMESTAMPS = false;
 	static constexpr idx_t DEFAULT_ALLOCATOR_BULK_DEALLOCATION_FLUSH_THRESHOLD = 536870912ULL;
 
-	DUCKDB_API DatabaseMemoryConfig() = default;
+	DUCKDB_API DatabaseMemoryConfig();
+	DUCKDB_API ~DatabaseMemoryConfig();
 	DUCKDB_API DatabaseMemoryConfig(DatabaseMemoryConfig &&other) noexcept;
 	DUCKDB_API DatabaseMemoryConfig &operator=(DatabaseMemoryConfig &&other) noexcept;
 	DatabaseMemoryConfig(const DatabaseMemoryConfig &other) = delete;
