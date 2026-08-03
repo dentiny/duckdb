@@ -185,7 +185,6 @@ unique_ptr<BoundObjectCache> ObjectCache::Bind(MemoryContextId context_id) {
 }
 
 BoundObjectCache::~BoundObjectCache() {
-	active = false;
 	cache.DropEntries(context_id);
 }
 

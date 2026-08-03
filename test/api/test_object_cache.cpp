@@ -100,13 +100,12 @@ struct CountingEvictableTestObject : public ObjectCacheEntry {
 };
 
 struct ContextLifetimeTestObject : public ObjectCacheEntry {
-	ContextLifetimeTestObject(BoundObjectCache &owner_cache_p, BoundObjectCache &reentry_cache_p,
-	                          shared_ptr<BlockHandle> block_p, bool &destroyed_p, bool &reentered_cache_p)
-	    : owner_cache(owner_cache_p), reentry_cache(reentry_cache_p), block(std::move(block_p)), destroyed(destroyed_p),
+	ContextLifetimeTestObject(BoundObjectCache &reentry_cache_p, shared_ptr<BlockHandle> block_p, bool &destroyed_p,
+	                          bool &reentered_cache_p)
+	    : reentry_cache(reentry_cache_p), block(std::move(block_p)), destroyed(destroyed_p),
 	      reentered_cache(reentered_cache_p) {
 	}
 	~ContextLifetimeTestObject() override {
-		owner_cache.Put("context-lifetime-resurrected", make_shared_ptr<TestObject>(42));
 		reentered_cache = reentry_cache.GetObject("context-lifetime-missing") == nullptr;
 		destroyed = true;
 	}
@@ -120,7 +119,6 @@ struct ContextLifetimeTestObject : public ObjectCacheEntry {
 		return optional_idx(1);
 	}
 
-	BoundObjectCache &owner_cache;
 	BoundObjectCache &reentry_cache;
 	shared_ptr<BlockHandle> block;
 	bool &destroyed;
@@ -167,8 +165,8 @@ TEST_CASE("Database instances share isolated memory managers and object cache", 
 		auto &first_buffer_manager = first->instance->GetBufferManager();
 		auto first_pin = first_buffer_manager.Allocate(MemoryTag::EXTENSION, 1024, true);
 		auto first_block = first_pin.GetBlockHandle();
-		REQUIRE(first_block->GetMemory().GetMemoryContextId() == first->instance->GetMemoryContextId());
-		REQUIRE(first_block->GetMemory().GetMemoryContextId() != second.instance->GetMemoryContextId());
+		REQUIRE(&first_block->GetMemory().GetBufferManager() == &first_buffer_manager);
+		REQUIRE(&first_block->GetMemory().GetBufferManager() != &second.instance->GetBufferManager());
 	}
 	{
 		auto &first_buffer_manager = first->instance->GetBufferManager();
@@ -404,7 +402,7 @@ TEST_CASE("ObjectCache entries are destroyed before their database context", "[a
 		auto pin = buffer_manager.Allocate(MemoryTag::EXTENSION, 1024, true);
 		auto block = pin.GetBlockHandle();
 		weak_block = block;
-		cache.Put("context-lifetime", make_shared_ptr<ContextLifetimeTestObject>(cache, reentry_cache, std::move(block),
+		cache.Put("context-lifetime", make_shared_ptr<ContextLifetimeTestObject>(reentry_cache, std::move(block),
 		                                                                         destroyed, reentered_cache));
 	}
 

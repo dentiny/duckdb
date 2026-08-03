@@ -198,8 +198,6 @@ protected:
 protected:
 	//! The database instance
 	DatabaseInstance &db;
-	//! The database identity used to validate block ownership.
-	const MemoryContextId memory_context_id;
 	//! The buffer pool
 	BufferPool &buffer_pool;
 	//! The variables related to temporary file management

@@ -70,8 +70,7 @@ void StandardBufferManager::SetTemporaryDirectory(const string &new_dir) {
 }
 
 StandardBufferManager::StandardBufferManager(DatabaseInstance &db, string tmp)
-    : BufferManager(), db(db), memory_context_id(db.GetMemoryContextId()),
-      buffer_pool(db.GetMemoryManager()->GetBufferPool()), temporary_id(MAXIMUM_BLOCK),
+    : BufferManager(), db(db), buffer_pool(db.GetMemoryManager()->GetBufferPool()), temporary_id(MAXIMUM_BLOCK),
       buffer_allocator(BufferAllocatorAllocate, BufferAllocatorFree, BufferAllocatorRealloc,
                        make_uniq<BufferAllocatorData>(*this)) {
 	temp_block_manager =
@@ -330,7 +329,7 @@ BufferHandle StandardBufferManager::Pin(const QueryContext &context, shared_ptr<
 
 	idx_t required_memory;
 	auto &block_memory = handle->GetMemory();
-	D_ASSERT(block_memory.GetMemoryContextId() == memory_context_id);
+	D_ASSERT(&block_memory.GetBufferManager() == this);
 	{
 		// lock the block
 		auto lock = block_memory.GetLock();
@@ -416,7 +415,7 @@ void StandardBufferManager::VerifyZeroReaders(BlockLock &lock, shared_ptr<BlockH
 void StandardBufferManager::Unpin(shared_ptr<BlockHandle> &handle) {
 	bool purge = false;
 	auto &block_memory = handle->GetMemory();
-	D_ASSERT(block_memory.GetMemoryContextId() == memory_context_id);
+	D_ASSERT(&block_memory.GetBufferManager() == this);
 	{
 		auto lock = block_memory.GetLock();
 		if (!block_memory.GetBuffer(lock) || block_memory.GetBufferType() == FileBufferType::TINY_BUFFER) {
