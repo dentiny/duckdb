@@ -18,6 +18,7 @@
 
 namespace duckdb {
 
+// Forward declarations.
 class BufferPool;
 struct DBConfig;
 class TemporaryMemoryManager;
