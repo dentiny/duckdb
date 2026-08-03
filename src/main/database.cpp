@@ -303,7 +303,7 @@ void DatabaseInstance::Initialize(const char *database_path, DBConfig *user_conf
 	}
 
 	Configure(*config_ptr, database_path);
-	object_cache = config.memory_manager->GetSharedObjectCache().Bind(memory_context_id);
+	object_cache = make_uniq<BoundObjectCache>(config.memory_manager->GetSharedObjectCache(), memory_context_id);
 
 	create_api_v1 = CreateAPIv1Wrapper;
 

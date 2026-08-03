@@ -63,7 +63,6 @@ add_library_unity(
   json_document.cpp
   pipe_file_system.cpp
   local_file_system.cpp
-  memory_context.cpp
   memory_mapped_file.cpp
   error_data.cpp
   opener_file_system.cpp

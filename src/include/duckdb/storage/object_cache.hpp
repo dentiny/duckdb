@@ -58,13 +58,6 @@ public:
 	virtual optional_idx GetEstimatedCacheMemory() const = 0;
 };
 
-struct CleanupBufferPool {
-	void operator()(unique_ptr<BufferPoolReservation> &buffer) {
-		D_ASSERT(buffer);
-		buffer->Resize(0);
-	}
-};
-
 //! Object cache is shared among multiple database instances. Entries are scoped to their owning memory context.
 class ObjectCache {
 public:
@@ -192,13 +185,6 @@ private:
 		vector<ObjectLruCache::ExtractedEntry> deferred_evictable_entries;
 		{
 			const lock_guard<mutex> lock(lock_mutex);
-			size_t matching_non_evictable_entries = 0;
-			for (const auto &entry : non_evictable_entries) {
-				if (entry.first.context_id == context_id) {
-					matching_non_evictable_entries++;
-				}
-			}
-			deferred_non_evictable_entries.reserve(matching_non_evictable_entries);
 			for (auto entry = non_evictable_entries.begin(); entry != non_evictable_entries.end();) {
 				if (entry->first.context_id == context_id) {
 					deferred_non_evictable_entries.push_back(std::move(entry->second));
@@ -211,8 +197,6 @@ private:
 			    lru_cache.ExtractIf([&](const ObjectCacheKey &key) { return key.context_id == context_id; });
 		}
 	}
-
-	unique_ptr<BoundObjectCache> Bind(MemoryContextId context_id);
 
 public:
 	DUCKDB_API static BoundObjectCache &Get(ClientContext &context);

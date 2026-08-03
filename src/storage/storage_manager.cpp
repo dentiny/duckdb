@@ -180,10 +180,6 @@ DatabaseInstance &StorageManager::GetDatabase() {
 	return db.GetDatabase();
 }
 
-unique_ptr<BoundObjectCache> ObjectCache::Bind(MemoryContextId context_id) {
-	return make_uniq<BoundObjectCache>(*this, context_id);
-}
-
 BoundObjectCache::~BoundObjectCache() {
 	cache.DropEntries(context_id);
 }

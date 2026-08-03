@@ -9,7 +9,6 @@
 #pragma once
 
 #include "duckdb/common/hugeint.hpp"
-#include "duckdb/common/string.hpp"
 
 namespace duckdb {
 
@@ -22,8 +21,6 @@ public:
 	hugeint_t GetUUID() const {
 		return uuid;
 	}
-
-	DUCKDB_API string ToString() const;
 
 	bool operator==(const MemoryContextId &other) const {
 		return uuid == other.uuid;
