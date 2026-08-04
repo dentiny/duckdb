@@ -120,3 +120,13 @@ TEST_CASE("Block allocator remains enabled without a detected memory limit", "[a
 	REQUIRE(!used_fallback_allocator);
 #endif
 }
+
+TEST_CASE("Block allocator resize failure does not update its memory config", "[api][.]") {
+	DBConfig config;
+	DatabaseMemoryConfig memory_config;
+	memory_config.maximum_memory = DConstants::INVALID_INDEX;
+
+	auto memory_manager = DatabaseMemoryManager::Create(std::move(memory_config), config);
+	REQUIRE_THROWS_AS(memory_manager->SetBlockAllocatorSize(DEFAULT_BLOCK_ALLOC_SIZE), InvalidInputException);
+	REQUIRE(memory_manager->GetConfig().block_allocator_size == 0);
+}

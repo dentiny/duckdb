@@ -250,13 +250,6 @@ BlockAllocator &BlockAllocator::Get(AttachedDatabase &db) {
 void BlockAllocator::Resize(const idx_t new_physical_memory_size) {
 	lock_guard<mutex> guard(physical_memory_lock);
 
-	if (new_physical_memory_size != 0 && !IsActive()) {
-		virtual_memory_space = AllocateVirtualMemory(virtual_memory_size);
-		if (!IsActive()) {
-			return; // Failed to initialize
-		}
-	}
-
 	if (new_physical_memory_size < physical_memory_size) {
 		throw InvalidInputException("The \"block_allocator_size\" setting cannot be reduced (current: %llu)",
 		                            physical_memory_size.load());
@@ -265,6 +258,13 @@ void BlockAllocator::Resize(const idx_t new_physical_memory_size) {
 		throw InvalidInputException("The \"block_allocator_size\" setting cannot be greater than the virtual memory "
 		                            "size (virtual memory size: %llu)",
 		                            virtual_memory_size);
+	}
+
+	if (new_physical_memory_size != 0 && !IsActive()) {
+		virtual_memory_space = AllocateVirtualMemory(virtual_memory_size);
+		if (!IsActive()) {
+			return; // Failed to initialize
+		}
 	}
 
 	// Enqueue block IDs efficiently in batches
