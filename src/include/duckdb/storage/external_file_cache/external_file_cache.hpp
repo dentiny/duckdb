@@ -30,6 +30,19 @@ class ClientContext;
 class DatabaseInstance;
 class BufferManager;
 
+//! File metadata used to determine whether cached file data is still valid.
+struct CacheValidationInfo {
+	//! Version tag (e.g., HTTP ETag). Empty if the storage backend does not provide one.
+	string version_tag;
+	//! Last modified time. Zero/non-finite if the storage backend does not provide one.
+	timestamp_t last_modified = timestamp_t(0);
+	//! Freshness deadline for files without validators (e.g., HTTP Cache-Control).
+	//! The deadline is inclusive: cached data may be served while the current time is at or before it.
+	//! If unset (infinite), the storage backend does not provide expiry information.
+	timestamp_t cache_valid_until = timestamp_t::infinity();
+	idx_t file_size = 0;
+};
+
 class ExternalFileCache {
 public:
 	//! Get the cache block size for a given file path.
@@ -43,9 +56,6 @@ public:
 		CachedFile(string path_p, idx_t generation_p);
 
 	public:
-		//! Whether the CachedFile is still valid given the current modified/version tag
-		bool IsValid(bool validate, const string &current_version_tag, timestamp_t current_last_modified);
-
 		const string path;
 		const idx_t generation;
 
@@ -56,9 +66,8 @@ public:
 		unordered_map<idx_t, shared_ptr<CacheBlock>> blocks DUCKDB_GUARDED_BY(map_lock);
 
 		mutable annotated_mutex meta_lock;
-		idx_t file_size DUCKDB_GUARDED_BY(meta_lock) = 0;
-		timestamp_t last_modified DUCKDB_GUARDED_BY(meta_lock) = timestamp_t(0);
-		string version_tag DUCKDB_GUARDED_BY(meta_lock);
+		//! Metadata for validating the cached blocks against the current file.
+		CacheValidationInfo validation_info DUCKDB_GUARDED_BY(meta_lock);
 		bool can_seek DUCKDB_GUARDED_BY(meta_lock) = false;
 		bool on_disk_file DUCKDB_GUARDED_BY(meta_lock) = false;
 	};
@@ -89,6 +98,11 @@ public:
 
 	DUCKDB_API static bool IsValid(bool validate, const string &cached_version_tag, timestamp_t cached_last_modified,
 	                               const string &current_version_tag, timestamp_t current_last_modified);
+	//! Variant that can also validate files without validators using the freshness deadline and file size
+	DUCKDB_API static bool IsValid(bool validate, const CacheValidationInfo &cached,
+	                               const CacheValidationInfo &current);
+	//! Whether the version tag/last modified time provide any cache validation metadata
+	DUCKDB_API static bool HasValidationMetadata(const CacheValidationInfo &info);
 
 private:
 	class ExternalFileCacheObjectCacheEntry;
