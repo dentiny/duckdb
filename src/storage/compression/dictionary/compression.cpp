@@ -54,7 +54,9 @@ bool DictionaryCompressionCompressState::LookupString(string_t str) {
 }
 
 void DictionaryCompressionCompressState::AddNewString(string_t str) {
-	stats_writer.Update(str);
+	if (!reuse_source_column_stats) {
+		stats_writer.Update(str);
+	}
 
 	// Copy string to dict
 	current_dictionary.size += str.GetSize();
@@ -80,7 +82,9 @@ void DictionaryCompressionCompressState::AddNewString(string_t str) {
 }
 
 void DictionaryCompressionCompressState::AddNull() {
-	stats_writer.SetHasNull();
+	if (!reuse_source_column_stats) {
+		stats_writer.SetHasNull();
+	}
 	selection_buffer.push_back(0);
 	current_segment->count++;
 }
@@ -105,11 +109,22 @@ bool DictionaryCompressionCompressState::CalculateSpaceRequirements(bool new_str
 
 void DictionaryCompressionCompressState::Flush(bool final) {
 	auto segment_size = Finalize();
-	FlushCurrentSegment(stats_writer, segment_size);
+	if (reuse_source_column_stats && source_column_stats) {
+		current_segment->GetStatsMutable().Merge(*source_column_stats);
+		FlushCurrentSegment(segment_size);
+		stats_writer.Clear();
+	} else {
+		FlushCurrentSegment(stats_writer, segment_size);
+	}
 
 	if (!final) {
 		CreateEmptySegment();
 	}
+}
+
+void DictionaryCompressionCompressState::EnableSourceColumnStats(unique_ptr<BaseStatistics> stats) {
+	reuse_source_column_stats = true;
+	source_column_stats = std::move(stats);
 }
 
 idx_t DictionaryCompressionCompressState::Finalize() {

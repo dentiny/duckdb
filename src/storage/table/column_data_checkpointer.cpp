@@ -1,5 +1,6 @@
 #include "duckdb/storage/table/column_data_checkpointer.hpp"
 #include "duckdb/storage/compression/standard_compression_state.hpp"
+#include "duckdb/storage/compression/dictionary/compression.hpp"
 
 #include "duckdb/main/config.hpp"
 #include "duckdb/main/database.hpp"
@@ -314,6 +315,26 @@ bool ColumnDataCheckpointer::ValidityCoveredByBasedata(vector<CheckpointAnalyzeR
 	return base.function->validity == CompressionValidity::NO_VALIDITY_REQUIRED;
 }
 
+unique_ptr<BaseStatistics> ColumnDataCheckpointer::CollectUncompressedSourceStats(const ColumnData &source_column) {
+	for (auto &segment_node : source_column.data.SegmentNodes()) {
+		auto &segment = segment_node.GetNode();
+		if (segment.GetCompressionFunction().type != CompressionType::COMPRESSION_UNCOMPRESSED) {
+			return nullptr;
+		}
+	}
+
+	auto merged_stats = BaseStatistics::CreateEmpty(source_column.type);
+	for (auto &segment_node : source_column.data.SegmentNodes()) {
+		auto &segment = segment_node.GetNode();
+		merged_stats.Merge(segment.GetStats());
+	}
+
+	if (!merged_stats.CanHaveNoNull() && !merged_stats.CanHaveNull()) {
+		return nullptr;
+	}
+	return make_uniq<BaseStatistics>(merged_stats.Copy());
+}
+
 void ColumnDataCheckpointer::WriteToDisk() { // Analyze the candidate functions to select one of them to use for
 	                                         // compression
 	auto analyze_result = DetectBestCompressionMethod();
@@ -341,6 +362,14 @@ void ColumnDataCheckpointer::WriteToDisk() { // Analyze the candidate functions 
 		checkpoint_data[i] =
 		    ColumnDataCheckpointData(checkpoint_state, col_data, col_data.GetDatabase(), row_group, storage_manager);
 		compression_states[i] = function->init_compression(checkpoint_data[i], std::move(analyze_state));
+
+		if (function->type == CompressionType::COMPRESSION_DICTIONARY) {
+			auto &original_col = checkpoint_state.get().original_column;
+			if (auto source_stats = ColumnDataCheckpointer::CollectUncompressedSourceStats(original_col)) {
+				compression_states[i]->Cast<DictionaryCompressionCompressState>().EnableSourceColumnStats(
+				    std::move(source_stats));
+			}
+		}
 	}
 
 	// Scan over the existing segment + changes and compress the data
