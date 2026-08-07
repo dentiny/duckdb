@@ -103,7 +103,13 @@ idx_t DictionaryCompressionStorage::StringFinalAnalyze(AnalyzeState &state_p) {
 unique_ptr<CompressionState> DictionaryCompressionStorage::InitCompression(ColumnDataCheckpointData &checkpoint_data,
                                                                            unique_ptr<AnalyzeState> state_p) {
 	const auto &state = state_p->Cast<DictionaryAnalyzeState>();
-	return make_uniq<DictionaryCompressionCompressState>(checkpoint_data, state.max_unique_count_across_segments);
+	auto compression_state =
+	    make_uniq<DictionaryCompressionCompressState>(checkpoint_data, state.max_unique_count_across_segments);
+	auto &original_col = checkpoint_data.GetCheckpointState().original_column;
+	if (auto source_stats = DictionaryCompressionCompressState::CollectUncompressedSourceStats(original_col)) {
+		compression_state->SetSourceColumnStats(std::move(source_stats));
+	}
+	return std::move(compression_state);
 }
 
 void DictionaryCompressionStorage::Compress(CompressionState &state_p, const Vector &scan_vector) {
