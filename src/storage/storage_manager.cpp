@@ -180,8 +180,17 @@ DatabaseInstance &StorageManager::GetDatabase() {
 	return db.GetDatabase();
 }
 
-ObjectCache &ObjectCache::GetObjectCache(ClientContext &context) {
-	return context.db->GetObjectCache();
+BoundObjectCache::~BoundObjectCache() {
+	cache.DropEntries(context_id);
+}
+
+BoundObjectCache &ObjectCache::Get(ClientContext &context) {
+	auto &db = DatabaseInstance::GetDatabase(context);
+	return Get(db);
+}
+
+BoundObjectCache &ObjectCache::Get(DatabaseInstance &db) {
+	return db.GetObjectCache();
 }
 
 idx_t StorageManager::GetWALSize() {

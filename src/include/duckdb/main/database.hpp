@@ -9,6 +9,7 @@
 #pragma once
 
 #include "duckdb/common/winapi.hpp"
+#include "duckdb/common/memory_context.hpp"
 #include "duckdb/main/capi/extension_api.hpp"
 #include "duckdb/main/config.hpp"
 #include "duckdb/main/extension.hpp"
@@ -30,7 +31,6 @@ class ConnectionManager;
 class ExtensionManager;
 class FileSystem;
 class TaskScheduler;
-class ObjectCache;
 struct AttachInfo;
 struct AttachOptions;
 class DatabaseFileSystem;
@@ -40,6 +40,8 @@ class MetricsManager;
 class ExternalFileCache;
 class ResultSetManager;
 struct ParserCache;
+class DatabaseMemoryManager;
+class BoundObjectCache;
 
 class DatabaseInstance : public enable_shared_from_this<DatabaseInstance> {
 	friend class DuckDB;
@@ -52,6 +54,8 @@ public:
 
 public:
 	BufferPool &GetBufferPool() const;
+	DUCKDB_API const shared_ptr<DatabaseMemoryManager> &GetMemoryManager() const;
+	DUCKDB_API MemoryContextId GetMemoryContextId() const;
 	DUCKDB_API SecretManager &GetSecretManager();
 	DUCKDB_API BufferManager &GetBufferManager();
 	DUCKDB_API const BufferManager &GetBufferManager() const;
@@ -63,7 +67,7 @@ public:
 	DUCKDB_API ExternalFileCache &GetExternalFileCache();
 	DUCKDB_API ResultSetManager &GetResultSetManager();
 	DUCKDB_API TaskScheduler &GetScheduler();
-	DUCKDB_API ObjectCache &GetObjectCache();
+	DUCKDB_API BoundObjectCache &GetObjectCache();
 	DUCKDB_API ConnectionManager &GetConnectionManager();
 	DUCKDB_API ExtensionManager &GetExtensionManager();
 	DUCKDB_API ValidChecker &GetValidChecker();
@@ -96,21 +100,22 @@ private:
 	void Configure(DBConfig &config, const char *path);
 
 private:
+	const MemoryContextId memory_context_id;
 	shared_ptr<BufferManager> buffer_manager;
+	unique_ptr<ResultSetManager> result_set_manager;
+	unique_ptr<LogManager> log_manager;
 	unique_ptr<DatabaseManager> db_manager;
 	unique_ptr<ExternalResourceTypeRegistry> external_resource_type_registry;
 	unique_ptr<ExternalResourcesManager> external_resources_manager;
 	unique_ptr<TaskScheduler> scheduler;
-	unique_ptr<ObjectCache> object_cache;
+	unique_ptr<ExternalFileCache> external_file_cache;
+	unique_ptr<BoundObjectCache> object_cache;
 	unique_ptr<ConnectionManager> connection_manager;
 	unique_ptr<ExtensionManager> extension_manager;
 	ValidChecker db_validity;
 	unique_ptr<DatabaseFileSystem> db_file_system;
 	unique_ptr<LocalDatabaseFileSystem> local_db_file_system;
-	unique_ptr<LogManager> log_manager;
 	unique_ptr<MetricsManager> metrics_manager;
-	unique_ptr<ExternalFileCache> external_file_cache;
-	unique_ptr<ResultSetManager> result_set_manager;
 	unique_ptr<ParserCache> parser_cache;
 
 	duckdb_ext_api_v1 (*create_api_v1)();

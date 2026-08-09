@@ -4,6 +4,7 @@
 #include "duckdb/common/types/uuid.hpp"
 #include "duckdb/main/attached_database.hpp"
 #include "duckdb/main/database.hpp"
+#include "duckdb/main/database_memory_manager.hpp"
 #include "duckdb/parallel/concurrentqueue.hpp"
 #include "duckdb/common/bit_utils.hpp"
 
@@ -239,7 +240,7 @@ BlockAllocator::~BlockAllocator() {
 }
 
 BlockAllocator &BlockAllocator::Get(DatabaseInstance &db) {
-	return *db.config.block_allocator;
+	return db.GetMemoryManager()->GetBlockAllocator();
 }
 
 BlockAllocator &BlockAllocator::Get(AttachedDatabase &db) {
@@ -249,13 +250,6 @@ BlockAllocator &BlockAllocator::Get(AttachedDatabase &db) {
 void BlockAllocator::Resize(const idx_t new_physical_memory_size) {
 	lock_guard<mutex> guard(physical_memory_lock);
 
-	if (new_physical_memory_size != 0 && !IsActive()) {
-		virtual_memory_space = AllocateVirtualMemory(virtual_memory_size);
-		if (!IsActive()) {
-			return; // Failed to initialize
-		}
-	}
-
 	if (new_physical_memory_size < physical_memory_size) {
 		throw InvalidInputException("The \"block_allocator_size\" setting cannot be reduced (current: %llu)",
 		                            physical_memory_size.load());
@@ -264,6 +258,13 @@ void BlockAllocator::Resize(const idx_t new_physical_memory_size) {
 		throw InvalidInputException("The \"block_allocator_size\" setting cannot be greater than the virtual memory "
 		                            "size (virtual memory size: %llu)",
 		                            virtual_memory_size);
+	}
+
+	if (new_physical_memory_size != 0 && !IsActive()) {
+		virtual_memory_space = AllocateVirtualMemory(virtual_memory_size);
+		if (!IsActive()) {
+			return; // Failed to initialize
+		}
 	}
 
 	// Enqueue block IDs efficiently in batches

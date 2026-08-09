@@ -2,6 +2,9 @@
 #include "test_helpers.hpp"
 #include "duckdb/main/appender.hpp"
 #include "duckdb/common/atomic.hpp"
+#include "duckdb/main/database_memory_manager.hpp"
+#include "duckdb/storage/block_allocator.hpp"
+#include "duckdb/storage/storage_info.hpp"
 
 using namespace duckdb;
 
@@ -38,8 +41,8 @@ TEST_CASE("Test using a custom allocator", "[api][.]") {
 	REQUIRE(memory_counter.load() == 0);
 
 	DBConfig config;
-	config.allocator = make_uniq<Allocator>(my_allocate_function, my_free_function, my_reallocate_function,
-	                                        make_uniq<MyAllocateData>(&memory_counter));
+	config.SetAllocator(make_uniq<Allocator>(my_allocate_function, my_free_function, my_reallocate_function,
+	                                         make_uniq<MyAllocateData>(&memory_counter)));
 	DuckDB db(nullptr, &config);
 	Connection con(db);
 	REQUIRE_NO_FAIL(con.Query("CREATE TABLE tbl AS SELECT * FROM range(1000000)"));
@@ -52,4 +55,78 @@ TEST_CASE("Test using a custom allocator", "[api][.]") {
 
 	// check that the memory counter usage has decreased after we dropped the table
 	REQUIRE(memory_counter.load() < table_memory_usage);
+}
+
+TEST_CASE("Custom allocator and shared memory manager are mutually exclusive", "[api][.]") {
+	DuckDB source;
+	atomic<idx_t> memory_counter;
+	memory_counter = 0;
+	auto make_allocator = [&]() {
+		return make_uniq<Allocator>(my_allocate_function, my_free_function, my_reallocate_function,
+		                            make_uniq<MyAllocateData>(&memory_counter));
+	};
+
+	SECTION("SetAllocator after ShareMemoryWith") {
+		DBConfig config;
+		config.ShareMemoryWith(*source.instance);
+		REQUIRE_THROWS_AS(config.SetAllocator(make_allocator()), InvalidInputException);
+	}
+
+	SECTION("ShareMemoryWith after SetAllocator") {
+		DBConfig config;
+		config.SetAllocator(make_allocator());
+		REQUIRE_THROWS_AS(config.ShareMemoryWith(*source.instance), InvalidInputException);
+	}
+}
+
+TEST_CASE("Custom block allocator and shared memory manager are mutually exclusive", "[api][.]") {
+	DuckDB source;
+
+	SECTION("SetBlockAllocator after ShareMemoryWith") {
+		Allocator allocator;
+		DBConfig config;
+		config.ShareMemoryWith(*source.instance);
+		auto block_allocator =
+		    make_uniq<BlockAllocator>(allocator, DEFAULT_BLOCK_ALLOC_SIZE, DEFAULT_BLOCK_ALLOC_SIZE * 16, 0);
+		REQUIRE_THROWS_AS(config.SetBlockAllocator(std::move(block_allocator)), InvalidInputException);
+	}
+
+	SECTION("ShareMemoryWith after SetBlockAllocator") {
+		Allocator allocator;
+		DBConfig config;
+		auto block_allocator =
+		    make_uniq<BlockAllocator>(allocator, DEFAULT_BLOCK_ALLOC_SIZE, DEFAULT_BLOCK_ALLOC_SIZE * 16, 0);
+		config.SetBlockAllocator(std::move(block_allocator));
+		REQUIRE_THROWS_AS(config.ShareMemoryWith(*source.instance), InvalidInputException);
+	}
+}
+
+TEST_CASE("Block allocator remains enabled without a detected memory limit", "[api][.]") {
+#if INTPTR_MAX > INT32_MAX
+	atomic<idx_t> memory_counter = 0;
+	DBConfig config;
+	DatabaseMemoryConfig memory_config;
+	memory_config.maximum_memory = DConstants::INVALID_INDEX;
+	memory_config.block_allocator_size = DEFAULT_BLOCK_ALLOC_SIZE;
+	memory_config.allocator = make_uniq<Allocator>(my_allocate_function, my_free_function, my_reallocate_function,
+	                                               make_uniq<MyAllocateData>(&memory_counter));
+
+	auto memory_manager = DatabaseMemoryManager::Create(std::move(memory_config), config);
+	auto &block_allocator = memory_manager->GetBlockAllocator();
+	auto initial_memory = memory_counter.load();
+	auto pointer = block_allocator.AllocateData(DEFAULT_BLOCK_ALLOC_SIZE);
+	auto used_fallback_allocator = memory_counter.load() != initial_memory;
+	block_allocator.FreeData(pointer, DEFAULT_BLOCK_ALLOC_SIZE);
+	REQUIRE(!used_fallback_allocator);
+#endif
+}
+
+TEST_CASE("Block allocator resize failure does not update its memory config", "[api][.]") {
+	DBConfig config;
+	DatabaseMemoryConfig memory_config;
+	memory_config.maximum_memory = DConstants::INVALID_INDEX;
+
+	auto memory_manager = DatabaseMemoryManager::Create(std::move(memory_config), config);
+	REQUIRE_THROWS_AS(memory_manager->SetBlockAllocatorSize(DEFAULT_BLOCK_ALLOC_SIZE), InvalidInputException);
+	REQUIRE(memory_manager->GetConfig().block_allocator_size == 0);
 }
