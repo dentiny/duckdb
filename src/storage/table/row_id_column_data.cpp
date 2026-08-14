@@ -1,5 +1,6 @@
 #include "duckdb/storage/table/row_id_column_data.hpp"
 
+#include "duckdb/common/helper.hpp"
 #include "duckdb/common/vector/flat_vector.hpp"
 #include "duckdb/storage/table/scan_state.hpp"
 
@@ -19,7 +20,10 @@ FilterPropagateResult RowIdColumnData::CheckZonemap(ColumnScanState &state, Tabl
                                                     optional_ptr<SegmentNode<ColumnSegment>> &checked_segment) {
 	checked_segment = nullptr;
 	auto row_start = GetRowStart(state);
-	return RowGroup::CheckRowIdFilter(filter, row_start, row_start + count);
+	idx_t offset = state.parent ? state.parent->vector_index * STANDARD_VECTOR_SIZE : 0;
+	idx_t beg = row_start + offset;
+	idx_t end = MinValue<idx_t>(row_start + count, beg + STANDARD_VECTOR_SIZE);
+	return RowGroup::CheckRowIdFilter(filter, beg, end);
 }
 
 void RowIdColumnData::InitializePrefetch(PrefetchState &prefetch_state, ColumnScanState &scan_state, idx_t rows) {

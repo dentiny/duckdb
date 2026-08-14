@@ -754,28 +754,44 @@ bool RowGroup::CheckZonemapSegments(CollectionScanState &state) {
 		auto column_idx = entry.scan_column_index;
 		auto base_column_idx = entry.table_column_index;
 		auto &filter = entry.filter;
-		auto &column_data = GetColumn(base_column_idx);
 
-		optional_ptr<SegmentNode<ColumnSegment>> current_segment;
-		auto prune_result = column_data.CheckZonemap(state.column_scans[column_idx], filter, current_segment);
-		if (prune_result != FilterPropagateResult::FILTER_ALWAYS_FALSE) {
-			continue;
+		idx_t target_row;
+		if (base_column_idx.IsRowIdColumn()) {
+			// rowid has no segments; skip whole vectors whose rowid span cannot match
+			auto rg_start = state.row_group->GetRowStart();
+			idx_t max_row = MinValue<idx_t>(this->count, state.max_row_group_row);
+			idx_t skip_to = state.vector_index * STANDARD_VECTOR_SIZE;
+			while (skip_to < max_row) {
+				idx_t beg = rg_start + skip_to;
+				idx_t end = MinValue<idx_t>(rg_start + max_row, beg + STANDARD_VECTOR_SIZE);
+				if (CheckRowIdFilter(filter, beg, end) != FilterPropagateResult::FILTER_ALWAYS_FALSE) {
+					break;
+				}
+				skip_to += STANDARD_VECTOR_SIZE;
+			}
+			if (skip_to <= state.vector_index * STANDARD_VECTOR_SIZE) {
+				continue;
+			}
+			target_row = skip_to;
+		} else {
+			auto &column_data = GetColumn(base_column_idx);
+			optional_ptr<SegmentNode<ColumnSegment>> current_segment;
+			auto prune_result = column_data.CheckZonemap(state.column_scans[column_idx], filter, current_segment);
+			if (prune_result != FilterPropagateResult::FILTER_ALWAYS_FALSE) {
+				continue;
+			}
+			if (!current_segment) {
+				continue;
+			}
+			auto row_start = current_segment->GetRowStart();
+			target_row = row_start + current_segment->GetNode().count;
+			D_ASSERT(target_row >= row_start);
+			D_ASSERT(target_row <= row_start + this->count);
 		}
-
-		// check zone map segment.
-		if (!current_segment) {
-			// no segment to skip
-			continue;
-		}
-		auto row_start = current_segment->GetRowStart();
-		idx_t target_row = row_start + current_segment->GetNode().count;
 		if (target_row >= state.max_row) {
 			target_row = state.max_row;
 		}
-		D_ASSERT(target_row >= row_start);
-		D_ASSERT(target_row <= row_start + this->count);
-		// current_segment->GetRowStart() is already row-group-relative, and state.vector_index uses the same
-		// coordinate space. Subtracting row_start here incorrectly makes the target segment-local.
+		// target_row is row-group-relative, same coordinate space as state.vector_index
 		idx_t target_vector_index = target_row / STANDARD_VECTOR_SIZE;
 
 		if (!target_vector_index_max.IsValid() || target_vector_index_max.GetIndex() < target_vector_index) {
