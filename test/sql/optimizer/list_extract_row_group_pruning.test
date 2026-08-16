@@ -1,5 +1,5 @@
 # name: test/sql/optimizer/list_extract_row_group_pruning.test
-# description: Per-index list extract stats prune native row groups when another slot poisons merged child min/max
+# description: Filters on list[i] prune row groups using that element's min/max, not every element in the list
 # group: [optimizer]
 
 statement ok
