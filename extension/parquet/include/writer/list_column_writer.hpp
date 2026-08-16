@@ -9,6 +9,7 @@
 #pragma once
 
 #include "column_writer.hpp"
+#include "duckdb/storage/statistics/base_statistics.hpp"
 
 namespace duckdb {
 
@@ -22,6 +23,9 @@ public:
 	idx_t col_idx;
 	unique_ptr<ColumnWriterState> child_state;
 	idx_t parent_index = 0;
+	vector<BaseStatistics> element_stats;
+	LogicalType element_type;
+	bool collect_element_stats = false;
 };
 
 class ListColumnWriter : public ColumnWriter {
@@ -50,6 +54,11 @@ public:
 protected:
 	ColumnWriter &GetChildWriter();
 	const ColumnWriter &GetChildWriter() const;
+
+	void InitializeElementStats(ListColumnWriterState &state) const;
+	void CollectListElementStats(ListColumnWriterState &state, Vector &vector, idx_t count) const;
+	void CollectArrayElementStats(ListColumnWriterState &state, Vector &vector, idx_t count) const;
+	void FinalizeElementStats(ListColumnWriterState &state) const;
 };
 
 } // namespace duckdb

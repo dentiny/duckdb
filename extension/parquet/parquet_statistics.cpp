@@ -48,6 +48,9 @@
 #include "duckdb/common/types/string_type.hpp"
 #include "duckdb/common/types/timestamp.hpp"
 #include "duckdb/planner/table_filter.hpp"
+#include "duckdb/common/serializer/binary_deserializer.hpp"
+#include "duckdb/common/serializer/binary_serializer.hpp"
+#include "duckdb/common/serializer/memory_stream.hpp"
 #include "duckdb/storage/statistics/geometry_stats.hpp"
 #include "duckdb/storage/statistics/numeric_stats.hpp"
 #include "duckdb/storage/statistics/string_stats.hpp"
@@ -606,6 +609,120 @@ ParquetStatisticsUtils::TransformParquetStatistics(const LogicalType &type, cons
 	return unknown_stats.ToUnique();
 }
 
+static bool HasElementMinMax(const BaseStatistics &stats) {
+	switch (stats.GetStatsType()) {
+	case StatisticsType::NUMERIC_STATS:
+		return NumericStats::HasMinMax(stats);
+	case StatisticsType::STRING_STATS:
+		return StringStats::HasMinMax(stats);
+	default:
+		return false;
+	}
+}
+
+static Value GetElementMin(const BaseStatistics &stats) {
+	if (stats.GetStatsType() == StatisticsType::NUMERIC_STATS) {
+		return NumericStats::Min(stats);
+	}
+	return Value(StringStats::Min(stats));
+}
+
+static Value GetElementMax(const BaseStatistics &stats) {
+	if (stats.GetStatsType() == StatisticsType::NUMERIC_STATS) {
+		return NumericStats::Max(stats);
+	}
+	return Value(StringStats::Max(stats));
+}
+
+static string SerializeListElementStats(const vector<BaseStatistics> &element_stats) {
+	MemoryStream stream;
+	BinarySerializer serializer(stream);
+	serializer.Begin();
+	serializer.WriteProperty<uint32_t>(100, "version", 1);
+	vector<Value> mins;
+	vector<Value> maxs;
+	mins.reserve(element_stats.size());
+	maxs.reserve(element_stats.size());
+	for (auto &stats : element_stats) {
+		if (HasElementMinMax(stats)) {
+			mins.push_back(GetElementMin(stats));
+			maxs.push_back(GetElementMax(stats));
+		} else {
+			mins.emplace_back();
+			maxs.emplace_back();
+		}
+	}
+	serializer.WriteProperty(101, "mins", mins);
+	serializer.WriteProperty(102, "maxs", maxs);
+	serializer.End();
+	return string(char_ptr_cast(stream.GetData()), stream.GetPosition());
+}
+
+static void ApplyElementMinMax(BaseStatistics &stats, const Value &min, const Value &max) {
+	switch (stats.GetStatsType()) {
+	case StatisticsType::NUMERIC_STATS:
+		NumericStats::SetMin(stats, min);
+		NumericStats::SetMax(stats, max);
+		break;
+	case StatisticsType::STRING_STATS:
+		StringStats::SetMin(stats, string_t(StringValue::Get(min)), StringStatsType::EXACT_STATS);
+		StringStats::SetMax(stats, string_t(StringValue::Get(max)), StringStatsType::EXACT_STATS);
+		break;
+	default:
+		break;
+	}
+}
+
+void ParquetStatisticsUtils::WriteListElementStats(ColumnChunk &column_chunk,
+                                                   const vector<BaseStatistics> &element_stats) {
+	if (element_stats.empty()) {
+		return;
+	}
+	duckdb_parquet::KeyValue kv;
+	kv.__set_key(LIST_ELEMENT_STATS_KEY);
+	kv.__set_value(SerializeListElementStats(element_stats));
+	column_chunk.meta_data.key_value_metadata.push_back(std::move(kv));
+	column_chunk.meta_data.__isset.key_value_metadata = true;
+}
+
+void ParquetStatisticsUtils::TryLoadListElementStats(BaseStatistics &list_stats, const ColumnChunk &column_chunk) {
+	if (!column_chunk.__isset.meta_data || !column_chunk.meta_data.__isset.key_value_metadata) {
+		return;
+	}
+	for (auto &kv : column_chunk.meta_data.key_value_metadata) {
+		if (kv.key != LIST_ELEMENT_STATS_KEY) {
+			continue;
+		}
+		try {
+			vector<data_t> copy(kv.value.begin(), kv.value.end());
+			MemoryStream stream(copy.data(), copy.size());
+			BinaryDeserializer deserializer(stream);
+			deserializer.Begin();
+			auto version = deserializer.ReadProperty<uint32_t>(100, "version");
+			auto mins = deserializer.ReadProperty<vector<Value>>(101, "mins");
+			auto maxs = deserializer.ReadProperty<vector<Value>>(102, "maxs");
+			deserializer.End();
+			if (version != 1 || mins.size() != maxs.size()) {
+				return;
+			}
+			auto &child_type = ListType::GetChildType(list_stats.GetType());
+			for (idx_t i = 0; i < mins.size(); i++) {
+				if (mins[i].IsNull() || maxs[i].IsNull()) {
+					continue;
+				}
+				auto element_stats = BaseStatistics::CreateEmpty(child_type);
+				ApplyElementMinMax(element_stats, mins[i], maxs[i]);
+				element_stats.Set(StatsInfo::CAN_HAVE_NULL_VALUES);
+				element_stats.Set(StatsInfo::CAN_HAVE_VALID_VALUES);
+				ListStats::SetElementStats(list_stats, i, element_stats);
+			}
+		} catch (const std::exception &) {
+			return;
+		}
+		return;
+	}
+}
+
 unique_ptr<BaseStatistics> ParquetStatisticsUtils::TransformColumnStatistics(const ParquetColumnSchema &schema,
                                                                              const vector<ColumnChunk> &columns,
                                                                              bool can_have_nan) {
@@ -622,6 +739,9 @@ unique_ptr<BaseStatistics> ParquetStatisticsUtils::TransformColumnStatistics(con
 		auto &child_schema = schema.children[0];
 		auto child_stats = ParquetStatisticsUtils::TransformColumnStatistics(child_schema, columns, can_have_nan);
 		ListStats::SetChildStats(list_stats, std::move(child_stats));
+		if (child_schema.children.empty() && child_schema.column_index < columns.size()) {
+			TryLoadListElementStats(list_stats, columns[child_schema.column_index]);
+		}
 		row_group_stats = list_stats.ToUnique();
 		return row_group_stats;
 	}

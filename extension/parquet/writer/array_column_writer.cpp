@@ -79,6 +79,7 @@ void ArrayColumnWriter::Prepare(ColumnWriterState &state_p, ColumnWriterState *p
 
 void ArrayColumnWriter::Write(ColumnWriterState &state_p, Vector &vector, idx_t count) {
 	auto &state = state_p.Cast<ListColumnWriterState>();
+	CollectArrayElementStats(state, vector, count);
 	auto array_size = ArrayType::GetSize(vector.GetType());
 	auto &array_child = ArrayVector::GetChildMutable(vector);
 	GetChildWriter().Write(*state.child_state, array_child, count * array_size);

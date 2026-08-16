@@ -2,8 +2,10 @@
 #include <string>
 #include <utility>
 
+#include "duckdb/common/vector/array_vector.hpp"
 #include "duckdb/common/vector/list_vector.hpp"
 #include "writer/list_column_writer.hpp"
+#include "writer/primitive_column_writer.hpp"
 #include "column_writer.hpp"
 #include "duckdb/common/assert.hpp"
 #include "duckdb/common/exception.hpp"
@@ -18,7 +20,12 @@
 #include "duckdb/common/unique_ptr.hpp"
 #include "duckdb/common/vector.hpp"
 #include "duckdb/common/vector/flat_vector.hpp"
+#include "duckdb/storage/statistics/base_statistics.hpp"
+#include "duckdb/storage/statistics/list_stats.hpp"
+#include "duckdb/storage/statistics/numeric_stats.hpp"
+#include "duckdb/storage/statistics/string_stats.hpp"
 #include "parquet_column_schema.hpp"
+#include "parquet_statistics.hpp"
 #include "parquet_types.h"
 
 namespace duckdb {
@@ -28,9 +35,115 @@ using namespace duckdb_parquet; // NOLINT
 using duckdb_parquet::ConvertedType;
 using duckdb_parquet::FieldRepetitionType;
 
+static bool CanCollectElementStats(const LogicalType &type) {
+	auto stats_type = BaseStatistics::GetStatsType(type);
+	return stats_type == StatisticsType::NUMERIC_STATS || stats_type == StatisticsType::STRING_STATS;
+}
+
+static bool HasElementMinMax(const BaseStatistics &stats) {
+	switch (stats.GetStatsType()) {
+	case StatisticsType::NUMERIC_STATS:
+		return NumericStats::HasMinMax(stats);
+	case StatisticsType::STRING_STATS:
+		return StringStats::HasMinMax(stats);
+	default:
+		return false;
+	}
+}
+
+static void UpdateElementStats(vector<BaseStatistics> &element_stats, const LogicalType &type, idx_t index,
+                               const Value &value) {
+	if (index >= ListStats::MAX_ELEMENT_STATS) {
+		return;
+	}
+	while (element_stats.size() <= index) {
+		element_stats.push_back(BaseStatistics::CreateUnknown(type));
+	}
+	if (value.IsNull()) {
+		element_stats[index].Set(StatsInfo::CAN_HAVE_NULL_VALUES);
+		return;
+	}
+	auto value_stats = BaseStatistics::FromConstant(value);
+	if (element_stats[index].CanHaveNull()) {
+		value_stats.Set(StatsInfo::CAN_HAVE_NULL_VALUES);
+	}
+	if (!HasElementMinMax(element_stats[index])) {
+		element_stats[index] = std::move(value_stats);
+	} else {
+		element_stats[index].Merge(value_stats);
+	}
+}
+
+void ListColumnWriter::InitializeElementStats(ListColumnWriterState &state) const {
+	auto &type = Schema().type;
+	if (type.id() == LogicalTypeId::LIST) {
+		state.element_type = ListType::GetChildType(type);
+	} else if (type.id() == LogicalTypeId::ARRAY) {
+		state.element_type = ArrayType::GetChildType(type);
+	} else {
+		return;
+	}
+	state.collect_element_stats = CanCollectElementStats(state.element_type);
+}
+
+void ListColumnWriter::CollectListElementStats(ListColumnWriterState &state, Vector &vector, idx_t count) const {
+	if (!state.collect_element_stats) {
+		return;
+	}
+	UnifiedVectorFormat format;
+	vector.ToUnifiedFormat(format);
+	auto entries = UnifiedVectorFormat::GetData<list_entry_t>(format);
+	auto &child = ListVector::GetChild(vector);
+	for (idx_t i = 0; i < count; i++) {
+		auto idx = format.sel->get_index(i);
+		if (!format.validity.RowIsValid(idx)) {
+			continue;
+		}
+		auto entry = entries[idx];
+		auto length = MinValue<idx_t>(entry.length, ListStats::MAX_ELEMENT_STATS);
+		for (idx_t k = 0; k < length; k++) {
+			UpdateElementStats(state.element_stats, state.element_type, k, child.GetValue(entry.offset + k));
+		}
+	}
+}
+
+void ListColumnWriter::CollectArrayElementStats(ListColumnWriterState &state, Vector &vector, idx_t count) const {
+	if (!state.collect_element_stats) {
+		return;
+	}
+	auto array_size = ArrayType::GetSize(vector.GetType());
+	auto length = MinValue<idx_t>(array_size, ListStats::MAX_ELEMENT_STATS);
+	UnifiedVectorFormat format;
+	vector.ToUnifiedFormat(format);
+	auto &child = ArrayVector::GetChild(vector);
+	for (idx_t i = 0; i < count; i++) {
+		auto idx = format.sel->get_index(i);
+		if (!format.validity.RowIsValid(idx)) {
+			continue;
+		}
+		auto offset = idx * array_size;
+		for (idx_t k = 0; k < length; k++) {
+			UpdateElementStats(state.element_stats, state.element_type, k, child.GetValue(offset + k));
+		}
+	}
+}
+
+void ListColumnWriter::FinalizeElementStats(ListColumnWriterState &state) const {
+	if (state.element_stats.empty()) {
+		return;
+	}
+	auto *primitive_state = dynamic_cast<PrimitiveColumnWriterState *>(state.child_state.get());
+	if (!primitive_state) {
+		return;
+	}
+	ParquetStatisticsUtils::WriteListElementStats(state.row_group.columns[primitive_state->col_idx],
+	                                               state.element_stats);
+}
+
 unique_ptr<ColumnWriterState> ListColumnWriter::InitializeWriteState(duckdb_parquet::RowGroup &row_group) {
 	auto result = make_uniq<ListColumnWriterState>(row_group, row_group.columns.size());
 	result->child_state = GetChildWriter().InitializeWriteState(row_group);
+	InitializeElementStats(*result);
 	return std::move(result);
 }
 
@@ -150,6 +263,7 @@ void ListColumnWriter::BeginWrite(ColumnWriterState &state_p) {
 
 void ListColumnWriter::Write(ColumnWriterState &state_p, Vector &vector, idx_t count) {
 	auto &state = state_p.Cast<ListColumnWriterState>();
+	CollectListElementStats(state, vector, count);
 
 	auto &list_child = ListVector::GetChildMutable(vector);
 	Vector child_list(Vector::Ref(list_child));
@@ -165,6 +279,7 @@ void ListColumnWriter::PrepareWrite(ColumnWriterState &state_p) {
 void ListColumnWriter::FinalizeWrite(ColumnWriterState &state_p) {
 	auto &state = state_p.Cast<ListColumnWriterState>();
 	GetChildWriter().FinalizeWrite(*state.child_state);
+	FinalizeElementStats(state);
 }
 
 ColumnWriter &ListColumnWriter::GetChildWriter() {

@@ -9,6 +9,10 @@
 
 namespace duckdb {
 
+struct ListElementStatsExtraData : public ExtraStatsData {
+	vector<BaseStatistics> element_stats;
+};
+
 void ListStats::Construct(BaseStatistics &stats) {
 	stats.child_stats = unsafe_unique_array<BaseStatistics>(new BaseStatistics[1]);
 	BaseStatistics::Construct(stats.child_stats[0], ListType::GetChildType(stats.GetType()));
@@ -34,6 +38,17 @@ void ListStats::Copy(BaseStatistics &stats, const BaseStatistics &other) {
 	D_ASSERT(stats.child_stats);
 	D_ASSERT(other.child_stats);
 	stats.child_stats[0].Copy(other.child_stats[0]);
+	stats.extra_data.reset();
+	if (!other.extra_data) {
+		return;
+	}
+	auto &src = other.extra_data->Cast<ListElementStatsExtraData>();
+	auto dst = make_uniq<ListElementStatsExtraData>();
+	dst->element_stats.reserve(src.element_stats.size());
+	for (auto &element_stats : src.element_stats) {
+		dst->element_stats.push_back(element_stats.Copy());
+	}
+	stats.extra_data = std::move(dst);
 }
 
 const BaseStatistics &ListStats::GetChildStats(const BaseStatistics &stats) {
@@ -59,6 +74,32 @@ void ListStats::SetChildStats(BaseStatistics &stats, unique_ptr<BaseStatistics> 
 	}
 }
 
+optional_ptr<const BaseStatistics> ListStats::TryGetElementStats(const BaseStatistics &stats, idx_t index) {
+	if (stats.GetStatsType() != StatisticsType::LIST_STATS || !stats.extra_data) {
+		return nullptr;
+	}
+	auto &extra = stats.extra_data->Cast<ListElementStatsExtraData>();
+	if (index >= extra.element_stats.size()) {
+		return nullptr;
+	}
+	return extra.element_stats[index];
+}
+
+void ListStats::SetElementStats(BaseStatistics &stats, idx_t index, const BaseStatistics &element_stats) {
+	if (stats.GetStatsType() != StatisticsType::LIST_STATS || index >= MAX_ELEMENT_STATS) {
+		return;
+	}
+	if (!stats.extra_data) {
+		stats.extra_data = make_uniq<ListElementStatsExtraData>();
+	}
+	auto &extra = stats.extra_data->Cast<ListElementStatsExtraData>();
+	auto &child_type = ListType::GetChildType(stats.GetType());
+	while (extra.element_stats.size() <= index) {
+		extra.element_stats.push_back(BaseStatistics::CreateUnknown(child_type));
+	}
+	extra.element_stats[index] = element_stats.Copy();
+}
+
 void ListStats::Merge(BaseStatistics &stats, const BaseStatistics &other, StatsMergeType merge_type) {
 	if (other.GetType().id() == LogicalTypeId::VALIDITY) {
 		return;
@@ -67,6 +108,36 @@ void ListStats::Merge(BaseStatistics &stats, const BaseStatistics &other, StatsM
 	auto &child_stats = ListStats::GetChildStats(stats);
 	auto &other_child_stats = ListStats::GetChildStats(other);
 	child_stats.Merge(other_child_stats, merge_type);
+
+	if (!other.extra_data) {
+		stats.extra_data.reset();
+		return;
+	}
+	if (!stats.extra_data) {
+		auto &src = other.extra_data->Cast<ListElementStatsExtraData>();
+		auto dst = make_uniq<ListElementStatsExtraData>();
+		dst->element_stats.reserve(src.element_stats.size());
+		for (auto &element_stats : src.element_stats) {
+			dst->element_stats.push_back(element_stats.Copy());
+		}
+		stats.extra_data = std::move(dst);
+		return;
+	}
+
+	auto &dst = stats.extra_data->Cast<ListElementStatsExtraData>();
+	auto &src = other.extra_data->Cast<ListElementStatsExtraData>();
+	const auto count = dst.element_stats.size() > src.element_stats.size() ? dst.element_stats.size()
+	                                                                       : src.element_stats.size();
+	for (idx_t i = 0; i < count; i++) {
+		if (i >= dst.element_stats.size()) {
+			dst.element_stats.push_back(src.element_stats[i].Copy());
+			dst.element_stats[i].Set(StatsInfo::CAN_HAVE_NULL_VALUES);
+		} else if (i >= src.element_stats.size()) {
+			dst.element_stats[i].Set(StatsInfo::CAN_HAVE_NULL_VALUES);
+		} else {
+			dst.element_stats[i].Merge(src.element_stats[i], merge_type);
+		}
+	}
 }
 
 void ListStats::Serialize(const BaseStatistics &stats, Serializer &serializer) {

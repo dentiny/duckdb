@@ -55,9 +55,13 @@ enum class ParquetBloomFilterHashStrategy : uint8_t { STANDARD, NORMALIZED_INTER
 struct ParquetStatisticsUtils {
 	static constexpr const char *INTERVAL_BLOOM_FILTER_KEY = "duckdb.interval_bloom_filter";
 	static constexpr const char *INTERVAL_BLOOM_FILTER_VALUE = "normalized-v1";
+	static constexpr const char *LIST_ELEMENT_STATS_KEY = "duckdb.list_element_stats";
 
 	static unique_ptr<BaseStatistics> TransformColumnStatistics(const ParquetColumnSchema &reader,
 	                                                            const vector<ColumnChunk> &columns, bool can_have_nan);
+
+	static void WriteListElementStats(ColumnChunk &column_chunk, const vector<BaseStatistics> &element_stats);
+	static void TryLoadListElementStats(BaseStatistics &list_stats, const ColumnChunk &column_chunk);
 
 	static unique_ptr<BaseStatistics>
 	TransformParquetStatistics(const LogicalType &type, const ParquetColumnSchema &schema,
