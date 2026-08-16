@@ -243,6 +243,13 @@ void ListColumnData::Append(ColumnAppendState &state, const Vector &vector, idx_
 	// append the validity data
 	vdata.validity = append_mask;
 	validity->AppendData(state.child_appends[0], vdata, count);
+
+	if (state.append_stats) {
+		ListStats::UpdateElementStats(*state.append_stats, vector, count);
+	}
+	if (state.full_append_stats) {
+		ListStats::UpdateElementStats(*state.full_append_stats, vector, count);
+	}
 }
 
 void ListColumnData::FinalizeAppend(ColumnDataFinalizeAppendState &finalize_state, ColumnAppendState &state) {
@@ -387,10 +394,10 @@ public:
 	}
 
 	unique_ptr<BaseStatistics> GetStatistics() override {
-		auto stats = global_stats->Copy();
-		stats.Merge(*validity_state->GetStatistics());
-		ListStats::SetChildStats(stats, child_state->GetStatistics());
-		return stats.ToUnique();
+		auto stats = original_column.GetStatistics();
+		stats->Merge(*validity_state->GetStatistics());
+		ListStats::SetChildStats(*stats, child_state->GetStatistics());
+		return stats;
 	}
 
 	PersistentColumnData ToPersistentData() override {

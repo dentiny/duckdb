@@ -34,6 +34,7 @@ struct ListStats {
 
 	DUCKDB_API static optional_ptr<const BaseStatistics> TryGetElementStats(const BaseStatistics &stats, idx_t index);
 	DUCKDB_API static void SetElementStats(BaseStatistics &stats, idx_t index, const BaseStatistics &element_stats);
+	DUCKDB_API static void UpdateElementStats(BaseStatistics &stats, const Vector &vector, idx_t count);
 
 	DUCKDB_API static void Serialize(const BaseStatistics &stats, Serializer &serializer);
 	DUCKDB_API static void Deserialize(Deserializer &deserializer, BaseStatistics &base);

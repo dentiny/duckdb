@@ -1,6 +1,9 @@
 #include "duckdb/common/vector/list_vector.hpp"
 #include "duckdb/storage/statistics/list_stats.hpp"
 #include "duckdb/storage/statistics/base_statistics.hpp"
+#include "duckdb/storage/statistics/numeric_stats.hpp"
+#include "duckdb/storage/statistics/string_stats.hpp"
+#include "duckdb/common/helper.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/common/types/vector.hpp"
 
@@ -100,6 +103,63 @@ void ListStats::SetElementStats(BaseStatistics &stats, idx_t index, const BaseSt
 	extra.element_stats[index] = element_stats.Copy();
 }
 
+static bool HasElementMinMax(const BaseStatistics &stats) {
+	switch (stats.GetStatsType()) {
+	case StatisticsType::NUMERIC_STATS:
+		return NumericStats::HasMinMax(stats);
+	case StatisticsType::STRING_STATS:
+		return StringStats::HasMinMax(stats);
+	default:
+		return false;
+	}
+}
+
+void ListStats::UpdateElementStats(BaseStatistics &stats, const Vector &vector, idx_t count) {
+	if (stats.GetStatsType() != StatisticsType::LIST_STATS) {
+		return;
+	}
+	auto &child_type = ListType::GetChildType(stats.GetType());
+	auto child_stats_type = BaseStatistics::GetStatsType(child_type);
+	if (child_stats_type != StatisticsType::NUMERIC_STATS && child_stats_type != StatisticsType::STRING_STATS) {
+		return;
+	}
+
+	UnifiedVectorFormat format;
+	vector.ToUnifiedFormat(format);
+	auto entries = UnifiedVectorFormat::GetData<list_entry_t>(format);
+	auto &child = ListVector::GetChild(vector);
+	for (idx_t i = 0; i < count; i++) {
+		auto idx = format.sel->get_index(i);
+		if (!format.validity.RowIsValid(idx)) {
+			continue;
+		}
+		auto entry = entries[idx];
+		auto length = MinValue<idx_t>(entry.length, MAX_ELEMENT_STATS);
+		for (idx_t k = 0; k < length; k++) {
+			auto value = child.GetValue(entry.offset + k);
+			if (value.IsNull()) {
+				auto existing = TryGetElementStats(stats, k);
+				auto element_stats = existing ? existing->Copy() : BaseStatistics::CreateUnknown(child_type);
+				element_stats.Set(StatsInfo::CAN_HAVE_NULL_VALUES);
+				SetElementStats(stats, k, element_stats);
+				continue;
+			}
+			auto value_stats = BaseStatistics::FromConstant(value);
+			auto existing = TryGetElementStats(stats, k);
+			if (existing && existing->CanHaveNull()) {
+				value_stats.Set(StatsInfo::CAN_HAVE_NULL_VALUES);
+			}
+			if (existing && HasElementMinMax(*existing)) {
+				auto merged = existing->Copy();
+				merged.Merge(value_stats);
+				SetElementStats(stats, k, merged);
+			} else {
+				SetElementStats(stats, k, value_stats);
+			}
+		}
+	}
+}
+
 void ListStats::Merge(BaseStatistics &stats, const BaseStatistics &other, StatsMergeType merge_type) {
 	if (other.GetType().id() == LogicalTypeId::VALIDITY) {
 		return;
@@ -110,7 +170,6 @@ void ListStats::Merge(BaseStatistics &stats, const BaseStatistics &other, StatsM
 	child_stats.Merge(other_child_stats, merge_type);
 
 	if (!other.extra_data) {
-		stats.extra_data.reset();
 		return;
 	}
 	if (!stats.extra_data) {
@@ -143,6 +202,25 @@ void ListStats::Merge(BaseStatistics &stats, const BaseStatistics &other, StatsM
 void ListStats::Serialize(const BaseStatistics &stats, Serializer &serializer) {
 	auto &child_stats = ListStats::GetChildStats(stats);
 	serializer.WriteProperty(200, "child_stats", child_stats);
+
+	vector<Value> mins;
+	vector<Value> maxs;
+	if (stats.extra_data) {
+		auto &extra = stats.extra_data->Cast<ListElementStatsExtraData>();
+		mins.reserve(extra.element_stats.size());
+		maxs.reserve(extra.element_stats.size());
+		for (auto &element_stats : extra.element_stats) {
+			if (HasElementMinMax(element_stats) && element_stats.GetStatsType() == StatisticsType::NUMERIC_STATS) {
+				mins.push_back(NumericStats::Min(element_stats));
+				maxs.push_back(NumericStats::Max(element_stats));
+			} else {
+				mins.emplace_back();
+				maxs.emplace_back();
+			}
+		}
+	}
+	serializer.WritePropertyWithDefault(201, "element_mins", mins, vector<Value>());
+	serializer.WritePropertyWithDefault(202, "element_maxs", maxs, vector<Value>());
 }
 
 void ListStats::Deserialize(Deserializer &deserializer, BaseStatistics &base) {
@@ -153,7 +231,26 @@ void ListStats::Deserialize(Deserializer &deserializer, BaseStatistics &base) {
 	// Push the logical type of the child type to the deserialization context
 	deserializer.Set<const LogicalType &>(child_type);
 	base.child_stats[0].Copy(deserializer.ReadProperty<BaseStatistics>(200, "child_stats"));
+	auto mins = deserializer.ReadPropertyWithExplicitDefault<vector<Value>>(201, "element_mins", {});
+	auto maxs = deserializer.ReadPropertyWithExplicitDefault<vector<Value>>(202, "element_maxs", {});
 	deserializer.Unset<LogicalType>();
+
+	if (mins.size() != maxs.size()) {
+		return;
+	}
+	for (idx_t i = 0; i < mins.size(); i++) {
+		if (mins[i].IsNull() || maxs[i].IsNull()) {
+			continue;
+		}
+		auto element_stats = BaseStatistics::CreateEmpty(child_type);
+		if (element_stats.GetStatsType() == StatisticsType::NUMERIC_STATS) {
+			NumericStats::SetMin(element_stats, mins[i]);
+			NumericStats::SetMax(element_stats, maxs[i]);
+		}
+		element_stats.Set(StatsInfo::CAN_HAVE_NULL_VALUES);
+		element_stats.Set(StatsInfo::CAN_HAVE_VALID_VALUES);
+		SetElementStats(base, i, element_stats);
+	}
 }
 
 child_list_t<Value> ListStats::ToStruct(const BaseStatistics &stats) {
