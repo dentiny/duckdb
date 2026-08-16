@@ -1,0 +1,19 @@
+# name: test/sql/copy/parquet/list_extract_row_group_pruning.test
+# description: Per-index list extract stats prune parquet row groups when another slot poisons merged child min/max
+# group: [parquet]
+
+require parquet
+
+statement ok
+COPY (SELECT [3000, i] AS l FROM range(6144) t(i))
+TO '{TEST_DIR}/list_extract_prune.parquet' (FORMAT PARQUET, ROW_GROUP_SIZE 2048)
+
+query I
+SELECT count(*) FROM '{TEST_DIR}/list_extract_prune.parquet' WHERE l[2] BETWEEN 2900 AND 3100
+----
+201
+
+query II
+EXPLAIN ANALYZE SELECT count(*) FROM '{TEST_DIR}/list_extract_prune.parquet' WHERE l[2] BETWEEN 2900 AND 3100
+----
+analyzed_plan	<REGEX>:(?s).*Row Groups Scanned: 1 / 3.*

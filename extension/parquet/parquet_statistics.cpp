@@ -18,6 +18,7 @@
 #include "duckdb/common/types/value.hpp"
 #include "duckdb/common/types/hugeint.hpp"
 #include "duckdb/common/helper.hpp"
+#include "duckdb/common/string_util.hpp"
 #include "duckdb/storage/statistics/struct_stats.hpp"
 #include "duckdb/storage/statistics/list_stats.hpp"
 #include "duckdb/planner/expression_iterator.hpp"
@@ -606,6 +607,62 @@ ParquetStatisticsUtils::TransformParquetStatistics(const LogicalType &type, cons
 	return unknown_stats.ToUnique();
 }
 
+void ParquetStatisticsUtils::WriteListElementStats(ColumnChunk &column_chunk, const BaseStatistics &list_stats) {
+	string blob;
+	bool any = false;
+	for (idx_t i = 0; i < ListStats::MAX_ELEMENT_STATS; i++) {
+		auto stats = ListStats::TryGetElementStats(list_stats, i);
+		if (!stats || stats->GetStatsType() != StatisticsType::NUMERIC_STATS || !NumericStats::HasMinMax(*stats)) {
+			blob += ";";
+			continue;
+		}
+		any = true;
+		blob += NumericStats::Min(*stats).ToString() + "," + NumericStats::Max(*stats).ToString() + ";";
+	}
+	if (!any) {
+		return;
+	}
+	duckdb_parquet::KeyValue kv;
+	kv.__set_key(LIST_ELEMENT_STATS_KEY);
+	kv.__set_value(blob);
+	column_chunk.meta_data.key_value_metadata.push_back(std::move(kv));
+	column_chunk.meta_data.__isset.key_value_metadata = true;
+}
+
+static void LoadListElementStats(BaseStatistics &list_stats, const ColumnChunk &column_chunk) {
+	if (!column_chunk.__isset.meta_data || !column_chunk.meta_data.__isset.key_value_metadata) {
+		return;
+	}
+	auto &child_type = ListType::GetChildType(list_stats.GetType());
+	if (BaseStatistics::GetStatsType(child_type) != StatisticsType::NUMERIC_STATS) {
+		return;
+	}
+	for (auto &kv : column_chunk.meta_data.key_value_metadata) {
+		if (kv.key != ParquetStatisticsUtils::LIST_ELEMENT_STATS_KEY) {
+			continue;
+		}
+		auto entries = StringUtil::Split(kv.value, ";");
+		for (idx_t i = 0; i < entries.size() && i < ListStats::MAX_ELEMENT_STATS; i++) {
+			auto comma = entries[i].find(',');
+			if (comma == string::npos) {
+				continue;
+			}
+			auto min = Value(entries[i].substr(0, comma)).DefaultTryCastAs(child_type);
+			auto max = Value(entries[i].substr(comma + 1)).DefaultTryCastAs(child_type);
+			if (!min || !max || min->IsNull() || max->IsNull()) {
+				continue;
+			}
+			auto stats = BaseStatistics::CreateEmpty(child_type);
+			NumericStats::SetMin(stats, *min);
+			NumericStats::SetMax(stats, *max);
+			stats.Set(StatsInfo::CAN_HAVE_NULL_VALUES);
+			stats.Set(StatsInfo::CAN_HAVE_VALID_VALUES);
+			ListStats::SetElementStats(list_stats, i, stats);
+		}
+		return;
+	}
+}
+
 unique_ptr<BaseStatistics> ParquetStatisticsUtils::TransformColumnStatistics(const ParquetColumnSchema &schema,
                                                                              const vector<ColumnChunk> &columns,
                                                                              bool can_have_nan) {
@@ -622,6 +679,9 @@ unique_ptr<BaseStatistics> ParquetStatisticsUtils::TransformColumnStatistics(con
 		auto &child_schema = schema.children[0];
 		auto child_stats = ParquetStatisticsUtils::TransformColumnStatistics(child_schema, columns, can_have_nan);
 		ListStats::SetChildStats(list_stats, std::move(child_stats));
+		if (child_schema.children.empty() && child_schema.column_index < columns.size()) {
+			LoadListElementStats(list_stats, columns[child_schema.column_index]);
+		}
 		row_group_stats = list_stats.ToUnique();
 		return row_group_stats;
 	}

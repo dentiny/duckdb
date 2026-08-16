@@ -10,7 +10,9 @@
 #include "duckdb/parser/expression/bound_expression.hpp"
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
+#include "duckdb/common/numeric_utils.hpp"
 #include "duckdb/storage/statistics/list_stats.hpp"
+#include "duckdb/storage/statistics/numeric_stats.hpp"
 
 namespace duckdb {
 
@@ -156,8 +158,19 @@ static unique_ptr<FunctionData> StringExtractBind(BindScalarFunctionInput &input
 
 static unique_ptr<BaseStatistics> ListExtractStats(ClientContext &context, FunctionStatisticsInput &input) {
 	auto &child_stats = input.child_stats;
-	auto &list_child_stats = ListStats::GetChildStats(child_stats[0]);
-	auto child_copy = list_child_stats.Copy();
+	if (child_stats.size() >= 2 && child_stats[1].GetStatsType() == StatisticsType::NUMERIC_STATS &&
+	    NumericStats::HasMinMax(child_stats[1]) && NumericStats::IsConstant(child_stats[1])) {
+		auto extract_index = NumericStats::Min(child_stats[1]).DefaultCastAs(LogicalType::BIGINT).GetValue<int64_t>();
+		if (extract_index > 0) {
+			if (auto element_stats =
+			        ListStats::TryGetElementStats(child_stats[0], NumericCast<idx_t>(extract_index - 1))) {
+				auto element_copy = element_stats->Copy();
+				element_copy.Set(StatsInfo::CAN_HAVE_NULL_VALUES);
+				return element_copy.ToUnique();
+			}
+		}
+	}
+	auto child_copy = ListStats::GetChildStats(child_stats[0]).Copy();
 	// list_extract always pushes a NULL, since if the offset is out of range for a list it inserts a null
 	child_copy.Set(StatsInfo::CAN_HAVE_NULL_VALUES);
 	return child_copy.ToUnique();
