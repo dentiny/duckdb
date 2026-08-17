@@ -6,6 +6,7 @@
 #include "duckdb/storage/table/column_checkpoint_state.hpp"
 #include "duckdb/storage/table/append_state.hpp"
 #include "duckdb/storage/table/scan_state.hpp"
+#include "duckdb/planner/filter/expression_filter.hpp"
 
 namespace duckdb {
 
@@ -29,7 +30,35 @@ void ListColumnData::SetDataType(ColumnDataType data_type) {
 
 FilterPropagateResult ListColumnData::CheckZonemap(ColumnScanState &state, TableFilter &filter,
                                                    optional_ptr<SegmentNode<ColumnSegment>> &checked_segment) {
-	return CheckValidityZonemap(state, filter, checked_segment, *validity);
+	if (IsDirectNullCheckFilter(filter)) {
+		return CheckValidityZonemap(state, filter, checked_segment, *validity);
+	}
+	checked_segment = nullptr;
+	if (child_column->type.IsNested()) {
+		return FilterPropagateResult::NO_PRUNING_POSSIBLE;
+	}
+
+	auto row_start = state.offset_in_column;
+	auto row_end = MinValue<idx_t>(row_start + STANDARD_VECTOR_SIZE, count.load());
+	if (row_start >= row_end) {
+		return FilterPropagateResult::NO_PRUNING_POSSIBLE;
+	}
+	auto child_start = state.last_offset;
+	auto child_end = FetchListOffset(row_end - 1);
+	auto child_stats = child_column->GetSegmentStatistics(child_start, child_end);
+	if (!child_stats) {
+		return FilterPropagateResult::NO_PRUNING_POSSIBLE;
+	}
+
+	auto list_stats = ListStats::CreateUnknown(type);
+	ListStats::SetChildStats(list_stats, std::move(child_stats));
+	auto &expr_filter = ExpressionFilter::GetExpressionFilter(filter, "ListColumnData::CheckZonemap");
+	auto context = state.context.GetClientContext();
+	auto result = context ? expr_filter.CheckStatistics(*context, list_stats) : expr_filter.CheckStatistics(list_stats);
+	if (result == FilterPropagateResult::FILTER_ALWAYS_FALSE) {
+		state.zonemap_target_row = row_end;
+	}
+	return result;
 }
 
 void ListColumnData::InitializePrefetch(PrefetchState &prefetch_state, ColumnScanState &scan_state, idx_t rows) {
