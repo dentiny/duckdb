@@ -1,0 +1,48 @@
+# name: test/sql/optimizer/cross_column_or_row_group_pruning.test
+# description: Row-group pruning can use simple OR predicates across multiple columns
+# group: [optimizer]
+
+statement ok
+ATTACH '{TEST_DIR}/cross_column_or_pruning.duckdb' AS rg (ROW_GROUP_SIZE 2048);
+
+statement ok
+USE rg;
+
+statement ok
+CREATE TABLE t AS
+SELECT range::BIGINT AS x, lpad(range::VARCHAR, 8, '0') AS s
+FROM range(8192);
+
+statement ok
+CHECKPOINT;
+
+query II
+EXPLAIN ANALYZE SELECT sum(x) FROM t WHERE x < 100 OR s > '00008000';
+----
+analyzed_plan	<REGEX>:.*Row Groups Scanned: 2 / 4.*
+
+query II
+SELECT count(*), sum(x) FROM t WHERE x < 100 OR s > '00008000';
+----
+291	1551286
+
+# Dynamic filters should not drop row-group-only OR filters when scan filters are merged.
+# The join dynamic filter includes values in all four row groups, so the 2 / 4 scan
+# relies on the static cross-column OR pruning surviving GetFinalTableFilters().
+
+query II
+EXPLAIN ANALYZE
+SELECT sum(t.x)
+FROM t
+JOIN (VALUES (50::BIGINT), (3000::BIGINT), (5000::BIGINT), (8050::BIGINT)) keys(x) USING (x)
+WHERE t.x < 100 OR t.s > '00008000';
+----
+analyzed_plan	<REGEX>:.*Dynamic Filters:.*x IN.*Row Groups Scanned: 2 / 4.*
+
+query II
+SELECT count(*), sum(t.x)
+FROM t
+JOIN (VALUES (50::BIGINT), (3000::BIGINT), (5000::BIGINT), (8050::BIGINT)) keys(x) USING (x)
+WHERE t.x < 100 OR t.s > '00008000';
+----
+2	8100

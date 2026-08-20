@@ -24,6 +24,38 @@
 
 namespace duckdb {
 
+bool TableFilterSetRowGroupFilter::Equals(const TableFilterSetRowGroupFilter &other) const {
+	return column_index == other.column_index &&
+	       filter->Cast<ExpressionFilter>().Equals(other.filter->Cast<ExpressionFilter>());
+}
+
+TableFilterSetRowGroupFilter TableFilterSetRowGroupFilter::Copy() const {
+	TableFilterSetRowGroupFilter result;
+	result.column_index = column_index;
+	result.filter = filter->Cast<ExpressionFilter>().Copy();
+	return result;
+}
+
+bool TableFilterSetMultiColumnFilter::Equals(const TableFilterSetMultiColumnFilter &other) const {
+	if (filters.size() != other.filters.size()) {
+		return false;
+	}
+	for (idx_t i = 0; i < filters.size(); i++) {
+		if (!filters[i].Equals(other.filters[i])) {
+			return false;
+		}
+	}
+	return true;
+}
+
+TableFilterSetMultiColumnFilter TableFilterSetMultiColumnFilter::Copy() const {
+	TableFilterSetMultiColumnFilter result;
+	for (auto &filter : filters) {
+		result.filters.push_back(filter.Copy());
+	}
+	return result;
+}
+
 struct LegacyStructPathEntry {
 	idx_t child_idx;
 	Identifier child_name;
@@ -337,7 +369,7 @@ unique_ptr<TableFilter> TableFilterSet::TableFilterIteratorEntry::TakeFilter() {
 }
 
 bool TableFilterSet::HasFilters() const {
-	return !filters.empty();
+	return !filters.empty() || !row_group_filters.empty();
 }
 idx_t TableFilterSet::FilterCount() const {
 	return filters.size();
@@ -391,6 +423,7 @@ void TableFilterSet::SetFilterByColumnIndex(ProjectionIndex col_idx, unique_ptr<
 
 void TableFilterSet::ClearFilters() {
 	filters.clear();
+	row_group_filters.clear();
 }
 
 bool TableFilterSet::Equals(TableFilterSet &other) {
@@ -403,6 +436,14 @@ bool TableFilterSet::Equals(TableFilterSet &other) {
 			return false;
 		}
 		if (!entry.second->Cast<ExpressionFilter>().Equals(other_entry->second->Cast<ExpressionFilter>())) {
+			return false;
+		}
+	}
+	if (row_group_filters.size() != other.row_group_filters.size()) {
+		return false;
+	}
+	for (idx_t i = 0; i < row_group_filters.size(); i++) {
+		if (!row_group_filters[i].Equals(other.row_group_filters[i])) {
 			return false;
 		}
 	}
@@ -424,6 +465,9 @@ unique_ptr<TableFilterSet> TableFilterSet::Copy() const {
 	for (auto &it : filters) {
 		copy->filters.emplace(it.first, it.second->Cast<ExpressionFilter>().Copy());
 	}
+	for (auto &filter : row_group_filters) {
+		copy->row_group_filters.push_back(filter.Copy());
+	}
 	return copy;
 }
 
@@ -444,6 +488,17 @@ void TableFilterSet::PushFilter(ProjectionIndex col_idx, unique_ptr<TableFilter>
 		and_expr->GetChildrenMutable().push_back(std::move(new_filter.expr));
 		filters[col_idx] = make_uniq<ExpressionFilter>(std::move(and_expr));
 	}
+}
+
+void TableFilterSet::PushRowGroupFilter(vector<TableFilterSetRowGroupFilter> filters) {
+	for (auto &filter : filters) {
+		if (!filter.column_index.IsValid()) {
+			throw InternalException("Cannot push a row-group filter over an invalid ProjectionIndex");
+		}
+	}
+	TableFilterSetMultiColumnFilter filter;
+	filter.filters = std::move(filters);
+	row_group_filters.push_back(std::move(filter));
 }
 
 void DynamicTableFilterSet::ClearFilters(const PhysicalOperator &op) {
@@ -481,6 +536,10 @@ DynamicTableFilterSet::GetFinalTableFilters(const PhysicalTableScan &scan,
 		for (auto &filter_entry : *existing_filters) {
 			result->PushFilter(filter_entry.GetIndex(), filter_entry.Filter().Cast<ExpressionFilter>().Copy());
 		}
+		for (auto &row_group_filter : existing_filters->GetRowGroupFilters()) {
+			auto row_group_filter_copy = row_group_filter.Copy();
+			result->PushRowGroupFilter(std::move(row_group_filter_copy.filters));
+		}
 	}
 	for (auto &entry : filters) {
 		for (auto &filter_entry : *entry.second) {
@@ -513,6 +572,18 @@ TableFilterSet::GetTableFiltersForSerialization(Serializer &serializer) const {
 map<ProjectionIndex, unique_ptr<TableFilter>> &
 TableFilterSet::GetTableFiltersForDeserialization(Deserializer &deserializer) {
 	return filters;
+}
+
+const vector<TableFilterSetMultiColumnFilter> &TableFilterSet::GetRowGroupFilters() const {
+	return row_group_filters;
+}
+
+vector<TableFilterSetMultiColumnFilter> TableFilterSet::TakeRowGroupFilters() {
+	return std::move(row_group_filters);
+}
+
+void TableFilterSet::SetRowGroupFilters(vector<TableFilterSetMultiColumnFilter> filters) {
+	row_group_filters = std::move(filters);
 }
 
 } // namespace duckdb
