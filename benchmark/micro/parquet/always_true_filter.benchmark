@@ -1,0 +1,18 @@
+# name: benchmark/micro/parquet/always_true_filter.benchmark
+# description: Filter on a sorted column that is provably true for every parquet row group
+# group: [parquet]
+
+name Parquet Always-True Filter
+group micro
+subgroup parquet
+
+require parquet
+
+load
+COPY (SELECT (TIMESTAMP '2021-01-01' + INTERVAL (range/100) SECOND) ts, (range % 997)::INTEGER payload FROM range(30000000)) TO '${BENCHMARK_DIR}/always_true_filter.parquet' (ROW_GROUP_SIZE 500000);
+
+run
+SELECT sum(payload) FROM read_parquet('${BENCHMARK_DIR}/always_true_filter.parquet') WHERE ts >= TIMESTAMP '2020-01-01';
+
+result I
+14939901855

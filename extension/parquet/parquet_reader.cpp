@@ -1766,6 +1766,13 @@ void ParquetReader::PrepareRowGroupBuffer(ClientContext &context, ParquetReaderS
 				}
 			}
 
+			for (auto &scan_filter : state.scan_filters) {
+				if (MultiFileLocalIndex(scan_filter.filter_idx).GetIndex() == col_idx.GetIndex()) {
+					scan_filter.always_true = prune_result == FilterPropagateResult::FILTER_ALWAYS_TRUE;
+					break;
+				}
+			}
+
 			if (prune_result == FilterPropagateResult::FILTER_ALWAYS_FALSE) {
 				// this effectively will skip this chunk
 				state.offset_in_group = group.num_rows;
@@ -2242,6 +2249,12 @@ idx_t ParquetReader::EvaluateFilters(ParquetReaderScanState &state, DataChunk &r
 
 		auto &result_vector = result.data[local_idx.GetIndex()];
 		ColumnReaderInput reader_input(scan_count, define_ptr, repeat_ptr);
+		if (scan_filter.always_true) {
+			// Zonemap proved that every row in this row group passes the filter: decode the column without evaluating
+			// the filter
+			child_reader.Select(reader_input, result_vector, state.sel, filter_count);
+			continue;
+		}
 		child_reader.Filter(reader_input, result_vector, scan_filter.filter, *scan_filter.filter_state, state.sel,
 		                    filter_count, is_first_filter);
 		if (log_prefetch) {

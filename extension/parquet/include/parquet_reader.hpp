@@ -138,6 +138,9 @@ struct ParquetScanFilter {
 	ProjectionIndex filter_idx;
 	TableFilter &filter;
 	unique_ptr<TableFilterState> filter_state;
+	//! Whether the zonemap proved this filter always true for the current row group, in which case evaluating it can be
+	//! skipped
+	bool always_true = false;
 };
 
 struct ParquetPrefetchColumn {

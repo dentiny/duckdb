@@ -438,3 +438,57 @@ FROM '{TEST_DIR}/expr_prune_string_length.parquet'
 WHERE octet_length(b) > 30
 ----
 analyzed_plan	<REGEX>:(?s).*Row Groups Scanned: 1 / 3.*
+
+# Filters that are always true for entire row groups: the reader may skip evaluating such a
+# filter for those row groups (the data is still read - this is not pruning). These queries pin
+# the results down so that optimization cannot change them.
+
+# 10 row groups of 10240 sorted rows; s is NULL only for i in [85000, 85999] (row group 8 only)
+statement ok
+COPY (
+	SELECT range AS i,
+	       (range % 97)::INTEGER AS payload,
+	       CASE WHEN range BETWEEN 85000 AND 85999 THEN NULL ELSE 'val_' || range END AS s
+	FROM range(102400)
+) TO '{TEST_DIR}/expr_prune_always_true.parquet' (ROW_GROUP_SIZE 10240)
+
+# i < 50000: row groups 0-3 always true, row group 4 partial, row groups 5-9 always false.
+# sum(payload) cannot be answered from metadata, so the scan and the filter remain.
+statement ok
+CALL enable_logging('PhysicalOperator')
+
+query II
+SELECT count(*), sum(payload) FROM '{TEST_DIR}/expr_prune_always_true.parquet' WHERE i < 50000
+----
+50000	2398830
+
+statement ok
+CALL disable_logging()
+
+# the always-true row groups are read, not skipped
+query II
+SELECT event, count(*) FROM duckdb_logs_parsed('PhysicalOperator') WHERE class='ParquetReader' GROUP BY event ORDER BY event
+----
+ReadRowGroup	5
+SkipRowGroup	5
+
+statement ok
+CALL truncate_duckdb_logs()
+
+# an always-true filter combined with one that must still be evaluated for every row group
+query II
+SELECT count(*), sum(payload) FROM '{TEST_DIR}/expr_prune_always_true.parquet' WHERE i < 50000 AND payload < 50
+----
+25795	631865
+
+# IS NOT NULL: always true for the row groups without NULLs, must be evaluated for row group 8
+query II
+SELECT count(*), sum(payload) FROM '{TEST_DIR}/expr_prune_always_true.parquet' WHERE s IS NOT NULL
+----
+101400	4866325
+
+# always-true range filter combined with IS NOT NULL on a filter-only column
+query II
+SELECT count(*), sum(payload) FROM '{TEST_DIR}/expr_prune_always_true.parquet' WHERE i >= 30000 AND s IS NOT NULL
+----
+71400	3427270

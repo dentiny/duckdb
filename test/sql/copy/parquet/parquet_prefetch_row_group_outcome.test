@@ -104,6 +104,8 @@ SELECT sum(a + b + c + g)
 FROM read_parquet('{TEST_DIR}/rgo.parquet')
 WHERE a > 100 AND b > 100 AND c = 50
 
+# from row group 1 onwards the filters on a and b are always true per the zonemap,
+# so they are never evaluated and only c contributes to minimal_filters
 query ITTTT
 SELECT row_group_id, fully_filtered, strategy, prefetch_groups, minimal_filters
 FROM duckdb_logs_parsed('ParquetPrefetch')
@@ -111,11 +113,11 @@ WHERE file_path LIKE '%rgo.parquet'
 ORDER BY row_group_id
 ----
 0	true	whole_group	[[a, b, c, g]]	[a, b, c]
-1	true	prefetch_filters	[[a, b, c], [g]]	[a, b, c]
-2	true	prefetch_filters	[[a, b, c], [g]]	[a, b, c]
-3	true	prefetch_filters	[[a, b, c], [g]]	[a, b, c]
-4	true	prefetch_filters	[[a, b, c], [g]]	[a, b, c]
-5	true	prefetch_filters	[[a, b, c], [g]]	[a, b, c]
+1	true	prefetch_filters	[[a, b, c], [g]]	[c]
+2	true	prefetch_filters	[[a, b, c], [g]]	[c]
+3	true	prefetch_filters	[[a, b, c], [g]]	[c]
+4	true	prefetch_filters	[[a, b, c], [g]]	[c]
+5	true	prefetch_filters	[[a, b, c], [g]]	[c]
 
 statement ok
 CALL truncate_duckdb_logs()
