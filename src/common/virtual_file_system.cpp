@@ -6,7 +6,7 @@
 #include "duckdb/common/pipe_file_system.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/main/client_context.hpp"
-#include "duckdb/storage/external_file_cache/caching_file_system_wrapper.hpp"
+#include "duckdb/storage/external_file_cache/caching_file_system_layer.hpp"
 #include "duckdb/common/multi_file/multi_file_list.hpp"
 #include "duckdb/common/mutex.hpp"
 #include "duckdb/main/database.hpp"
@@ -20,6 +20,11 @@ struct FileSystemHandle {
 	}
 
 	unique_ptr<FileSystem> file_system;
+};
+
+//! The FileSystemLayerRegistry is an immutable snapshot of the registered filesystem layers.
+struct FileSystemLayerRegistry {
+	unordered_map<string, shared_ptr<FileSystemLayer>> layers;
 };
 
 //! The FileSystemRegistry holds the set of file systems that are registered.
@@ -110,8 +115,10 @@ VirtualFileSystem::VirtualFileSystem() : VirtualFileSystem(FileSystem::CreateLoc
 }
 
 VirtualFileSystem::VirtualFileSystem(unique_ptr<FileSystem> &&inner)
-    : file_system_registry(make_shared_ptr<FileSystemRegistry>(std::move(inner))) {
+    : file_system_registry(make_shared_ptr<FileSystemRegistry>(std::move(inner))),
+      file_system_layer_registry(make_shared_ptr<FileSystemLayerRegistry>()) {
 	VirtualFileSystem::RegisterSubSystem(FileCompressionType::GZIP, make_uniq<GZipFileSystem>());
+	RegisterFileSystemLayer(make_uniq<CachingFileSystemLayer>());
 }
 
 VirtualFileSystem::~VirtualFileSystem() {
@@ -156,20 +163,12 @@ unique_ptr<FileHandle> VirtualFileSystem::OpenFileExtended(const OpenFileInfo &f
 	flags.SetCompression(FileCompressionType::UNCOMPRESSED);
 
 	auto registry = file_system_registry.atomic_load();
-	auto &internal_filesystem = FindFileSystem(registry, file.path, opener);
+	auto &selected_file_system = FindFileSystem(registry, file.path, opener);
+	auto selected_file_system_owner = shared_ptr<FileSystem>(registry, &selected_file_system);
+	auto layered_file_system = ApplyFileSystemLayers(std::move(selected_file_system_owner), file, flags, opener);
 
 	// File handle gets created.
-	unique_ptr<FileHandle> file_handle = nullptr;
-
-	// Handle caching logic.
-	if (flags.GetCachingMode() != CachingMode::NO_CACHING) {
-		auto caching_filesystem =
-		    make_shared_ptr<CachingFileSystemWrapper>(internal_filesystem, opener, flags.GetCachingMode());
-		// caching filesystem's lifecycle is extended inside of caching file handle.
-		file_handle = caching_filesystem->OpenFile(file, flags, opener);
-	} else {
-		file_handle = internal_filesystem.OpenFile(file, flags, opener);
-	}
+	auto file_handle = layered_file_system->OpenFile(file, flags, opener);
 	if (!file_handle) {
 		return nullptr;
 	}
@@ -309,6 +308,24 @@ void VirtualFileSystem::RegisterSubSystem(FileCompressionType compression_type, 
 	file_system_registry.atomic_store(new_registry);
 }
 
+void VirtualFileSystem::RegisterFileSystemLayer(unique_ptr<FileSystemLayer> layer) {
+	if (!layer) {
+		throw InvalidInputException("Cannot register a null FileSystemLayer");
+	}
+	lock_guard<mutex> guard(registry_lock);
+	auto current_registry = file_system_layer_registry.atomic_load();
+	auto new_registry = make_shared_ptr<FileSystemLayerRegistry>(*current_registry);
+	auto name = layer->GetName();
+	if (name.empty()) {
+		throw InvalidInputException("Cannot register a FileSystemLayer with an empty name");
+	}
+	if (new_registry->layers.find(name) != new_registry->layers.end()) {
+		throw InvalidInputException("FileSystemLayer with name %s is already registered", name);
+	}
+	new_registry->layers.emplace(std::move(name), shared_ptr<FileSystemLayer>(std::move(layer)));
+	file_system_layer_registry.atomic_store(new_registry);
+}
+
 void VirtualFileSystem::UnregisterSubSystem(const string &name) {
 	auto sub_system = ExtractSubSystem(name);
 
@@ -422,6 +439,26 @@ optional_ptr<FileSystem> VirtualFileSystem::FindFileSystemInternal(FileSystemReg
 		}
 	}
 	return fs;
+}
+
+shared_ptr<FileSystem> VirtualFileSystem::ApplyFileSystemLayers(shared_ptr<FileSystem> file_system,
+                                                                const OpenFileInfo &file, FileOpenFlags flags,
+                                                                optional_ptr<FileOpener> opener) {
+	auto registry = file_system_layer_registry.atomic_load();
+	if (!file.extended_info) {
+		return file_system;
+	}
+	for (const auto &layer_options : file.extended_info->file_system_layers) {
+		auto entry = registry->layers.find(layer_options.name);
+		if (entry == registry->layers.end()) {
+			throw InvalidInputException("FileSystemLayer with name %s is not registered", layer_options.name);
+		}
+		file_system = entry->second->Wrap(std::move(file_system), layer_options, file, flags, opener);
+		if (!file_system) {
+			throw InternalException("FileSystemLayer %s returned a null filesystem", layer_options.name);
+		}
+	}
+	return file_system;
 }
 
 } // namespace duckdb

@@ -4,8 +4,7 @@
 
 #include "duckdb/common/serializer/memory_stream.hpp"
 #include "duckdb/function/table/read_file.hpp"
-#include "duckdb/storage/external_file_cache/caching_file_system_wrapper.hpp"
-#include "duckdb/storage/caching_mode.hpp"
+#include "duckdb/storage/external_file_cache/caching_file_system_layer.hpp"
 
 namespace duckdb {
 
@@ -70,8 +69,7 @@ AsyncResult DirectFileReader::Scan(ClientContext &context, GlobalTableFunctionSt
 		if (FileSystem::IsRemoteFile(file.path)) {
 			flags |= FileFlags::FILE_FLAGS_DIRECT_IO;
 		}
-		flags.SetCachingMode(CachingMode::CACHE_REMOTE_ONLY);
-		file_handle = fs.OpenFile(file, flags);
+		file_handle = fs.OpenFile(CachingFileSystemLayer::AddTo(file), flags);
 	} else {
 		// At least verify that the file exist
 		// The globbing behavior in remote filesystems can lead to files being listed that do not actually exist
