@@ -6,6 +6,7 @@
 #include "duckdb/common/vector.hpp"
 #include "duckdb/main/database.hpp"
 #include "duckdb/storage/external_file_cache/caching_file_system.hpp"
+#include "duckdb/storage/external_file_cache/caching_file_system_layer.hpp"
 #include "duckdb/storage/external_file_cache/caching_file_system_wrapper.hpp"
 
 #include <thread>
@@ -512,12 +513,15 @@ TEST_CASE("Open file in opener filesystem cache modes", "[file_system][caching]"
 	string buffer(TEST_BUFFER_SIZE, '\0');
 	const auto &external_file_cache = db_instance.GetExternalFileCache();
 
-	auto run_case = [&](CachingMode mode) {
+	auto run_case = [&](bool cache_enabled) {
 		FileOpenFlags flags {FileFlags::FILE_FLAGS_READ};
-		flags.SetCachingMode(mode);
+		OpenFileInfo file(test_file.GetPath());
+		if (cache_enabled) {
+			file = CachingFileSystemLayer::AddTo(std::move(file), true);
+		}
 
 		// Perform read operation and check correctness.
-		auto handle = opener_filesystem.OpenFile(test_file.GetPath(), flags);
+		auto handle = opener_filesystem.OpenFile(file, flags);
 		handle->Read(QueryContext(), &buffer[0], test_content.length(), /*location=*/0);
 		REQUIRE(buffer.substr(0, test_content.length()) == test_content);
 
@@ -526,13 +530,13 @@ TEST_CASE("Open file in opener filesystem cache modes", "[file_system][caching]"
 	};
 
 	SECTION("cache enabled") {
-		run_case(CachingMode::ALWAYS_CACHE);
+		run_case(true);
 		// Check external cache file has something cached.
 		REQUIRE(!external_file_cache.GetCachedFileInformation().empty());
 	}
 
 	SECTION("cache disabled") {
-		run_case(CachingMode::NO_CACHING);
+		run_case(false);
 		// Check external cache file has nothing cached.
 		REQUIRE(external_file_cache.GetCachedFileInformation().empty());
 	}
@@ -550,10 +554,10 @@ TEST_CASE("Request over-sized range read", "[file_system][caching]") {
 	vfs.RegisterSubSystem(make_uniq<TrackingFileSystem>());
 
 	FileOpenFlags flags {FileFlags::FILE_FLAGS_READ};
-	flags.SetCachingMode(CachingMode::ALWAYS_CACHE);
+	auto file = CachingFileSystemLayer::AddTo(OpenFileInfo(test_file.GetPath()), true);
 
 	// Perform read operation and check correctness.
-	auto handle = opener_filesystem.OpenFile(test_file.GetPath(), flags);
+	auto handle = opener_filesystem.OpenFile(file, flags);
 	string buffer(TEST_BUFFER_SIZE, '\0');
 	const idx_t actual_read = handle->Read(QueryContext(), &buffer[0], test_content.length() + 1);
 	REQUIRE(actual_read == test_content.length());
@@ -829,7 +833,6 @@ TEST_CASE("CachingFileHandle EOF read behavior", "[file_system][caching]") {
 	file_info.extended_info->options["validate_external_file_cache"] = Value::BOOLEAN(false);
 
 	FileOpenFlags flags {FileFlags::FILE_FLAGS_READ};
-	flags.SetCachingMode(CachingMode::ALWAYS_CACHE);
 
 	// Seeking Read past EOF returns partial data.
 	{

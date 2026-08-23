@@ -1,6 +1,7 @@
 #include "catch.hpp"
 #include "duckdb/common/file_buffer.hpp"
 #include "duckdb/common/file_system.hpp"
+#include "duckdb/common/file_system_layer.hpp"
 #include "duckdb/common/fstream.hpp"
 #include "duckdb/common/local_file_system.hpp"
 #include "duckdb/common/string_util.hpp"
@@ -40,6 +41,49 @@ static void create_dummy_file(string fname) {
 	outfile << "I_AM_A_DUMMY" << endl;
 	outfile.close();
 }
+
+class RecordingFileSystem : public FileSystem {
+public:
+	RecordingFileSystem(shared_ptr<FileSystem> file_system_p, shared_ptr<vector<string>> events_p, string name_p)
+	    : file_system(std::move(file_system_p)), events(std::move(events_p)), name(std::move(name_p)) {
+	}
+
+	unique_ptr<FileHandle> OpenFile(const string &path, FileOpenFlags flags,
+	                                optional_ptr<FileOpener> opener = nullptr) override {
+		events->push_back("open:" + name);
+		return file_system->OpenFile(path, flags, opener);
+	}
+
+	string GetName() const override {
+		return name;
+	}
+
+private:
+	shared_ptr<FileSystem> file_system;
+	shared_ptr<vector<string>> events;
+	string name;
+};
+
+class RecordingFileSystemLayer : public FileSystemLayer {
+public:
+	RecordingFileSystemLayer(shared_ptr<vector<string>> events_p, string name_p)
+	    : events(std::move(events_p)), name(std::move(name_p)) {
+	}
+
+	string GetName() const override {
+		return name;
+	}
+
+	shared_ptr<FileSystem> Wrap(shared_ptr<FileSystem> file_system, const FileSystemLayerOptions &,
+	                            const OpenFileInfo &, FileOpenFlags, optional_ptr<FileOpener>) const override {
+		events->push_back("wrap:" + name + ":" + file_system->GetName());
+		return make_shared_ptr<RecordingFileSystem>(std::move(file_system), events, name);
+	}
+
+private:
+	shared_ptr<vector<string>> events;
+	string name;
+};
 
 TEST_CASE("Make sure the file:// protocol works as expected", "[file_system]") {
 	duckdb::unique_ptr<FileSystem> fs = FileSystem::CreateLocal();
@@ -238,6 +282,25 @@ TEST_CASE("Test RemoveFiles", "[file_system]") {
 	REQUIRE(!fs->FileExists(file4));
 
 	fs->RemoveDirectory(dname);
+}
+
+TEST_CASE("VirtualFileSystem applies layers after routing", "[file_system][layer]") {
+	auto events = make_shared_ptr<vector<string>>();
+	VirtualFileSystem vfs;
+	vfs.RegisterFileSystemLayer(make_uniq<RecordingFileSystemLayer>(events, "first"));
+	vfs.RegisterFileSystemLayer(make_uniq<RecordingFileSystemLayer>(events, "second"));
+
+	auto path = TestCreatePath("test_file_system_layers.txt");
+	create_dummy_file(path);
+	FileOpenFlags flags {FileFlags::FILE_FLAGS_READ};
+	auto file = OpenFileInfo(path).WithFileSystemLayer("first").WithFileSystemLayer("second");
+	auto handle = vfs.OpenFile(file, flags);
+
+	vector<string> expected {"wrap:first:LocalFileSystem", "wrap:second:first", "open:second", "open:first"};
+	REQUIRE(*events == expected);
+
+	handle.reset();
+	vfs.RemoveFile(path, nullptr);
 }
 
 TEST_CASE("extract subsystem", "[file_system]") {

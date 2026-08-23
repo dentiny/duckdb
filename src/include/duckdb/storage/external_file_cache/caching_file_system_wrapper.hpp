@@ -53,6 +53,8 @@ public:
 	                                    CachingMode mode = CachingMode::CACHE_REMOTE_ONLY);
 	DUCKDB_API CachingFileSystemWrapper(FileSystem &file_system, optional_ptr<FileOpener> file_opener,
 	                                    CachingMode mode = CachingMode::CACHE_REMOTE_ONLY);
+	DUCKDB_API CachingFileSystemWrapper(shared_ptr<FileSystem> file_system, optional_ptr<FileOpener> file_opener,
+	                                    CachingMode mode = CachingMode::CACHE_REMOTE_ONLY);
 	DUCKDB_API ~CachingFileSystemWrapper() override;
 
 	DUCKDB_API std::string GetName() const override;
@@ -133,6 +135,7 @@ private:
 	// Return an optional caching file handle, if certain filepath is cached.
 	CachingFileHandle *GetCachingHandleIfPossible(FileHandle &handle);
 
+	shared_ptr<FileSystem> owned_file_system;
 	CachingFileSystem caching_file_system;
 	FileSystem &underlying_file_system;
 	CachingMode caching_mode;

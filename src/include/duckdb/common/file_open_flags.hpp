@@ -10,7 +10,6 @@
 
 #include "duckdb/common/common.hpp"
 #include "duckdb/common/enums/file_compression_type.hpp"
-#include "duckdb/storage/caching_mode.hpp"
 
 namespace duckdb {
 
@@ -54,10 +53,6 @@ public:
 		return a == FileCompressionType::UNCOMPRESSED ? b : a;
 	}
 
-	static constexpr CachingMode MergeCachingMode(CachingMode a, CachingMode b) {
-		return a == CachingMode::NO_CACHING ? b : a;
-	}
-
 	inline constexpr FileOpenFlags operator|(FileOpenFlags b) const {
 		return FileOpenFlags(flags | b.flags, MergeLock(lock, b.lock), MergeCompression(compression, b.compression));
 	}
@@ -65,7 +60,6 @@ public:
 		flags |= b.flags;
 		lock = MergeLock(lock, b.lock);
 		compression = MergeCompression(compression, b.compression);
-		caching_mode = MergeCachingMode(caching_mode, b.caching_mode);
 		return *this;
 	}
 
@@ -79,13 +73,6 @@ public:
 
 	void SetCompression(FileCompressionType new_compression) {
 		compression = new_compression;
-	}
-
-	CachingMode GetCachingMode() {
-		return caching_mode;
-	}
-	void SetCachingMode(CachingMode new_caching_mode) {
-		caching_mode = new_caching_mode;
 	}
 
 	void Verify();
@@ -139,7 +126,6 @@ public:
 private:
 	idx_t flags = 0;
 	FileLockType lock = FileLockType::NO_LOCK;
-	CachingMode caching_mode = CachingMode::NO_CACHING;
 	FileCompressionType compression = FileCompressionType::UNCOMPRESSED;
 };
 
