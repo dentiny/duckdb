@@ -5,6 +5,7 @@
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/planner/expression_iterator.hpp"
 #include "duckdb/planner/expression/bound_between_expression.hpp"
+#include "duckdb/planner/expression/bound_case_expression.hpp"
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
 #include "duckdb/planner/expression/bound_comparison_expression.hpp"
 #include "duckdb/planner/expression/bound_conjunction_expression.hpp"
@@ -205,6 +206,11 @@ static FilterPropagateResult CheckZonemapAgainstConstants(const BaseStatistics &
 	}
 }
 
+static optional_ptr<const BaseStatistics> TryGetCaseExpressionStats(optional_ptr<ClientContext> context_p,
+                                                                    const BoundCaseExpression &case_expr,
+                                                                    array_ptr<const BaseStatistics> input_stats,
+                                                                    vector<unique_ptr<BaseStatistics>> &owned_stats);
+
 static optional_ptr<const BaseStatistics> TryGetExpressionStats(optional_ptr<ClientContext> context_p,
                                                                 const Expression &expr,
                                                                 array_ptr<const BaseStatistics> input_stats,
@@ -296,9 +302,59 @@ static optional_ptr<const BaseStatistics> TryGetExpressionStats(optional_ptr<Cli
 
 		return nullptr;
 	}
+	case ExpressionClass::BOUND_CASE:
+		return TryGetCaseExpressionStats(context_p, expr.Cast<BoundCaseExpression>(), input_stats, owned_stats);
 	default:
 		return nullptr;
 	}
+}
+
+//! The result of a CASE is one of the THEN branches or the ELSE branch: merge the statistics of every
+//! branch that can be taken. Branches whose condition never holds are skipped, and branches after a
+//! condition that always holds (including the ELSE) are unreachable.
+static optional_ptr<const BaseStatistics> TryGetCaseExpressionStats(optional_ptr<ClientContext> context_p,
+                                                                    const BoundCaseExpression &case_expr,
+                                                                    array_ptr<const BaseStatistics> input_stats,
+                                                                    vector<unique_ptr<BaseStatistics>> &owned_stats) {
+	unique_ptr<BaseStatistics> merged;
+	bool else_reachable = true;
+	for (auto &case_check : case_expr.CaseChecks()) {
+		auto cond_result = ExpressionFilter::CheckExpressionStatistics(context_p, *case_check.when_expr, input_stats);
+		if (cond_result == FilterPropagateResult::FILTER_ALWAYS_FALSE ||
+		    cond_result == FilterPropagateResult::FILTER_FALSE_OR_NULL) {
+			// this branch is never taken
+			continue;
+		}
+		auto then_stats = TryGetExpressionStats(context_p, *case_check.then_expr, input_stats, owned_stats);
+		if (!then_stats) {
+			return nullptr;
+		}
+		if (merged) {
+			merged->Merge(*then_stats);
+		} else {
+			merged = then_stats->ToUnique();
+		}
+		if (cond_result == FilterPropagateResult::FILTER_ALWAYS_TRUE) {
+			else_reachable = false;
+			break;
+		}
+	}
+	if (else_reachable) {
+		auto else_stats = TryGetExpressionStats(context_p, case_expr.Else(), input_stats, owned_stats);
+		if (!else_stats) {
+			return nullptr;
+		}
+		if (merged) {
+			merged->Merge(*else_stats);
+		} else {
+			merged = else_stats->ToUnique();
+		}
+	}
+	if (!merged) {
+		return nullptr;
+	}
+	owned_stats.push_back(std::move(merged));
+	return owned_stats.back().get();
 }
 
 static optional_ptr<const BaseStatistics> TryGetFilterStats(optional_ptr<ClientContext> context_p,
@@ -618,6 +674,50 @@ static FilterPropagateResult CheckOperatorStatistics(optional_ptr<ClientContext>
 	}
 }
 
+//! A boolean CASE used as a filter: combine the prune results of every branch that can be taken.
+static FilterPropagateResult CheckCaseStatistics(optional_ptr<ClientContext> context_p,
+                                                 const BoundCaseExpression &case_expr,
+                                                 array_ptr<const BaseStatistics> input_stats) {
+	bool all_true = true;
+	bool all_false = true;
+	bool has_false_or_null = false;
+	auto add_branch_result = [&](FilterPropagateResult branch_result) {
+		if (branch_result != FilterPropagateResult::FILTER_ALWAYS_TRUE) {
+			all_true = false;
+		}
+		if (branch_result == FilterPropagateResult::FILTER_FALSE_OR_NULL) {
+			has_false_or_null = true;
+		} else if (branch_result != FilterPropagateResult::FILTER_ALWAYS_FALSE) {
+			all_false = false;
+		}
+	};
+	bool else_reachable = true;
+	for (auto &case_check : case_expr.CaseChecks()) {
+		auto cond_result = ExpressionFilter::CheckExpressionStatistics(context_p, *case_check.when_expr, input_stats);
+		if (cond_result == FilterPropagateResult::FILTER_ALWAYS_FALSE ||
+		    cond_result == FilterPropagateResult::FILTER_FALSE_OR_NULL) {
+			// this branch is never taken
+			continue;
+		}
+		add_branch_result(ExpressionFilter::CheckExpressionStatistics(context_p, *case_check.then_expr, input_stats));
+		if (cond_result == FilterPropagateResult::FILTER_ALWAYS_TRUE) {
+			else_reachable = false;
+			break;
+		}
+	}
+	if (else_reachable) {
+		add_branch_result(ExpressionFilter::CheckExpressionStatistics(context_p, case_expr.Else(), input_stats));
+	}
+	if (all_false) {
+		return has_false_or_null ? FilterPropagateResult::FILTER_FALSE_OR_NULL
+		                         : FilterPropagateResult::FILTER_ALWAYS_FALSE;
+	}
+	if (all_true) {
+		return FilterPropagateResult::FILTER_ALWAYS_TRUE;
+	}
+	return FilterPropagateResult::NO_PRUNING_POSSIBLE;
+}
+
 static FilterPropagateResult CheckConjunctionStatistics(optional_ptr<ClientContext> context_p,
                                                         const BoundConjunctionExpression &conj,
                                                         array_ptr<const BaseStatistics> input_stats) {
@@ -679,6 +779,19 @@ FilterPropagateResult ExpressionFilter::CheckExpressionStatistics(optional_ptr<C
 		return CheckOperatorStatistics(context_p, expr.Cast<BoundOperatorExpression>(), input_stats);
 	case ExpressionClass::BOUND_CONJUNCTION:
 		return CheckConjunctionStatistics(context_p, expr.Cast<BoundConjunctionExpression>(), input_stats);
+	case ExpressionClass::BOUND_CASE:
+		return CheckCaseStatistics(context_p, expr.Cast<BoundCaseExpression>(), input_stats);
+	case ExpressionClass::BOUND_CONSTANT: {
+		auto &value = expr.Cast<BoundConstantExpression>().GetValue();
+		if (value.IsNull()) {
+			return FilterPropagateResult::FILTER_FALSE_OR_NULL;
+		}
+		if (value.type().id() != LogicalTypeId::BOOLEAN) {
+			return FilterPropagateResult::NO_PRUNING_POSSIBLE;
+		}
+		return BooleanValue::Get(value) ? FilterPropagateResult::FILTER_ALWAYS_TRUE
+		                                : FilterPropagateResult::FILTER_ALWAYS_FALSE;
+	}
 	default:
 		return FilterPropagateResult::NO_PRUNING_POSSIBLE;
 	}

@@ -1,0 +1,70 @@
+# name: test/sql/optimizer/multi_column_expression_zonemap_pruning.test
+# description: expressions over multiple columns prune row groups via zonemaps
+# group: [optimizer]
+
+statement ok
+ATTACH '{TEST_DIR}/multi_column_expr_zonemap.duckdb' AS db (ROW_GROUP_SIZE 2048);
+
+statement ok
+USE db;
+
+# 5 row groups: [0,2047], [2048,4095], [4096,6143], [6144,8191], [8192,10239]
+statement ok
+CREATE TABLE t AS SELECT
+	range::INTEGER AS x,
+	(range % 16)::INTEGER AS y,
+	(10239 - range)::INTEGER AS z
+FROM range(10240);
+
+# y is in [0, 15], so greatest(x, y) can only exceed 9000 in the last row group
+query II
+EXPLAIN ANALYZE SELECT sum(x) FROM t WHERE greatest(x, y) > 9000;
+----
+analyzed_plan	<REGEX>:.*Row Groups Scanned: 1 / 5.*
+
+query I
+SELECT count(*) FROM t WHERE greatest(x, y) > 9000;
+----
+1239
+
+# least(x, z) < 100 requires x < 100 or z < 100: first and last row group
+query II
+EXPLAIN ANALYZE SELECT sum(x) FROM t WHERE least(x, z) < 100;
+----
+analyzed_plan	<REGEX>:.*Row Groups Scanned: 2 / 5.*
+
+query I
+SELECT count(*) FROM t WHERE least(x, z) < 100;
+----
+200
+
+query II
+EXPLAIN ANALYZE SELECT sum(x) FROM t WHERE greatest(x, z) > 10139;
+----
+analyzed_plan	<REGEX>:.*Row Groups Scanned: 2 / 5.*
+
+query I
+SELECT count(*) FROM t WHERE greatest(x, z) > 10139;
+----
+200
+
+# per row group, max(x) + max(y) bounds x + y
+query II
+EXPLAIN ANALYZE SELECT sum(x) FROM t WHERE x + y > 9015;
+----
+analyzed_plan	<REGEX>:.*Row Groups Scanned: 1 / 5.*
+
+query I
+SELECT count(*) FROM t WHERE x + y > 9015;
+----
+1232
+
+query II
+EXPLAIN ANALYZE SELECT sum(x) FROM t WHERE x - y > 9000;
+----
+analyzed_plan	<REGEX>:.*Row Groups Scanned: 1 / 5.*
+
+query I
+SELECT count(*) FROM t WHERE x - y > 9000;
+----
+1232
