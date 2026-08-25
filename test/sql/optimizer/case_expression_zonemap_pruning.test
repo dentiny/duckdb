@@ -1,0 +1,93 @@
+# name: test/sql/optimizer/case_expression_zonemap_pruning.test
+# description: CASE expressions (and if/nullif, which fold to CASE) prune row groups
+# group: [optimizer]
+
+statement ok
+ATTACH '{TEST_DIR}/case_expr_zonemap.duckdb' AS db (ROW_GROUP_SIZE 2048);
+
+statement ok
+USE db;
+
+# 5 row groups: [0,2047], [2048,4095], [4096,6143], [6144,8191], [8192,10239]
+statement ok
+CREATE TABLE t AS SELECT
+	range::INTEGER AS x,
+	(range % 16)::INTEGER AS y,
+	CASE WHEN range % 2 = 0 THEN NULL ELSE range END::INTEGER AS xn
+FROM range(10240);
+
+# boolean CASE: prune row groups where the WHEN condition is always false
+query II
+EXPLAIN ANALYZE SELECT sum(x) FROM t WHERE CASE WHEN x > 9000 THEN true ELSE false END;
+----
+analyzed_plan	<REGEX>:.*Row Groups Scanned: 1 / 5.*
+
+query I
+SELECT count(*) FROM t WHERE CASE WHEN x > 9000 THEN true ELSE false END;
+----
+1239
+
+# if() folds to CASE
+query II
+EXPLAIN ANALYZE SELECT sum(x) FROM t WHERE if(x > 9000, true, false);
+----
+analyzed_plan	<REGEX>:.*Row Groups Scanned: 1 / 5.*
+
+query I
+SELECT count(*) FROM t WHERE if(x > 9000, true, false);
+----
+1239
+
+# nullif(x, c) folds to CASE and preserves the range of x
+query II
+EXPLAIN ANALYZE SELECT sum(x) FROM t WHERE nullif(x, -1) > 9000;
+----
+analyzed_plan	<REGEX>:.*Row Groups Scanned: 1 / 5.*
+
+query I
+SELECT count(*) FROM t WHERE nullif(x, -1) > 9000;
+----
+1239
+
+# value CASE compared against a constant: result range is the union of the branch ranges
+query II
+EXPLAIN ANALYZE SELECT sum(x) FROM t WHERE (CASE WHEN x > 9000 THEN 1 ELSE 0 END) = 1;
+----
+analyzed_plan	<REGEX>:.*Row Groups Scanned: 1 / 5.*
+
+query I
+SELECT count(*) FROM t WHERE (CASE WHEN x > 9000 THEN 1 ELSE 0 END) = 1;
+----
+1239
+
+query II
+EXPLAIN ANALYZE SELECT sum(x) FROM t WHERE (CASE WHEN y = 3 THEN x ELSE 0 END) > 9000;
+----
+analyzed_plan	<REGEX>:.*Row Groups Scanned: 1 / 5.*
+
+query I
+SELECT count(*) FROM t WHERE (CASE WHEN y = 3 THEN x ELSE 0 END) > 9000;
+----
+77
+
+# multiple WHEN branches: first and last row group can match
+query II
+EXPLAIN ANALYZE SELECT sum(x) FROM t WHERE CASE WHEN x < 100 THEN true WHEN x > 9000 THEN true ELSE false END;
+----
+analyzed_plan	<REGEX>:.*Row Groups Scanned: 2 / 5.*
+
+query I
+SELECT count(*) FROM t WHERE CASE WHEN x < 100 THEN true WHEN x > 9000 THEN true ELSE false END;
+----
+1339
+
+# NULL condition evaluates the ELSE branch: pruning must remain correct on nullable columns
+query II
+EXPLAIN ANALYZE SELECT sum(x) FROM t WHERE CASE WHEN xn > 9000 THEN true ELSE false END;
+----
+analyzed_plan	<REGEX>:.*Row Groups Scanned: 1 / 5.*
+
+query I
+SELECT count(*) FROM t WHERE CASE WHEN xn > 9000 THEN true ELSE false END;
+----
+620
