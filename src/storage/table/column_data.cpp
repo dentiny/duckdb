@@ -512,6 +512,30 @@ unique_ptr<BaseStatistics> ColumnData::GetStatistics() const {
 	return stats->statistics.ToUnique();
 }
 
+unique_ptr<BaseStatistics> ColumnData::GetSegmentStatistics(idx_t row_start, idx_t row_end) {
+	if (type.IsNested()) {
+		return nullptr;
+	}
+	auto column_count = count.load();
+	if (row_start >= row_end || row_start >= column_count) {
+		return BaseStatistics::CreateEmpty(type).ToUnique();
+	}
+	row_end = MinValue<idx_t>(row_end, column_count);
+
+	auto result = BaseStatistics::CreateEmpty(type).ToUnique();
+	auto segment_lock = data.Lock();
+	if (data.IsEmpty(segment_lock)) {
+		return nullptr;
+	}
+	auto segment = data.GetSegment(segment_lock, row_start);
+	lock_guard<mutex> stats_guard(stats_lock);
+	while (segment && segment->GetRowStart() < row_end) {
+		result->Merge(segment->GetNode().GetStats());
+		segment = data.GetNextSegment(segment_lock, *segment);
+	}
+	return result;
+}
+
 void ColumnData::MergeStatistics(const BaseStatistics &other) {
 	if (!stats) {
 		throw InternalException("ColumnData::MergeStatistics called on a column without stats");

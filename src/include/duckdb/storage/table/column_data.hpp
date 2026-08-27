@@ -122,6 +122,7 @@ public:
 	ColumnSegmentTree &GetSegmentTree() {
 		return data;
 	}
+	unique_ptr<BaseStatistics> GetSegmentStatistics(idx_t row_start, idx_t row_end);
 	void SetCount(idx_t new_count) {
 		this->count = new_count;
 	}

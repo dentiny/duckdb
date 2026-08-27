@@ -789,23 +789,27 @@ bool RowGroup::CheckZonemapSegments(CollectionScanState &state) {
 		auto &column_data = GetColumn(base_column_idx);
 
 		optional_ptr<SegmentNode<ColumnSegment>> current_segment;
-		auto prune_result = column_data.CheckZonemap(state.column_scans[column_idx], filter, current_segment);
+		auto &column_scan = state.column_scans[column_idx];
+		column_scan.zonemap_target_row = optional_idx();
+		auto prune_result = column_data.CheckZonemap(column_scan, filter, current_segment);
 		if (prune_result != FilterPropagateResult::FILTER_ALWAYS_FALSE) {
 			continue;
 		}
 
 		// check zone map segment.
-		if (!current_segment) {
+		idx_t target_row;
+		if (column_scan.zonemap_target_row.IsValid()) {
+			target_row = column_scan.zonemap_target_row.GetIndex();
+		} else if (current_segment) {
+			target_row = current_segment->GetRowStart() + current_segment->GetNode().count;
+		} else {
 			// no segment to skip
 			continue;
 		}
-		auto row_start = current_segment->GetRowStart();
-		idx_t target_row = row_start + current_segment->GetNode().count;
 		if (target_row >= state.max_row) {
 			target_row = state.max_row;
 		}
-		D_ASSERT(target_row >= row_start);
-		D_ASSERT(target_row <= row_start + this->count);
+		D_ASSERT(target_row <= this->start + this->count);
 		// current_segment->GetRowStart() is already row-group-relative, and state.vector_index uses the same
 		// coordinate space. Subtracting row_start here incorrectly makes the target segment-local.
 		idx_t target_vector_index = target_row / STANDARD_VECTOR_SIZE;

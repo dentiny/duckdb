@@ -120,6 +120,8 @@ struct ColumnScanState {
 	bool initialized = false;
 	//! If this segment has already been checked for skipping purposes
 	bool segment_checked = false;
+	//! Optional row target for zonemap checks on nested child segments
+	optional_idx zonemap_target_row;
 	//! We initialize one SegmentScanState per segment, however, if scanning a DataChunk requires us to scan over more
 	//! than one Segment, we need to keep the scan states of the previous segments around
 	vector<unique_ptr<SegmentScanState>> previous_states;

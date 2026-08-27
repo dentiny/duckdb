@@ -6,6 +6,7 @@
 #include "duckdb/storage/table/column_checkpoint_state.hpp"
 #include "duckdb/storage/table/append_state.hpp"
 #include "duckdb/storage/table/scan_state.hpp"
+#include "duckdb/planner/filter/expression_filter.hpp"
 
 namespace duckdb {
 
@@ -29,7 +30,35 @@ void ArrayColumnData::SetDataType(ColumnDataType data_type) {
 
 FilterPropagateResult ArrayColumnData::CheckZonemap(ColumnScanState &state, TableFilter &filter,
                                                     optional_ptr<SegmentNode<ColumnSegment>> &checked_segment) {
-	return CheckValidityZonemap(state, filter, checked_segment, *validity);
+	if (IsDirectNullCheckFilter(filter)) {
+		return CheckValidityZonemap(state, filter, checked_segment, *validity);
+	}
+	checked_segment = nullptr;
+	if (child_column->type.IsNested()) {
+		return FilterPropagateResult::NO_PRUNING_POSSIBLE;
+	}
+
+	auto row_start = state.child_states[0].offset_in_column;
+	auto row_end = MinValue<idx_t>(row_start + STANDARD_VECTOR_SIZE, count.load());
+	if (row_start >= row_end) {
+		return FilterPropagateResult::NO_PRUNING_POSSIBLE;
+	}
+	auto array_size = ArrayType::GetSize(type);
+	auto child_stats = child_column->GetSegmentStatistics(row_start * array_size, row_end * array_size);
+	if (!child_stats) {
+		return FilterPropagateResult::NO_PRUNING_POSSIBLE;
+	}
+
+	auto array_stats = ArrayStats::CreateUnknown(type);
+	ArrayStats::SetChildStats(array_stats, std::move(child_stats));
+	auto &expr_filter = ExpressionFilter::GetExpressionFilter(filter, "ArrayColumnData::CheckZonemap");
+	auto context = state.context.GetClientContext();
+	auto result =
+	    context ? expr_filter.CheckStatistics(*context, array_stats) : expr_filter.CheckStatistics(array_stats);
+	if (result == FilterPropagateResult::FILTER_ALWAYS_FALSE) {
+		state.zonemap_target_row = row_end;
+	}
+	return result;
 }
 
 void ArrayColumnData::InitializePrefetch(PrefetchState &prefetch_state, ColumnScanState &scan_state, idx_t rows) {
