@@ -10,6 +10,7 @@
 
 #include "duckdb/common/common.hpp"
 #include "duckdb/common/exception.hpp"
+#include "duckdb/common/optional_ptr.hpp"
 #include "duckdb/common/types.hpp"
 #include "duckdb/storage/statistics/stats_merge_type.hpp"
 
@@ -20,6 +21,8 @@ class Vector;
 class Value;
 
 struct ListStats {
+	static constexpr idx_t MAX_ELEMENT_STATS = 32;
+
 	DUCKDB_API static void Construct(BaseStatistics &stats);
 	DUCKDB_API static BaseStatistics CreateUnknown(LogicalType type);
 	DUCKDB_API static BaseStatistics CreateEmpty(LogicalType type);
@@ -27,6 +30,10 @@ struct ListStats {
 	DUCKDB_API static const BaseStatistics &GetChildStats(const BaseStatistics &stats);
 	DUCKDB_API static BaseStatistics &GetChildStats(BaseStatistics &stats);
 	DUCKDB_API static void SetChildStats(BaseStatistics &stats, unique_ptr<BaseStatistics> new_stats);
+
+	DUCKDB_API static optional_ptr<const BaseStatistics> TryGetElementStats(const BaseStatistics &stats, idx_t index);
+	DUCKDB_API static void SetElementStats(BaseStatistics &stats, idx_t index, const BaseStatistics &element_stats);
+	DUCKDB_API static void UpdateElementStats(BaseStatistics &stats, const Vector &vector, idx_t count);
 
 	DUCKDB_API static void Serialize(const BaseStatistics &stats, Serializer &serializer);
 	DUCKDB_API static void Deserialize(Deserializer &deserializer, BaseStatistics &base);

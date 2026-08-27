@@ -21,6 +21,7 @@
         "test/sql/types/geo/geometry_parquet_pushdown.test",
         "test/optimizer/statistics/statistics_filter_pruning.test",
         "test/sql/copy/parquet/parquet_expression_filter_pruning.test",
+        "test/sql/copy/parquet/list_extract_row_group_pruning.test",
         "test/sql/copy/parquet/parquet_virtual_file_row_group_number.test"
       ]
     },

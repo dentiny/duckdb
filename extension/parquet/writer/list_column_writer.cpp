@@ -4,7 +4,10 @@
 
 #include "duckdb/common/vector/list_vector.hpp"
 #include "writer/list_column_writer.hpp"
+#include "writer/primitive_column_writer.hpp"
 #include "column_writer.hpp"
+#include "duckdb/storage/statistics/list_stats.hpp"
+#include "parquet_statistics.hpp"
 #include "duckdb/common/assert.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/helper.hpp"
@@ -31,6 +34,9 @@ using duckdb_parquet::FieldRepetitionType;
 unique_ptr<ColumnWriterState> ListColumnWriter::InitializeWriteState(duckdb_parquet::RowGroup &row_group) {
 	auto result = make_uniq<ListColumnWriterState>(row_group, row_group.columns.size());
 	result->child_state = GetChildWriter().InitializeWriteState(row_group);
+	if (Schema().type.id() == LogicalTypeId::LIST) {
+		result->element_stats = ListStats::CreateEmpty(Schema().type).ToUnique();
+	}
 	return std::move(result);
 }
 
@@ -150,6 +156,9 @@ void ListColumnWriter::BeginWrite(ColumnWriterState &state_p) {
 
 void ListColumnWriter::Write(ColumnWriterState &state_p, Vector &vector, idx_t count) {
 	auto &state = state_p.Cast<ListColumnWriterState>();
+	if (state.element_stats) {
+		ListStats::UpdateElementStats(*state.element_stats, vector, count);
+	}
 
 	auto &list_child = ListVector::GetChildMutable(vector);
 	Vector child_list(Vector::Ref(list_child));
@@ -165,6 +174,11 @@ void ListColumnWriter::PrepareWrite(ColumnWriterState &state_p) {
 void ListColumnWriter::FinalizeWrite(ColumnWriterState &state_p) {
 	auto &state = state_p.Cast<ListColumnWriterState>();
 	GetChildWriter().FinalizeWrite(*state.child_state);
+	auto *primitive_state = dynamic_cast<PrimitiveColumnWriterState *>(state.child_state.get());
+	if (state.element_stats && primitive_state) {
+		ParquetStatisticsUtils::WriteListElementStats(state.row_group.columns[primitive_state->col_idx],
+		                                               *state.element_stats);
+	}
 }
 
 ColumnWriter &ListColumnWriter::GetChildWriter() {

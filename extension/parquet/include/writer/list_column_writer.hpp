@@ -9,6 +9,7 @@
 #pragma once
 
 #include "column_writer.hpp"
+#include "duckdb/storage/statistics/base_statistics.hpp"
 
 namespace duckdb {
 
@@ -22,6 +23,7 @@ public:
 	idx_t col_idx;
 	unique_ptr<ColumnWriterState> child_state;
 	idx_t parent_index = 0;
+	unique_ptr<BaseStatistics> element_stats;
 };
 
 class ListColumnWriter : public ColumnWriter {
