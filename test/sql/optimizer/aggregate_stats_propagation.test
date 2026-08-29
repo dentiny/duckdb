@@ -15,17 +15,28 @@ CREATE TABLE t AS SELECT range::INTEGER AS x, (range % 16)::INTEGER AS g FROM ra
 statement ok
 CHECKPOINT;
 
-# An exact MAX over a monotonic expression becomes a dynamic filter that prunes every row group.
+# An exact MAX over a monotonic expression becomes a dynamic filter that scans only the final row group.
 query II
-EXPLAIN ANALYZE SELECT count(*) FROM t WHERE x > (SELECT max(x + 1) FROM t);
+EXPLAIN ANALYZE SELECT count(*) FROM t WHERE x >= (SELECT max(x + 1) - 1000 FROM t);
 ----
-analyzed_plan	<REGEX>:.*Row Groups Scanned: 0 / 5.*
+analyzed_plan	<REGEX>:.*Row Groups Scanned: 1 / 5.*
 
-# An exact MIN over a monotonic expression can likewise prune every row group.
+# The aggregate itself must not scan all row groups before producing the dynamic filter.
 query II
-EXPLAIN ANALYZE SELECT count(*) FROM t WHERE x < (SELECT min(x - 1) FROM t);
+EXPLAIN ANALYZE SELECT count(*) FROM t WHERE x >= (SELECT max(x + 1) - 1000 FROM t);
 ----
-analyzed_plan	<REGEX>:.*Row Groups Scanned: 0 / 5.*
+analyzed_plan	<!REGEX>:.*Row Groups Scanned: 5 / 5.*
+
+# An exact MIN over a monotonic expression likewise limits the scan to the first row group.
+query II
+EXPLAIN ANALYZE SELECT count(*) FROM t WHERE x <= (SELECT min(x - 1) + 1000 FROM t);
+----
+analyzed_plan	<REGEX>:.*Row Groups Scanned: 1 / 5.*
+
+query II
+EXPLAIN ANALYZE SELECT count(*) FROM t WHERE x <= (SELECT min(x - 1) + 1000 FROM t);
+----
+analyzed_plan	<!REGEX>:.*Row Groups Scanned: 5 / 5.*
 
 # ---------------------------------------------------------------------------
 # result is one of the input values: min / max / first / last / any_value /
