@@ -1,0 +1,39 @@
+# name: test/sql/optimizer/eliminate_redundant_order.test
+# description: ORDER BY under order-insensitive parents should be dropped
+# group: [optimizer]
+
+statement ok
+CREATE TABLE t(x INT NOT NULL);
+
+statement ok
+INSERT INTO t SELECT range % 100 FROM range(0, 1000);
+
+# aggregate consumer does not care about input order
+query II
+EXPLAIN SELECT sum(x) FROM (SELECT x FROM t ORDER BY x);
+----
+physical_plan	<!REGEX>:.*Order By.*
+
+# DISTINCT does not preserve order
+query II
+EXPLAIN SELECT DISTINCT x FROM (SELECT x FROM t ORDER BY x);
+----
+physical_plan	<!REGEX>:.*Order By.*
+
+# GROUP BY does not care about input order
+query II
+EXPLAIN SELECT x, count(*) FROM (SELECT x FROM t ORDER BY x) GROUP BY x;
+----
+physical_plan	<!REGEX>:.*Order By.*
+
+# order-dependent aggregate (string_agg) must keep the sort
+query II
+EXPLAIN SELECT string_agg(x::VARCHAR, ',') FROM (SELECT x FROM t ORDER BY x);
+----
+physical_plan	<REGEX>:.*Order By.*
+
+# ORDER BY + LIMIT is meaningful (TopN) - must keep
+query II
+EXPLAIN SELECT sum(x) FROM (SELECT x FROM t ORDER BY x LIMIT 10);
+----
+physical_plan	<REGEX>:.*TOP_N.*
