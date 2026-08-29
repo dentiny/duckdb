@@ -50,19 +50,7 @@ struct MonotonicEndpointInfo {
 	ColumnBinding binding;
 	LogicalType input_type;
 	LogicalType result_type;
-	StorageIndex storage_index;
 	vector<MonotonicExpressionTransform> transforms;
-	unique_ptr<ValueComparator> comparator;
-};
-
-enum class AggregateStatsPlanType : uint8_t { ROW_COUNT, MONOTONIC_ENDPOINT };
-
-struct AggregateStatsPlan {
-	explicit AggregateStatsPlan(AggregateStatsPlanType type_p) : type(type_p) {
-	}
-
-	AggregateStatsPlanType type;
-	unique_ptr<MonotonicEndpointInfo> endpoint;
 };
 
 template <typename StatsType>
@@ -142,13 +130,13 @@ bool TryGetMonotonicExpressionInfo(const Expression &expr, MonotonicExpressionIn
 		return false;
 	}
 
-	bool found_input = false;
+	bool has_input = false;
 	for (idx_t i = 0; i < func.GetChildren().size(); i++) {
 		const auto &child = *func.GetChildren()[i];
 		if (child.IsFoldable()) {
 			continue;
 		}
-		if (found_input) {
+		if (has_input) {
 			// Multiple varying arguments can have extrema originating from different rows.
 			return false;
 		}
@@ -161,9 +149,9 @@ bool TryGetMonotonicExpressionInfo(const Expression &expr, MonotonicExpressionIn
 			return false;
 		}
 		info = std::move(child_info);
-		found_input = true;
+		has_input = true;
 	}
-	return found_input;
+	return has_input;
 }
 
 bool TryGetMonotonicEndpointInfo(const Expression &expr, MonotonicEndpointInfo &info) {
@@ -175,11 +163,7 @@ bool TryGetMonotonicEndpointInfo(const Expression &expr, MonotonicEndpointInfo &
 	info.input_type = expression_info.input_type;
 	info.result_type = expr.GetReturnType();
 	if (expr.GetExpressionType() != ExpressionType::BOUND_COLUMN_REF) {
-		MonotonicExpressionTransform transform;
-		transform.expression = expr.Copy();
-		transform.input_binding = expression_info.binding;
-		transform.input_type = expression_info.input_type;
-		info.transforms.push_back(std::move(transform));
+		info.transforms.push_back({expr.Copy(), expression_info.binding, expression_info.input_type});
 	}
 	return true;
 }
@@ -212,14 +196,13 @@ bool IsUnusableMonotonicValue(const Value &value) {
 	if (value.IsNull()) {
 		return true;
 	}
-	switch (value.type().id()) {
-	case LogicalTypeId::DOUBLE:
+	if (value.type().id() == LogicalTypeId::DOUBLE) {
 		return Value::IsNan(value.GetValue<double>());
-	case LogicalTypeId::FLOAT:
-		return Value::IsNan(value.GetValue<float>());
-	default:
-		return false;
 	}
+	if (value.type().id() == LogicalTypeId::FLOAT) {
+		return Value::IsNan(value.GetValue<float>());
+	}
+	return false;
 }
 
 bool EvaluateMonotonicExpression(ClientContext &context, const MonotonicEndpointInfo &info, Value input,
@@ -292,19 +275,8 @@ bool TryGetValueFromStats(const PartitionStatistics &stats, const StorageIndex &
 	return true;
 }
 
-bool TryExecuteRowCount(const vector<PartitionStatistics> &partition_stats, Value &result) {
-	idx_t count = 0;
-	for (const auto &stats : partition_stats) {
-		if (stats.count_type == CountType::COUNT_APPROXIMATE) {
-			return false;
-		}
-		count += stats.count;
-	}
-	result = Value::BIGINT(NumericCast<int64_t>(count));
-	return true;
-}
-
 bool TryExecuteMonotonicEndpoint(ClientContext &context, const vector<PartitionStatistics> &partition_stats,
+                                 const StorageIndex &storage_index, const ValueComparator &comparator,
                                  const MonotonicEndpointInfo &info, Value &result) {
 	auto min_comparator = GetComparator(Identifier("min"), info.input_type);
 	auto max_comparator = GetComparator(Identifier("max"), info.input_type);
@@ -313,20 +285,18 @@ bool TryExecuteMonotonicEndpoint(ClientContext &context, const vector<PartitionS
 	}
 
 	auto get_partition_result = [&](const PartitionStatistics &stats, Value &partition_result) {
-		Value input_min;
-		Value input_max;
-		if (!TryGetValueFromStats(stats, info.storage_index, *min_comparator, info.input_type, input_min) ||
-		    !TryGetValueFromStats(stats, info.storage_index, *max_comparator, info.input_type, input_max)) {
+		Value input_min, input_max;
+		if (!TryGetValueFromStats(stats, storage_index, *min_comparator, info.input_type, input_min) ||
+		    !TryGetValueFromStats(stats, storage_index, *max_comparator, info.input_type, input_max)) {
 			return false;
 		}
-		Value output_min;
-		Value output_max;
+		Value output_min, output_max;
 		if (!EvaluateMonotonicExpression(context, info, std::move(input_min), output_min) ||
 		    !EvaluateMonotonicExpression(context, info, std::move(input_max), output_max)) {
 			return false;
 		}
 		partition_result = std::move(output_min);
-		if (!info.comparator->Compare(partition_result, output_max)) {
+		if (!comparator.Compare(partition_result, output_max)) {
 			partition_result = std::move(output_max);
 		}
 		return true;
@@ -340,24 +310,11 @@ bool TryExecuteMonotonicEndpoint(ClientContext &context, const vector<PartitionS
 		if (!get_partition_result(partition_stats[partition_idx], partition_result)) {
 			return false;
 		}
-		if (!info.comparator->Compare(result, partition_result)) {
+		if (!comparator.Compare(result, partition_result)) {
 			result = std::move(partition_result);
 		}
 	}
 	return true;
-}
-
-bool TryExecuteAggregateStatsPlan(ClientContext &context, const vector<PartitionStatistics> &partition_stats,
-                                  const AggregateStatsPlan &plan, Value &result) {
-	switch (plan.type) {
-	case AggregateStatsPlanType::ROW_COUNT:
-		return TryExecuteRowCount(partition_stats, result);
-	case AggregateStatsPlanType::MONOTONIC_ENDPOINT:
-		D_ASSERT(plan.endpoint);
-		return TryExecuteMonotonicEndpoint(context, partition_stats, *plan.endpoint, result);
-	default:
-		throw InternalException("Unsupported aggregate statistics plan");
-	}
 }
 
 bool GroupingSetCanIntroduceNull(const LogicalAggregate &aggr, idx_t group_idx) {
@@ -380,11 +337,13 @@ void StatisticsPropagator::TryExecuteAggregates(LogicalAggregate &aggr, unique_p
 		// not possible with groups
 		return;
 	}
-	// Build a statistics execution strategy for every aggregate.
-	vector<AggregateStatsPlan> aggregate_plans;
-	aggregate_plans.reserve(aggr.expressions.size());
+	// check if all aggregates are COUNT(*), MIN or MAX
+	vector<idx_t> count_star_idxs;
+	vector<MonotonicEndpointInfo> endpoints;
+	vector<unique_ptr<ValueComparator>> comparators;
 
-	for (auto &aggr_ref : aggr.expressions) {
+	for (idx_t i = 0; i < aggr.expressions.size(); i++) {
+		auto &aggr_ref = aggr.expressions[i];
 		if (aggr_ref->GetExpressionClass() != ExpressionClass::BOUND_AGGREGATE) {
 			// not an aggregate
 			return;
@@ -403,22 +362,21 @@ void StatisticsPropagator::TryExecuteAggregates(LogicalAggregate &aggr, unique_p
 			if (aggr_expr.GetChildren().size() != 1) {
 				return;
 			}
-			auto endpoint = make_uniq<MonotonicEndpointInfo>();
-			if (!TryGetMonotonicEndpointInfo(*aggr_expr.GetChildren()[0], *endpoint)) {
+			MonotonicEndpointInfo endpoint;
+			if (!TryGetMonotonicEndpointInfo(*aggr_expr.GetChildren()[0], endpoint)) {
 				return;
 			}
-			endpoint->comparator = GetComparator(fun_name, endpoint->result_type);
-			if (!endpoint->comparator) {
+			auto comparator = GetComparator(fun_name, endpoint.result_type);
+			if (!comparator) {
 				// Type has no min max statistics
 				return;
 			}
-			AggregateStatsPlan plan(AggregateStatsPlanType::MONOTONIC_ENDPOINT);
-			plan.endpoint = std::move(endpoint);
-			aggregate_plans.push_back(std::move(plan));
+			endpoints.push_back(std::move(endpoint));
+			comparators.push_back(std::move(comparator));
 		} else if (fun_name == "count_star") {
-			aggregate_plans.emplace_back(AggregateStatsPlanType::ROW_COUNT);
+			count_star_idxs.push_back(i);
 		} else {
-			// No statistics execution strategy exists for this aggregate.
+			// aggregate is not count star, min or max - bail
 			return;
 		}
 	}
@@ -426,11 +384,7 @@ void StatisticsPropagator::TryExecuteAggregates(LogicalAggregate &aggr, unique_p
 	// skip any projections
 	reference<LogicalOperator> child_ref = *aggr.children[0];
 	while (child_ref.get().type == LogicalOperatorType::LOGICAL_PROJECTION) {
-		for (auto &plan : aggregate_plans) {
-			if (plan.type != AggregateStatsPlanType::MONOTONIC_ENDPOINT) {
-				continue;
-			}
-			auto &endpoint = *plan.endpoint;
+		for (auto &endpoint : endpoints) {
 			auto &proj = child_ref.get().Cast<LogicalProjection>();
 			auto &expr = proj.GetExpression(endpoint.binding);
 			MonotonicEndpointInfo projection_info;
@@ -471,13 +425,11 @@ void StatisticsPropagator::TryExecuteAggregates(LogicalAggregate &aggr, unique_p
 		return;
 	}
 
-	for (auto &plan : aggregate_plans) {
-		if (plan.type != AggregateStatsPlanType::MONOTONIC_ENDPOINT) {
-			continue;
-		}
-		auto &endpoint = *plan.endpoint;
+	vector<StorageIndex> endpoint_storage_indexes(endpoints.size());
+	for (idx_t i = 0; i < endpoints.size(); i++) {
+		auto &endpoint = endpoints[i];
 		auto &column_index = get.GetColumnIndex(endpoint.binding);
-		if (!get.TryGetStorageIndex(column_index, endpoint.storage_index)) {
+		if (!get.TryGetStorageIndex(column_index, endpoint_storage_indexes[i])) {
 			//! Can't get a storage index for this column, so it doesn't have stats we can use
 			//! This happens when we're dealing with a generated column for example
 			return;
@@ -559,13 +511,30 @@ void StatisticsPropagator::TryExecuteAggregates(LogicalAggregate &aggr, unique_p
 		return;
 	}
 
-	for (const auto &plan : aggregate_plans) {
+	for (idx_t i = 0; i < endpoints.size(); i++) {
 		Value result;
-		if (!TryExecuteAggregateStatsPlan(context, partition_stats, plan, result)) {
+		if (!TryExecuteMonotonicEndpoint(context, partition_stats, endpoint_storage_indexes[i], *comparators[i],
+		                                 endpoints[i], result)) {
 			return;
 		}
 		types.push_back(result.type());
 		agg_results.push_back(make_uniq<BoundConstantExpression>(std::move(result)));
+	}
+	if (!count_star_idxs.empty()) {
+		// Execute count_star aggregates on partition statistics
+		idx_t count = 0;
+		for (const auto &stats : partition_stats) {
+			if (stats.count_type == CountType::COUNT_APPROXIMATE) {
+				// we cannot get an exact count
+				return;
+			}
+			count += stats.count;
+		}
+		for (const auto count_star_idx : count_star_idxs) {
+			auto count_result = make_uniq<BoundConstantExpression>(Value::BIGINT(NumericCast<int64_t>(count)));
+			agg_results.emplace(agg_results.begin() + NumericCast<int64_t>(count_star_idx), std::move(count_result));
+			types.insert(types.begin() + NumericCast<int64_t>(count_star_idx), LogicalType::BIGINT);
+		}
 	}
 
 	if (need_to_scan) {
