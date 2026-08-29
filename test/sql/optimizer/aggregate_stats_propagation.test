@@ -12,6 +12,21 @@ USE db;
 statement ok
 CREATE TABLE t AS SELECT range::INTEGER AS x, (range % 16)::INTEGER AS g FROM range(10240);
 
+statement ok
+CHECKPOINT;
+
+# An exact MAX over a monotonic expression becomes a dynamic filter that prunes every row group.
+query II
+EXPLAIN ANALYZE SELECT count(*) FROM t WHERE x > (SELECT max(x + 1) FROM t);
+----
+analyzed_plan	<REGEX>:.*Row Groups Scanned: 0 / 5.*
+
+# An exact MIN over a monotonic expression can likewise prune every row group.
+query II
+EXPLAIN ANALYZE SELECT count(*) FROM t WHERE x < (SELECT min(x - 1) FROM t);
+----
+analyzed_plan	<REGEX>:.*Row Groups Scanned: 0 / 5.*
+
 # ---------------------------------------------------------------------------
 # result is one of the input values: min / max / first / last / any_value /
 # arg_min / arg_max / mode -> output stats inherit the input column's min/max

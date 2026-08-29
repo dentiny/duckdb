@@ -61,6 +61,17 @@ SELECT max(i), count(i), min(i) FROM t
 ----
 8191	8192	0
 
+# MIN/MAX over recursively monotonic expressions can be evaluated from exact row-group statistics.
+query II
+EXPLAIN SELECT min(i + 1), max(i + 1), min(-(i + 1)), max(-(i + 1)) FROM t
+----
+physical_plan	<!REGEX>:.*AGGREGATE.*
+
+query IIII
+SELECT min(i + 1), max(i + 1), min(-(i + 1)), max(-(i + 1)) FROM t
+----
+1	8192	-8192	-1
+
 query II
 explain SELECT count(*),max(i),min(i) FROM t where i >=2048
 ----
