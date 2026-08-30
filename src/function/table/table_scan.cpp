@@ -641,9 +641,11 @@ static bool ValueQualifies(const Value &value, const vector<ComparisonCondition>
 		bool passes;
 		switch (comp.type) {
 		case ExpressionType::COMPARE_EQUAL:
+		case ExpressionType::COMPARE_NOT_DISTINCT_FROM:
 			passes = ValueOperations::Equals(value, comp.constant);
 			break;
 		case ExpressionType::COMPARE_NOTEQUAL:
+		case ExpressionType::COMPARE_DISTINCT_FROM:
 			passes = ValueOperations::NotEquals(value, comp.constant);
 			break;
 		case ExpressionType::COMPARE_GREATERTHAN:
