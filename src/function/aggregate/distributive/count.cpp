@@ -285,6 +285,7 @@ unique_ptr<BaseStatistics> MakeCountStats(const LogicalType &type, optional_ptr<
 	NumericStats::SetMin(*result, Value::BIGINT(0));
 	NumericStats::SetMax(*result, Value::BIGINT(max_val));
 	result->Set(StatsInfo::CANNOT_HAVE_NULL_VALUES);
+	result->Set(StatsInfo::CAN_HAVE_VALID_VALUES);
 	return result;
 }
 
