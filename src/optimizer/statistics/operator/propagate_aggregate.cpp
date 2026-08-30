@@ -492,6 +492,18 @@ unique_ptr<NodeStatistics> StatisticsPropagator::PropagateStatistics(LogicalAggr
 		statistics_map[group_binding] = std::move(stats);
 	}
 
+	// a group only exists if at least one row belongs to it -> count_star() >= 1 for grouped
+	// aggregates. Skip when any grouping set is empty (that set collapses over all rows).
+	bool grouped_min_one = !aggr.groups.empty();
+	if (grouped_min_one) {
+		for (auto &gs : aggr.grouping_sets) {
+			if (gs.empty()) {
+				grouped_min_one = false;
+				break;
+			}
+		}
+	}
+
 	// propagate statistics in the aggregates
 	for (idx_t aggregate_idx = 0; aggregate_idx < aggr.expressions.size(); aggregate_idx++) {
 		auto &expr = aggr.expressions[aggregate_idx];
@@ -499,6 +511,11 @@ unique_ptr<NodeStatistics> StatisticsPropagator::PropagateStatistics(LogicalAggr
 		auto stats = PropagateExpression(expr);
 		if (!stats) {
 			continue;
+		}
+		if (grouped_min_one && expr->GetExpressionClass() == ExpressionClass::BOUND_AGGREGATE &&
+		    expr->Cast<BoundAggregateExpression>().Function().GetName() == "count_star" &&
+		    NumericStats::HasMinMax(*stats) && NumericStats::Min(*stats).GetValue<int64_t>() < 1) {
+			NumericStats::SetMin(*stats, Value::BIGINT(1));
 		}
 		ColumnBinding aggregate_binding(aggr.aggregate_index, ProjectionIndex(aggregate_idx));
 		statistics_map[aggregate_binding] = std::move(stats);

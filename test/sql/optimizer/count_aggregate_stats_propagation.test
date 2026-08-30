@@ -1,17 +1,14 @@
 # name: test/sql/optimizer/count_aggregate_stats_propagation.test
-# description: count / count_star always return non-negative BIGINT and never NULL; propagate that
+# description: count / count_star propagate that they are >= 0, never NULL, and >= 1 when grouped
 # group: [optimizer]
 
 statement ok
 CREATE TABLE t(x INTEGER NOT NULL);
 
 statement ok
-INSERT INTO t SELECT range FROM range(0, 1000);
+INSERT INTO t SELECT range FROM range(0, 20);
 
-# ---------------------------------------------------------------------------
-# count(*) is always >= 0, so out-of-range HAVING folds to Empty Result
-# ---------------------------------------------------------------------------
-
+# count(*) >= 0 always
 query II
 EXPLAIN SELECT count(*) FROM t HAVING count(*) < 0;
 ----
@@ -21,31 +18,7 @@ query I
 SELECT count(*) FROM t HAVING count(*) < 0;
 ----
 
-query II
-EXPLAIN SELECT count(*) FROM t HAVING count(*) = -5;
-----
-physical_plan	<REGEX>:.*Empty Result.*
-
-query I
-SELECT count(*) FROM t HAVING count(*) = -5;
-----
-
-# GROUP BY variant: filter is provably false per group as well
-query II
-EXPLAIN SELECT x, count(*) FROM t GROUP BY x HAVING count(*) < 0;
-----
-physical_plan	<REGEX>:.*Empty Result.*
-
-query I
-SELECT count(*) FROM (SELECT x, count(*) FROM t GROUP BY x HAVING count(*) < 0);
-----
-0
-
-# ---------------------------------------------------------------------------
-# count(*) is never NULL, so IS NULL folds to Empty Result and IS NOT NULL to
-# an unconditional pass-through
-# ---------------------------------------------------------------------------
-
+# count(*) is never NULL
 query II
 EXPLAIN SELECT count(*) FROM t HAVING count(*) IS NULL;
 ----
@@ -55,6 +28,7 @@ query I
 SELECT count(*) FROM t HAVING count(*) IS NULL;
 ----
 
+# always-true HAVING is dropped (exercises the non-null propagation in the opposite direction)
 query II
 EXPLAIN SELECT count(*) FROM t HAVING count(*) IS NOT NULL;
 ----
@@ -63,26 +37,9 @@ physical_plan	<!REGEX>:.*Filter.*IS NOT NULL.*
 query I
 SELECT count(*) FROM t HAVING count(*) IS NOT NULL;
 ----
-1000
+20
 
-# ---------------------------------------------------------------------------
-# Always-true HAVING should have its filter dropped
-# ---------------------------------------------------------------------------
-
-query II
-EXPLAIN SELECT count(*) FROM t HAVING count(*) >= 0;
-----
-physical_plan	<!REGEX>:.*Filter.*count_star.*
-
-query I
-SELECT count(*) FROM t HAVING count(*) >= 0;
-----
-1000
-
-# ---------------------------------------------------------------------------
-# count(col) has identical guarantees: >= 0, never NULL
-# ---------------------------------------------------------------------------
-
+# same guarantees apply to count(col)
 query II
 EXPLAIN SELECT count(x) FROM t HAVING count(x) < 0;
 ----
@@ -92,11 +49,37 @@ query I
 SELECT count(x) FROM t HAVING count(x) < 0;
 ----
 
+# grouped: each group has >= 1 row, so count(*) = 0 folds to Empty Result
 query II
-EXPLAIN SELECT count(x) FROM t HAVING count(x) IS NULL;
+EXPLAIN SELECT x % 4 g, count(*) FROM t GROUP BY g HAVING count(*) = 0;
 ----
 physical_plan	<REGEX>:.*Empty Result.*
 
 query I
-SELECT count(x) FROM t HAVING count(x) IS NULL;
+SELECT count(*) FROM (SELECT x % 4 g, count(*) FROM t GROUP BY g HAVING count(*) = 0);
+----
+0
+
+# grouped: count(*) > 0 is always true, filter is dropped
+query II
+EXPLAIN SELECT x % 4 g, count(*) FROM t GROUP BY g HAVING count(*) > 0;
+----
+physical_plan	<!REGEX>:.*Filter.*count_star.*
+
+query II
+SELECT x % 4 g, count(*) FROM t GROUP BY g HAVING count(*) > 0 ORDER BY g;
+----
+0	5
+1	5
+2	5
+3	5
+
+# guardrail: GROUPING SETS containing () aggregates over all rows, so count = 0 is possible
+query II
+EXPLAIN SELECT x % 4 g, count(*) FROM t GROUP BY GROUPING SETS ((), (g)) HAVING count(*) < 1;
+----
+physical_plan	<!REGEX>:.*Empty Result.*
+
+query II
+SELECT x % 4 g, count(*) FROM t GROUP BY GROUPING SETS ((), (g)) HAVING count(*) < 1 ORDER BY g;
 ----

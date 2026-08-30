@@ -277,8 +277,7 @@ AggregateStateLayout GetCountStateType(AggregateLayoutInput &input) {
 
 unique_ptr<BaseStatistics> MakeCountStats(const LogicalType &type, optional_ptr<NodeStatistics> node_stats) {
 	int64_t max_val = NumericLimits<int64_t>::Maximum();
-	if (node_stats && node_stats->has_max_cardinality &&
-	    node_stats->max_cardinality <= NumericCast<idx_t>(NumericLimits<int64_t>::Maximum())) {
+	if (node_stats && node_stats->has_max_cardinality) {
 		max_val = NumericCast<int64_t>(node_stats->max_cardinality);
 	}
 	auto result = NumericStats::CreateEmpty(type).ToUnique();
