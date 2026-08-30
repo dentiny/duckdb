@@ -1,5 +1,5 @@
 # name: test/optimizer/statistics/count_column_partition_null_count.test
-# description: count(col) on a nullable column should fold via per-row-group null_count metadata
+# description: count(col) on a nullable column folds via per-row-group null_count metadata
 # group: [statistics]
 
 require parquet
@@ -10,10 +10,14 @@ COPY (
   FROM range(0, 100000) tbl(i)
 ) TO '{TEST_DIR}/count_null_stats.parquet' (FORMAT PARQUET, ROW_GROUP_SIZE 10000);
 
+# The whole aggregate should be replaced with a constant; no parquet scan in the physical plan.
+statement ok
+PRAGMA explain_output = 'PHYSICAL_ONLY';
+
 query II
-EXPLAIN ANALYZE SELECT count(x) FROM '{TEST_DIR}/count_null_stats.parquet';
+EXPLAIN SELECT count(x) FROM '{TEST_DIR}/count_null_stats.parquet';
 ----
-analyzed_plan	<REGEX>:.*Row Groups Scanned: 10 / 10.*
+physical_plan	<!REGEX>:.*PARQUET_SCAN.*
 
 query II
 SELECT count(*), count(x) FROM '{TEST_DIR}/count_null_stats.parquet';
