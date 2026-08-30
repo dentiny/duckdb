@@ -437,11 +437,11 @@ void Optimizer::RunBuiltInOptimizers() {
 		plan = topn.Optimize(std::move(plan));
 	});
 
-	// drop bare ORDER BY nodes whose parent (aggregate / distinct / set op) does not care about row order
-	{
+	// drop bare ORDER BY nodes whose parent (aggregate / distinct) does not care about row order
+	RunOptimizer(OptimizerType::REMOVE_UNUSED_ORDER, [&]() {
 		RemoveUnusedOrder remove_unused_order;
 		plan = remove_unused_order.Optimize(std::move(plan));
-	}
+	});
 
 	// try to use late materialization
 	RunOptimizer(OptimizerType::LATE_MATERIALIZATION, [&]() {
