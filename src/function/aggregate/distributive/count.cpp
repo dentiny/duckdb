@@ -275,6 +275,19 @@ AggregateStateLayout GetCountStateType(AggregateLayoutInput &input) {
 	return AggregateStateLayout(LogicalType::BIGINT, AlignValue(function.GetStateSizeCallback()(state_input)));
 }
 
+unique_ptr<BaseStatistics> MakeCountStats(const LogicalType &type, optional_ptr<NodeStatistics> node_stats) {
+	int64_t max_val = NumericLimits<int64_t>::Maximum();
+	if (node_stats && node_stats->has_max_cardinality &&
+	    node_stats->max_cardinality <= NumericCast<idx_t>(NumericLimits<int64_t>::Maximum())) {
+		max_val = NumericCast<int64_t>(node_stats->max_cardinality);
+	}
+	auto result = NumericStats::CreateEmpty(type).ToUnique();
+	NumericStats::SetMin(*result, Value::BIGINT(0));
+	NumericStats::SetMax(*result, Value::BIGINT(max_val));
+	result->Set(StatsInfo::CANNOT_HAVE_NULL_VALUES);
+	return result;
+}
+
 unique_ptr<BaseStatistics> CountPropagateStats(ClientContext &context, BoundAggregateExpression &expr,
                                                AggregateStatisticsInput &input) {
 	if (!expr.IsDistinct() && !input.child_stats[0].CanHaveNull()) {
@@ -283,7 +296,12 @@ unique_ptr<BaseStatistics> CountPropagateStats(ClientContext &context, BoundAggr
 		expr.FunctionMutable().SetName("count_star");
 		expr.GetChildrenMutable().clear();
 	}
-	return nullptr;
+	return MakeCountStats(expr.GetReturnType(), input.node_stats);
+}
+
+unique_ptr<BaseStatistics> CountStarPropagateStats(ClientContext &context, BoundAggregateExpression &expr,
+                                                   AggregateStatisticsInput &input) {
+	return MakeCountStats(expr.GetReturnType(), input.node_stats);
 }
 
 } // namespace
@@ -307,6 +325,7 @@ AggregateFunction CountStarFun::GetFunction() {
 	fun.SetNullHandling(FunctionNullHandling::SPECIAL_HANDLING);
 	fun.SetOrderDependent(AggregateOrderDependent::NOT_ORDER_DEPENDENT);
 	fun.SetWindowBatchCallback(CountStarFunction::Window<int64_t>);
+	fun.SetStatisticsCallback(CountStarPropagateStats);
 	return fun;
 }
 
