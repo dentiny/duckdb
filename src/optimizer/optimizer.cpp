@@ -28,6 +28,7 @@
 #include "duckdb/optimizer/regex_range_filter.hpp"
 #include "duckdb/optimizer/remove_duplicate_groups.hpp"
 #include "duckdb/optimizer/remove_unused_columns.hpp"
+#include "duckdb/optimizer/remove_unused_order.hpp"
 #include "duckdb/optimizer/row_group_pruner.hpp"
 #include "duckdb/optimizer/rule/distinct_aggregate_optimizer.hpp"
 #include "duckdb/optimizer/rule/equal_or_null_simplification.hpp"
@@ -434,6 +435,12 @@ void Optimizer::RunBuiltInOptimizers() {
 	RunOptimizer(OptimizerType::TOP_N, [&]() {
 		TopN topn(context);
 		plan = topn.Optimize(std::move(plan));
+	});
+
+	// drop bare ORDER BY nodes whose parent (aggregate / distinct) does not care about row order
+	RunOptimizer(OptimizerType::REMOVE_UNUSED_ORDER, [&]() {
+		RemoveUnusedOrder remove_unused_order;
+		plan = remove_unused_order.Optimize(std::move(plan));
 	});
 
 	// try to use late materialization
