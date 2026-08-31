@@ -489,6 +489,14 @@ optional<timestamp_t> FileSystem::GetCacheValidUntil(FileHandle &handle) {
 	return nullopt;
 }
 
+optional<string> FileSystem::GetRequestIdentifier(FileHandle &handle) {
+	return nullopt;
+}
+
+bool FileSystem::UsesRequestIdentifier() const {
+	return false;
+}
+
 FileType FileSystem::GetFileType(FileHandle &handle) {
 	return FileType::FILE_TYPE_INVALID;
 }

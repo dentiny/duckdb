@@ -232,6 +232,10 @@ public:
 	DUCKDB_API virtual string GetVersionTag(FileHandle &handle);
 	//! Returns the current cache freshness deadline, if provided by the file system
 	DUCKDB_API virtual optional<timestamp_t> GetCacheValidUntil(FileHandle &handle);
+	//! Returns an opaque identifier for the request representation associated with this handle.
+	DUCKDB_API virtual optional<string> GetRequestIdentifier(FileHandle &handle);
+	//! Whether selecting a cache entry requires opening the underlying file handle first.
+	DUCKDB_API virtual bool UsesRequestIdentifier() const;
 	//! Returns the file type of the attached handle
 	DUCKDB_API virtual FileType GetFileType(FileHandle &handle);
 	//! Returns the file stats of the attached handle.
