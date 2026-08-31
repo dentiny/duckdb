@@ -11,3 +11,8 @@ SELECT hex(printf('%c', 255)),
        hex(strip_accents(printf('%c', 255)));
 ----
 C3BF	C3BF	C5B8	C3BF	C3BF	79
+
+query TT
+SELECT hex(printf('%c', 128)), hex(printf('%c%c', 195, 191));
+----
+C280	C383C2BF
