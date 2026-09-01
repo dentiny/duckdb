@@ -1,0 +1,29 @@
+# name: test/optimizer/statistics/statistics_timetz_min_max.test
+# description: Min/max statistics for TIME WITH TIME ZONE
+# group: [statistics]
+
+statement ok
+ATTACH '{TEST_DIR}/timetz_min_max.duckdb' AS db (STORAGE_VERSION 'v2.0.0');
+
+# These values are ordered differently by their raw encoding and TIMETZ semantics.
+statement ok
+CREATE TABLE db.timetz_stats_order(t TIME WITH TIME ZONE);
+
+statement ok
+INSERT INTO db.timetz_stats_order VALUES ('12:00:00+00'), ('13:00:00+01');
+
+statement ok
+CHECKPOINT db;
+
+# The endpoints must be ordered according to TIMETZ comparison semantics.
+query TTI
+WITH stored_stats AS (
+	SELECT stats(t).min::TIME WITH TIME ZONE AS stored_min,
+	       stats(t).max::TIME WITH TIME ZONE AS stored_max
+	FROM db.timetz_stats_order
+	LIMIT 1
+)
+SELECT stored_min::VARCHAR, stored_max::VARCHAR, stored_min <= stored_max
+FROM stored_stats;
+----
+13:00:00+01	12:00:00+00	1
