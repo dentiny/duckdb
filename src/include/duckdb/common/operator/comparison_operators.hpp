@@ -62,6 +62,16 @@ struct LessThanEquals {
 	}
 };
 
+struct LogicalTypeComparison {
+	template <class OP>
+	static inline bool Operation(LogicalTypeId type, const int64_t &left, const int64_t &right) {
+		if (type == LogicalTypeId::TIME_TZ) {
+			return OP::Operation(dtime_tz_t(static_cast<uint64_t>(left)), dtime_tz_t(static_cast<uint64_t>(right)));
+		}
+		return OP::Operation(left, right);
+	}
+};
+
 struct Comparator {
 	static constexpr int8_t LEFT_IS_GREATER = 1;
 	static constexpr int8_t RIGHT_IS_GREATER = -1;
