@@ -1961,6 +1961,24 @@ struct ParquetPartitionRowGroup : public PartitionRowGroup {
 		// Parquet row groups are read directly from a file, so there is no notion of pending/uncheckpointed writes.
 		return false;
 	}
+
+	optional_idx GetColumnNullCount(const StorageIndex &storage_index) override {
+		const idx_t primary_index = storage_index.GetPrimaryIndex();
+		D_ASSERT(metadata.row_groups.size() > row_group_idx);
+		const auto &row_group = metadata.row_groups[row_group_idx];
+		if (primary_index >= row_group.columns.size()) {
+			return optional_idx();
+		}
+		const auto &column_chunk = row_group.columns[primary_index];
+		if (!column_chunk.__isset.meta_data || !column_chunk.meta_data.__isset.statistics) {
+			return optional_idx();
+		}
+		const auto &stats = column_chunk.meta_data.statistics;
+		if (!stats.__isset.null_count || stats.null_count < 0) {
+			return optional_idx();
+		}
+		return optional_idx(NumericCast<idx_t>(stats.null_count));
+	}
 };
 
 void ParquetReader::GetPartitionStats(const duckdb_parquet::FileMetaData &metadata, vector<PartitionStatistics> &result,
