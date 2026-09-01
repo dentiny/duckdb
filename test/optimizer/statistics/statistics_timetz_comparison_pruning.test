@@ -1,0 +1,81 @@
+# name: test/optimizer/statistics/statistics_timetz_comparison_pruning.test
+# description: Statistics pruning for TIME WITH TIME ZONE comparisons
+# group: [statistics]
+
+statement ok
+ATTACH '{TEST_DIR}/timetz_comparison.duckdb' AS db (ROW_GROUP_SIZE 2048, STORAGE_VERSION 'v2.0.0');
+
+statement ok
+CREATE TABLE db.timetz_values AS
+SELECT (CASE range // 2048 WHEN 0 THEN '12:00:00+00' ELSE '13:00:00+00' END)::TIME WITH TIME ZONE AS t
+FROM range(4096);
+
+# The table only contains values after midnight, so this predicate is always false.
+query II
+EXPLAIN SELECT count(*) FROM db.timetz_values WHERE t < '00:00:00+00'::TIME WITH TIME ZONE;
+----
+physical_plan	<REGEX>:.*Empty Result.*
+
+query I
+SELECT count(*) FROM db.timetz_values WHERE t < '00:00:00+00'::TIME WITH TIME ZONE;
+----
+0
+
+statement ok
+CREATE TABLE db.timetz_offset_values AS
+SELECT (CASE range // 2048 WHEN 0 THEN '12:00:00+02' ELSE '13:00:00-04' END)::TIME WITH TIME ZONE AS t
+FROM range(4096);
+
+# In UTC, the stored values are 10:00 and 17:00, while the comparison value is 09:00.
+query II
+EXPLAIN SELECT count(*) FROM db.timetz_offset_values WHERE t < '14:00:00+05'::TIME WITH TIME ZONE;
+----
+physical_plan	<REGEX>:.*Empty Result.*
+
+query I
+SELECT count(*) FROM db.timetz_offset_values WHERE t < '14:00:00+05'::TIME WITH TIME ZONE;
+----
+0
+
+# A comparison value with another offset selects only the first row group (before 11:00 UTC).
+query II
+EXPLAIN ANALYZE
+SELECT sum(timetz_byte_comparable(t))
+FROM db.timetz_offset_values
+WHERE t < '16:00:00+05'::TIME WITH TIME ZONE;
+----
+analyzed_plan	<REGEX>:.*Row Groups Scanned: 1 / 2.*
+
+query I
+SELECT sum(timetz_byte_comparable(t))
+FROM db.timetz_offset_values
+WHERE t < '16:00:00+05'::TIME WITH TIME ZONE;
+----
+3216037151506535217152
+
+statement ok
+CREATE TABLE db.timetz_mixed_offsets AS
+SELECT (CASE WHEN range < 2048
+	THEN CASE range % 2 WHEN 0 THEN '12:00:00+00' ELSE '13:00:00+01' END
+	ELSE CASE range % 2 WHEN 0 THEN '15:00:00+00' ELSE '16:00:00+01' END
+END)::TIME WITH TIME ZONE AS t, range AS payload
+FROM range(4096);
+
+statement ok
+CHECKPOINT db;
+
+# The filter only references the TIMETZ column, so pruning relies on its min/max.
+query II
+EXPLAIN ANALYZE
+SELECT sum(payload)
+FROM db.timetz_mixed_offsets
+WHERE t < '13:00:00+00'::TIME WITH TIME ZONE;
+----
+analyzed_plan	<REGEX>:.*Row Groups Scanned: 1 / 2.*
+
+query I
+SELECT sum(payload)
+FROM db.timetz_mixed_offsets
+WHERE t < '13:00:00+00'::TIME WITH TIME ZONE;
+----
+2096128

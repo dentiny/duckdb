@@ -393,7 +393,8 @@ template <class T, bool WRITE_STATISTICS, class T_S = typename MakeSigned<T>::ty
 struct BitpackingCompressionState : public StandardCompressionState {
 public:
 	explicit BitpackingCompressionState(ColumnDataCheckpointData &checkpoint_data)
-	    : StandardCompressionState(checkpoint_data, CompressionType::COMPRESSION_BITPACKING) {
+	    : StandardCompressionState(checkpoint_data, CompressionType::COMPRESSION_BITPACKING),
+	      stats_writer(checkpoint_data.GetType()), group_stats_writer(checkpoint_data.GetType()) {
 		CreateEmptySegment();
 
 		state.data_ptr = reinterpret_cast<void *>(this);
@@ -401,6 +402,7 @@ public:
 	}
 
 	StatsWriter<T> stats_writer;
+	StatsWriter<T> group_stats_writer;
 	// Pointer to the next free position in the segment.
 	data_ptr_t data_ptr;
 	// Ptr to next free spot for storing bitwidths and frame-of-references (growing downwards).
@@ -490,13 +492,12 @@ public:
 			if (WRITE_STATISTICS) {
 				auto &stats_writer = state->stats_writer;
 				if (state->state.has_valid) {
-					stats_writer.SetHasValid();
-					stats_writer.UpdateMinMax(state->state.minimum);
-					stats_writer.UpdateMinMax(state->state.maximum);
+					stats_writer.MergeMinMax(state->group_stats_writer);
 				}
 				if (state->state.has_invalid) {
 					stats_writer.SetHasNull();
 				}
+				state->group_stats_writer.Clear();
 			}
 		}
 	};
@@ -518,6 +519,9 @@ public:
 
 	void Append(const Vector &input) {
 		for (auto entry : input.Values<T>()) {
+			if (WRITE_STATISTICS && entry.IsValid()) {
+				group_stats_writer.Update(entry.GetValue());
+			}
 			state.template Update<BitpackingWriter>(entry);
 		}
 	}

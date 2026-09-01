@@ -29,7 +29,8 @@ public:
 	using EXACT_TYPE = typename FloatingToExact<T>::TYPE;
 
 	AlpRDCompressionState(ColumnDataCheckpointData &checkpoint_data, AlpRDAnalyzeState<T> *analyze_state)
-	    : StandardCompressionState(checkpoint_data, CompressionType::COMPRESSION_ALPRD) {
+	    : StandardCompressionState(checkpoint_data, CompressionType::COMPRESSION_ALPRD),
+	      stats_writer(checkpoint_data.GetType()) {
 		//! State variables from the analyze step that are needed for compression
 		compression_data.left_parts_dict_map = std::move(analyze_state->compression_data.left_parts_dict_map);
 		compression_data.left_bit_width = analyze_state->compression_data.left_bit_width;

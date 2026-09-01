@@ -195,7 +195,8 @@ RoaringCompressState::RoaringCompressState(ColumnDataCheckpointData &checkpoint_
                                            unique_ptr<AnalyzeState> analyze_state_p)
     : StandardCompressionState(checkpoint_data, CompressionType::COMPRESSION_ROARING),
       owned_analyze_state(std::move(analyze_state_p)), analyze_state(owned_analyze_state->Cast<RoaringAnalyzeState>()),
-      container_state(), container_metadata(analyze_state.container_metadata) {
+      container_state(), container_metadata(analyze_state.container_metadata),
+      bool_stats_writer(checkpoint_data.GetType()) {
 	CreateEmptySegment();
 	total_count = 0;
 	InitializeContainer();

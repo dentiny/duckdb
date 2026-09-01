@@ -69,6 +69,8 @@ ScalarFunction NormalizedIntervalFun::GetFunction() {
 }
 
 ScalarFunction TimeTZSortKeyFun::GetFunction() {
-	return ScalarFunction({LogicalType::TIME_TZ}, LogicalType::UBIGINT, TimeTZSortKeyFunction);
+	ScalarFunction function({LogicalType::TIME_TZ}, LogicalType::UBIGINT, TimeTZSortKeyFunction);
+	function.SetUnaryArgProperties(ArgProperties().StrictlyIncreasing());
+	return function;
 }
 } // namespace duckdb

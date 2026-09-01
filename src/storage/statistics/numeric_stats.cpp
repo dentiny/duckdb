@@ -7,6 +7,7 @@
 #include "duckdb/common/serializer/deserializer.hpp"
 #include "duckdb/common/serializer/serializer.hpp"
 #include "duckdb/common/types/vector.hpp"
+#include "duckdb/common/value_operations/value_operations.hpp"
 #include "duckdb/storage/statistics/base_statistics.hpp"
 
 namespace duckdb {
@@ -44,7 +45,7 @@ void NumericStats::Merge(BaseStatistics &stats, const BaseStatistics &other) {
 	D_ASSERT(stats.GetType() == other.GetType());
 	if (NumericStats::HasMin(other) && NumericStats::HasMin(stats)) {
 		auto other_min = NumericStats::Min(other);
-		if (other_min < NumericStats::Min(stats)) {
+		if (ValueOperations::LessThan(other_min, NumericStats::Min(stats))) {
 			NumericStats::SetMin(stats, other_min);
 		}
 	} else {
@@ -52,7 +53,7 @@ void NumericStats::Merge(BaseStatistics &stats, const BaseStatistics &other) {
 	}
 	if (NumericStats::HasMax(other) && NumericStats::HasMax(stats)) {
 		auto other_max = NumericStats::Max(other);
-		if (other_max > NumericStats::Max(stats)) {
+		if (ValueOperations::LessThan(NumericStats::Max(stats), other_max)) {
 			NumericStats::SetMax(stats, other_max);
 		}
 	} else {
@@ -322,7 +323,7 @@ bool NumericStats::ConstantsCoverRange(const BaseStatistics &stats, array_ptr<co
 }
 
 bool NumericStats::IsConstant(const BaseStatistics &stats) {
-	return NumericStats::Max(stats) <= NumericStats::Min(stats);
+	return !ValueOperations::LessThan(NumericStats::Min(stats), NumericStats::Max(stats));
 }
 
 void SetNumericValueInternal(const Value &input, const LogicalType &type, NumericValueUnion &val, bool &has_val) {
@@ -433,7 +434,7 @@ Value NumericValueUnionToValue(const LogicalType &type, const NumericValueUnion 
 
 bool NumericStats::HasMinMax(const BaseStatistics &stats) {
 	return NumericStats::HasMin(stats) && NumericStats::HasMax(stats) &&
-	       NumericStats::Min(stats) <= NumericStats::Max(stats);
+	       !ValueOperations::LessThan(NumericStats::Max(stats), NumericStats::Min(stats));
 }
 
 bool NumericStats::HasMin(const BaseStatistics &stats) {
@@ -594,6 +595,9 @@ void NumericStats::Serialize(const BaseStatistics &stats, Serializer &serializer
 	if (stats.GetType().id() == LogicalTypeId::INTERVAL && !serializer.ShouldSerialize(StorageVersion::V2_0_0)) {
 		return;
 	}
+	if (stats.GetType().id() == LogicalTypeId::TIME_TZ && !serializer.ShouldSerialize(StorageVersion::V2_0_0)) {
+		return;
+	}
 	serializer.WriteObject(200, "min", [&](Serializer &object) {
 		SerializeNumericStatsValue(stats.GetType(), numeric_stats.min, numeric_stats.has_min, object);
 	});
@@ -663,7 +667,11 @@ void NumericStats::Verify(const BaseStatistics &stats, const Vector &vector, con
 		TemplatedVerify<int32_t>(stats, vector, sel, count);
 		break;
 	case PhysicalType::INT64:
-		TemplatedVerify<int64_t>(stats, vector, sel, count);
+		if (type.id() == LogicalTypeId::TIME_TZ) {
+			TemplatedVerify<dtime_tz_t>(stats, vector, sel, count);
+		} else {
+			TemplatedVerify<int64_t>(stats, vector, sel, count);
+		}
 		break;
 	case PhysicalType::UINT8:
 		TemplatedVerify<uint8_t>(stats, vector, sel, count);

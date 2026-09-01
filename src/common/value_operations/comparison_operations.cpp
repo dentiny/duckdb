@@ -88,35 +88,49 @@ static bool TemplatedBooleanOperation(const Value &left, const Value &right) {
 	}
 	switch (left_type.InternalType()) {
 	case PhysicalType::BOOL:
-		return OP::Operation(left.GetValueUnsafe<bool>(), right.GetValueUnsafe<bool>());
+		return LogicalTypeComparison::Operation<OP>(left_type.id(), left.GetValueUnsafe<bool>(),
+		                                            right.GetValueUnsafe<bool>());
 	case PhysicalType::INT8:
-		return OP::Operation(left.GetValueUnsafe<int8_t>(), right.GetValueUnsafe<int8_t>());
+		return LogicalTypeComparison::Operation<OP>(left_type.id(), left.GetValueUnsafe<int8_t>(),
+		                                            right.GetValueUnsafe<int8_t>());
 	case PhysicalType::INT16:
-		return OP::Operation(left.GetValueUnsafe<int16_t>(), right.GetValueUnsafe<int16_t>());
+		return LogicalTypeComparison::Operation<OP>(left_type.id(), left.GetValueUnsafe<int16_t>(),
+		                                            right.GetValueUnsafe<int16_t>());
 	case PhysicalType::INT32:
-		return OP::Operation(left.GetValueUnsafe<int32_t>(), right.GetValueUnsafe<int32_t>());
+		return LogicalTypeComparison::Operation<OP>(left_type.id(), left.GetValueUnsafe<int32_t>(),
+		                                            right.GetValueUnsafe<int32_t>());
 	case PhysicalType::INT64:
-		return OP::Operation(left.GetValueUnsafe<int64_t>(), right.GetValueUnsafe<int64_t>());
+		return LogicalTypeComparison::Operation<OP>(left_type.id(), left.GetValueUnsafe<int64_t>(),
+		                                            right.GetValueUnsafe<int64_t>());
 	case PhysicalType::UINT8:
-		return OP::Operation(left.GetValueUnsafe<uint8_t>(), right.GetValueUnsafe<uint8_t>());
+		return LogicalTypeComparison::Operation<OP>(left_type.id(), left.GetValueUnsafe<uint8_t>(),
+		                                            right.GetValueUnsafe<uint8_t>());
 	case PhysicalType::UINT16:
-		return OP::Operation(left.GetValueUnsafe<uint16_t>(), right.GetValueUnsafe<uint16_t>());
+		return LogicalTypeComparison::Operation<OP>(left_type.id(), left.GetValueUnsafe<uint16_t>(),
+		                                            right.GetValueUnsafe<uint16_t>());
 	case PhysicalType::UINT32:
-		return OP::Operation(left.GetValueUnsafe<uint32_t>(), right.GetValueUnsafe<uint32_t>());
+		return LogicalTypeComparison::Operation<OP>(left_type.id(), left.GetValueUnsafe<uint32_t>(),
+		                                            right.GetValueUnsafe<uint32_t>());
 	case PhysicalType::UINT64:
-		return OP::Operation(left.GetValueUnsafe<uint64_t>(), right.GetValueUnsafe<uint64_t>());
+		return LogicalTypeComparison::Operation<OP>(left_type.id(), left.GetValueUnsafe<uint64_t>(),
+		                                            right.GetValueUnsafe<uint64_t>());
 	case PhysicalType::UINT128:
-		return OP::Operation(left.GetValueUnsafe<uhugeint_t>(), right.GetValueUnsafe<uhugeint_t>());
+		return LogicalTypeComparison::Operation<OP>(left_type.id(), left.GetValueUnsafe<uhugeint_t>(),
+		                                            right.GetValueUnsafe<uhugeint_t>());
 	case PhysicalType::INT128:
-		return OP::Operation(left.GetValueUnsafe<hugeint_t>(), right.GetValueUnsafe<hugeint_t>());
+		return LogicalTypeComparison::Operation<OP>(left_type.id(), left.GetValueUnsafe<hugeint_t>(),
+		                                            right.GetValueUnsafe<hugeint_t>());
 	case PhysicalType::FLOAT:
-		return OP::Operation(left.GetValueUnsafe<float>(), right.GetValueUnsafe<float>());
+		return LogicalTypeComparison::Operation<OP>(left_type.id(), left.GetValueUnsafe<float>(),
+		                                            right.GetValueUnsafe<float>());
 	case PhysicalType::DOUBLE:
-		return OP::Operation(left.GetValueUnsafe<double>(), right.GetValueUnsafe<double>());
+		return LogicalTypeComparison::Operation<OP>(left_type.id(), left.GetValueUnsafe<double>(),
+		                                            right.GetValueUnsafe<double>());
 	case PhysicalType::INTERVAL:
-		return OP::Operation(left.GetValueUnsafe<interval_t>(), right.GetValueUnsafe<interval_t>());
+		return LogicalTypeComparison::Operation<OP>(left_type.id(), left.GetValueUnsafe<interval_t>(),
+		                                            right.GetValueUnsafe<interval_t>());
 	case PhysicalType::VARCHAR:
-		return OP::Operation(StringValue::Get(left), StringValue::Get(right));
+		return LogicalTypeComparison::Operation<OP>(left_type.id(), StringValue::Get(left), StringValue::Get(right));
 	case PhysicalType::STRUCT: {
 		if (left_type.id() == LogicalTypeId::VARIANT) {
 			Vector left_vec(left.type());

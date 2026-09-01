@@ -88,9 +88,17 @@ struct NumericStats {
 		min = LessThan::Operation(new_value, min) ? new_value : min;
 		max = GreaterThan::Operation(new_value, max) ? new_value : max;
 	}
+	static inline void UpdateValue(LogicalTypeId type, int64_t new_value, int64_t &min, int64_t &max) {
+		min = LogicalTypeComparison::Operation<LessThan>(type, new_value, min) ? new_value : min;
+		max = LogicalTypeComparison::Operation<GreaterThan>(type, new_value, max) ? new_value : max;
+	}
 	template <class T>
 	static inline void Update(NumericStatsData &nstats, T new_value) {
-		UpdateValue<T>(new_value, nstats.min.GetReferenceUnsafe<T>(), nstats.max.GetReferenceUnsafe<T>());
+		UpdateValue(new_value, nstats.min.GetReferenceUnsafe<T>(), nstats.max.GetReferenceUnsafe<T>());
+	}
+	static inline void Update(NumericStatsData &nstats, LogicalTypeId type, int64_t new_value) {
+		UpdateValue(type, new_value, nstats.min.GetReferenceUnsafe<int64_t>(),
+		            nstats.max.GetReferenceUnsafe<int64_t>());
 	}
 
 	static void Verify(const BaseStatistics &stats, const Vector &vector, const SelectionVector &sel, idx_t count);

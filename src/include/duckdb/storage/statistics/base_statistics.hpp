@@ -189,6 +189,12 @@ private:
 };
 
 template <>
+inline void BaseStatistics::UpdateNumericStats<int64_t>(int64_t new_value) {
+	D_ASSERT(GetStatsType() == StatisticsType::NUMERIC_STATS);
+	NumericStats::Update(stats_union.numeric_data, type.id(), new_value);
+}
+
+template <>
 inline void BaseStatistics::UpdateNumericStats<list_entry_t>(list_entry_t new_value) {
 }
 

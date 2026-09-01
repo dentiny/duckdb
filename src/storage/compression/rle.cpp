@@ -126,7 +126,8 @@ struct RLEConstants {
 template <class T, bool WRITE_STATISTICS>
 struct RLECompressState : public StandardCompressionState {
 	explicit RLECompressState(ColumnDataCheckpointData &checkpoint_data_p)
-	    : StandardCompressionState(checkpoint_data_p, CompressionType::COMPRESSION_RLE) {
+	    : StandardCompressionState(checkpoint_data_p, CompressionType::COMPRESSION_RLE),
+	      stats_writer(checkpoint_data_p.GetType()) {
 		CreateEmptySegment();
 
 		state.dataptr = (void *)this;

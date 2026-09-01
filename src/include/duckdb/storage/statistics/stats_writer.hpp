@@ -55,7 +55,7 @@ private:
 
 template <class T>
 struct StatsWriter : public BaseStatsWriter {
-	explicit StatsWriter() {
+	explicit StatsWriter(const LogicalType &logical_type) : type(logical_type.id()) {
 		Clear();
 	}
 
@@ -66,13 +66,25 @@ struct StatsWriter : public BaseStatsWriter {
 	}
 
 	void Update(T new_value) {
+		if (!AnyValid()) {
+			SetHasValid();
+			min = new_value;
+			max = new_value;
+			return;
+		}
 		SetHasValid();
 		UpdateMinMax(new_value);
 	}
 
 	void UpdateMinMax(T new_value) {
-		min = LessThan::Operation(new_value, min) ? new_value : min;
-		max = GreaterThan::Operation(new_value, max) ? new_value : max;
+		NumericStats::UpdateValue(new_value, min, max);
+	}
+
+	void MergeMinMax(const StatsWriter<T> &other) {
+		if (other.AnyValid()) {
+			Update(other.min);
+			Update(other.max);
+		}
 	}
 
 	void Merge(BaseStatistics &target) const {
@@ -84,9 +96,15 @@ struct StatsWriter : public BaseStatsWriter {
 	}
 
 private:
+	LogicalTypeId type;
 	T min;
 	T max;
 };
+
+template <>
+inline void StatsWriter<int64_t>::UpdateMinMax(int64_t new_value) {
+	NumericStats::UpdateValue(type, new_value, min, max);
+}
 
 template <>
 struct StatsWriter<void> : public BaseStatsWriter {
