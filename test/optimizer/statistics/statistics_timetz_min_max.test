@@ -5,32 +5,53 @@
 statement ok
 ATTACH '{TEST_DIR}/timetz_min_max.duckdb' AS db (STORAGE_VERSION 'v2.0.0');
 
-# These values are ordered differently by their raw encoding and TIMETZ semantics.
-statement ok
-CREATE TABLE db.timetz_stats_order(t TIME WITH TIME ZONE);
+foreach compression rle bitpacking
 
 statement ok
-INSERT INTO db.timetz_stats_order VALUES ('12:00:00+00'), ('13:00:00+01');
+SET force_compression='{compression}';
+
+# The semantic extrema are both interior values according to the raw encoding.
+statement ok
+CREATE TABLE db.timetz_stats_order_{compression} AS
+SELECT (CASE range % 4
+	WHEN 0 THEN '00:00:00+00'
+	WHEN 1 THEN '12:00:00+15'
+	WHEN 2 THEN '12:00:00-15'
+	ELSE '23:00:00+00'
+END)::TIME WITH TIME ZONE AS t
+FROM range(4096);
 
 statement ok
 CHECKPOINT db;
 
-query T
-SELECT t::VARCHAR
-FROM db.timetz_stats_order
-WHERE t < '12:00:00+00'::TIME WITH TIME ZONE;
+# Verify that the requested compression is used for the TIMETZ segments.
+query I
+SELECT bool_and(lower(compression) = '{compression}')
+FROM pragma_storage_info('db.timetz_stats_order_{compression}')
+WHERE segment_type = 'TIME WITH TIME ZONE';
 ----
-13:00:00+01
+1
+
+# Raw INT64 statistics would incorrectly prune all matching rows.
+query TI
+SELECT t::VARCHAR, count(*)
+FROM db.timetz_stats_order_{compression}
+WHERE t < '00:00:00+00'::TIME WITH TIME ZONE
+GROUP BY t;
+----
+12:00:00+15	1024
 
 # The endpoints must be ordered according to TIMETZ comparison semantics.
 query TTI
 WITH stored_stats AS (
 	SELECT stats(t).min::TIME WITH TIME ZONE AS stored_min,
 	       stats(t).max::TIME WITH TIME ZONE AS stored_max
-	FROM db.timetz_stats_order
+	FROM db.timetz_stats_order_{compression}
 	LIMIT 1
 )
 SELECT stored_min::VARCHAR, stored_max::VARCHAR, stored_min <= stored_max
 FROM stored_stats;
 ----
-13:00:00+01	12:00:00+00	1
+12:00:00+15	12:00:00-15	1
+
+endloop

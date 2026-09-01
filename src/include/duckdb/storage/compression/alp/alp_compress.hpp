@@ -30,7 +30,8 @@ public:
 	using EXACT_TYPE = typename FloatingToExact<T>::TYPE;
 
 	AlpCompressionState(ColumnDataCheckpointData &checkpoint_data, AlpAnalyzeState<T> *analyze_state)
-	    : StandardCompressionState(checkpoint_data, CompressionType::COMPRESSION_ALP) {
+	    : StandardCompressionState(checkpoint_data, CompressionType::COMPRESSION_ALP),
+	      stats_writer(checkpoint_data.GetType()) {
 		CreateEmptySegment();
 
 		//! Combinations found on the analyze step are needed for compression

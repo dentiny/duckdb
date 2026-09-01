@@ -55,10 +55,6 @@ private:
 
 template <class T>
 struct StatsWriter : public BaseStatsWriter {
-	explicit StatsWriter() : type(LogicalTypeId::INVALID) {
-		Clear();
-	}
-
 	explicit StatsWriter(const LogicalType &logical_type) : type(logical_type.id()) {
 		Clear();
 	}

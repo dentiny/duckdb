@@ -393,7 +393,8 @@ template <class T, bool WRITE_STATISTICS, class T_S = typename MakeSigned<T>::ty
 struct BitpackingCompressionState : public StandardCompressionState {
 public:
 	explicit BitpackingCompressionState(ColumnDataCheckpointData &checkpoint_data)
-	    : StandardCompressionState(checkpoint_data, CompressionType::COMPRESSION_BITPACKING) {
+	    : StandardCompressionState(checkpoint_data, CompressionType::COMPRESSION_BITPACKING),
+	      stats_writer(checkpoint_data.GetType()) {
 		CreateEmptySegment();
 
 		state.data_ptr = reinterpret_cast<void *>(this);
