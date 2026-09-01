@@ -1466,14 +1466,14 @@ void StringValueScanner::ProcessOverBufferValue() {
 						} else {
 							result.AddRow(result, previous_buffer_handle->actual_size);
 						}
-						state_machine->Transition(states, buffer_handle_ptr[iterator.pos.buffer_pos++]);
-						while (iterator.pos.buffer_pos < cur_buffer_handle->actual_size &&
-						       (buffer_handle_ptr[iterator.pos.buffer_pos] == '\r' ||
-						        buffer_handle_ptr[iterator.pos.buffer_pos] == '\n')) {
-							state_machine->Transition(states, buffer_handle_ptr[iterator.pos.buffer_pos++]);
-						}
-						return;
 					}
+					state_machine->Transition(states, buffer_handle_ptr[iterator.pos.buffer_pos++]);
+					while (iterator.pos.buffer_pos < cur_buffer_handle->actual_size &&
+					       (buffer_handle_ptr[iterator.pos.buffer_pos] == '\r' ||
+					        buffer_handle_ptr[iterator.pos.buffer_pos] == '\n')) {
+						state_machine->Transition(states, buffer_handle_ptr[iterator.pos.buffer_pos++]);
+					}
+					return;
 				} else {
 					if (iterator.pos.buffer_pos + 1 == cur_buffer_handle->actual_size) {
 						return;
