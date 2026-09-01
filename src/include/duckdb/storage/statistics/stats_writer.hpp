@@ -80,6 +80,13 @@ struct StatsWriter : public BaseStatsWriter {
 		NumericStats::UpdateValue(new_value, min, max);
 	}
 
+	void MergeMinMax(const StatsWriter<T> &other) {
+		if (other.AnyValid()) {
+			Update(other.min);
+			Update(other.max);
+		}
+	}
+
 	void Merge(BaseStatistics &target) const {
 		MergeBase(target);
 		if (AnyValid()) {
