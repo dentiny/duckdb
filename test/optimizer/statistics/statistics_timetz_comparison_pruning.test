@@ -39,11 +39,16 @@ SELECT count(*) FROM db.timetz_offset_values WHERE t < '14:00:00+05'::TIME WITH 
 
 # A comparison value with another offset selects only the first row group (before 11:00 UTC).
 query II
-EXPLAIN ANALYZE SELECT count(*) FROM db.timetz_offset_values WHERE t < '16:00:00+05'::TIME WITH TIME ZONE;
+EXPLAIN ANALYZE
+SELECT sum(timetz_byte_comparable(t))
+FROM db.timetz_offset_values
+WHERE t < '16:00:00+05'::TIME WITH TIME ZONE;
 ----
 analyzed_plan	<REGEX>:.*Row Groups Scanned: 1 / 2.*
 
 query I
-SELECT count(*) FROM db.timetz_offset_values WHERE t < '16:00:00+05'::TIME WITH TIME ZONE;
+SELECT sum(timetz_byte_comparable(t))
+FROM db.timetz_offset_values
+WHERE t < '16:00:00+05'::TIME WITH TIME ZONE;
 ----
-2048
+3216037151506535217152
