@@ -70,7 +70,7 @@ struct StatsWriter : public BaseStatsWriter {
 	}
 
 	void Update(T new_value) {
-		if (type == LogicalTypeId::TIME_TZ && !AnyValid()) {
+		if (!AnyValid()) {
 			SetHasValid();
 			min = new_value;
 			max = new_value;
