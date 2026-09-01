@@ -15,6 +15,13 @@ INSERT INTO db.timetz_stats_order VALUES ('12:00:00+00'), ('13:00:00+01');
 statement ok
 CHECKPOINT db;
 
+query T
+SELECT t::VARCHAR
+FROM db.timetz_stats_order
+WHERE t < '12:00:00+00'::TIME WITH TIME ZONE;
+----
+13:00:00+01
+
 # The endpoints must be ordered according to TIMETZ comparison semantics.
 query TTI
 WITH stored_stats AS (
