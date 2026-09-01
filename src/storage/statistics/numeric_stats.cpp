@@ -611,9 +611,6 @@ void NumericStats::Serialize(const BaseStatistics &stats, Serializer &serializer
 	serializer.WriteObject(201, "max", [&](Serializer &object) {
 		SerializeNumericStatsValue(stats.GetType(), numeric_stats.max, numeric_stats.has_max, object);
 	});
-	if (stats.GetType().id() == LogicalTypeId::TIME_TZ) {
-		serializer.WriteProperty(202, "timetz_stats_are_ordered", true);
-	}
 }
 
 void NumericStats::Deserialize(Deserializer &deserializer, BaseStatistics &result) {
@@ -627,13 +624,6 @@ void NumericStats::Deserialize(Deserializer &deserializer, BaseStatistics &resul
 	deserializer.ReadObject(201, "max", [&](Deserializer &object) {
 		DeserializeNumericStatsValue(result.GetType(), numeric_stats.max, numeric_stats.has_max, object);
 	});
-	if (result.GetType().id() == LogicalTypeId::TIME_TZ) {
-		if (!deserializer.CanDeserializeProperty(202, "timetz_stats_are_ordered") ||
-		    !deserializer.ReadProperty<bool>(202, "timetz_stats_are_ordered")) {
-			NumericStats::SetMin(result, Value());
-			NumericStats::SetMax(result, Value());
-		}
-	}
 }
 
 child_list_t<Value> NumericStats::ToStruct(const BaseStatistics &stats) {
