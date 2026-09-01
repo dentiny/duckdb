@@ -1,0 +1,22 @@
+# name: test/optimizer/statistics/statistics_timetz_comparison_pruning.test
+# description: Statistics pruning for TIME WITH TIME ZONE comparisons
+# group: [statistics]
+
+statement ok
+ATTACH '{TEST_DIR}/timetz_comparison.duckdb' AS db (ROW_GROUP_SIZE 2048);
+
+statement ok
+CREATE TABLE db.timetz_values AS
+SELECT (CASE range // 2048 WHEN 0 THEN '12:00:00+00' ELSE '13:00:00+00' END)::TIME WITH TIME ZONE AS t
+FROM range(4096);
+
+# The table only contains values after midnight, so this predicate is always false.
+query II
+EXPLAIN SELECT count(*) FROM db.timetz_values WHERE t < '00:00:00+00'::TIME WITH TIME ZONE;
+----
+physical_plan	<REGEX>:.*Empty Result.*
+
+query I
+SELECT count(*) FROM db.timetz_values WHERE t < '00:00:00+00'::TIME WITH TIME ZONE;
+----
+0
