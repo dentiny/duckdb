@@ -20,3 +20,30 @@ query I
 SELECT count(*) FROM db.timetz_values WHERE t < '00:00:00+00'::TIME WITH TIME ZONE;
 ----
 0
+
+statement ok
+CREATE TABLE db.timetz_offset_values AS
+SELECT (CASE range // 2048 WHEN 0 THEN '12:00:00+02' ELSE '13:00:00-04' END)::TIME WITH TIME ZONE AS t
+FROM range(4096);
+
+# In UTC, the stored values are 10:00 and 17:00, while the comparison value is 09:00.
+query II
+EXPLAIN SELECT count(*) FROM db.timetz_offset_values WHERE t < '14:00:00+05'::TIME WITH TIME ZONE;
+----
+physical_plan	<REGEX>:.*Empty Result.*
+
+query I
+SELECT count(*) FROM db.timetz_offset_values WHERE t < '14:00:00+05'::TIME WITH TIME ZONE;
+----
+0
+
+# A comparison value with another offset selects only the first row group (before 11:00 UTC).
+query II
+EXPLAIN ANALYZE SELECT count(*) FROM db.timetz_offset_values WHERE t < '16:00:00+05'::TIME WITH TIME ZONE;
+----
+analyzed_plan	<REGEX>:.*Row Groups Scanned: 1 / 2.*
+
+query I
+SELECT count(*) FROM db.timetz_offset_values WHERE t < '16:00:00+05'::TIME WITH TIME ZONE;
+----
+2048
