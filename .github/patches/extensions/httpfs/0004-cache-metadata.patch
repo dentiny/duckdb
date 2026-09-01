@@ -1,14 +1,29 @@
-commit a25824e34450b334fe246f4c12958deea416254b
+commit fc826fbb306a1c876bf972285e650a6f82a41317
 Author: dentinyhao <dentinyhao@gmail.com>
 Date:   Tue Aug 4 02:50:57 2026 -0700
 
     Consider HTTP cache
 
 diff --git a/src/http/http_request.cpp b/src/http/http_request.cpp
-index eaf3e10..a5db536 100644
+index eaf3e10..bdd6234 100644
 --- a/src/http/http_request.cpp
 +++ b/src/http/http_request.cpp
-@@ -88,6 +88,7 @@ unique_ptr<HTTPResponse> HTTPFileSystem::RunGetRequest(HTTPFileHandle &hfh, stri
+@@ -52,11 +52,12 @@ static unique_ptr<HTTPResponse> SendSessionRequest(HTTPRequestSession &session,
+ 	}
+ }
+ 
+-unique_ptr<HTTPResponse> HTTPFileSystem::RunHeadRequest(string url, HTTPHeaders header_map, HTTPFSParams &http_params,
+-                                                        HTTPSendCallback send_request) {
++unique_ptr<HTTPResponse> HTTPFileSystem::RunHeadRequest(HTTPFileHandle &hfh, string url, HTTPHeaders header_map,
++                                                        HTTPFSParams &http_params, HTTPSendCallback send_request) {
+ 	auto request_headers = RemoveRangeHeader(header_map);
+ 	http_params.extra_headers.erase("Range");
+ 	HeadRequestInfo head_request(url, request_headers, http_params);
++	hfh.RecordRequestHeaders(head_request.headers);
+ 	return send_request(head_request);
+ }
+ 
+@@ -88,6 +89,7 @@ unique_ptr<HTTPResponse> HTTPFileSystem::RunGetRequest(HTTPFileHandle &hfh, stri
                                                         HTTPSendCallback send_request) {
  	auto request_headers = PrepareFullGetHeaders(header_map, read_config);
  	http_params.extra_headers.erase("Range");
@@ -16,7 +31,7 @@ index eaf3e10..a5db536 100644
  	GetRequestInfo get_request(
  	    url, request_headers, http_params,
  	    [&](const HTTPResponse &response) {
-@@ -100,6 +101,7 @@ unique_ptr<HTTPResponse> HTTPFileSystem::RunGetRequest(HTTPFileHandle &hfh, stri
+@@ -100,6 +102,7 @@ unique_ptr<HTTPResponse> HTTPFileSystem::RunGetRequest(HTTPFileHandle &hfh, stri
  		    }
  		    if (static_cast<int>(response.status) < 300) {
  			    ValidateResponseETag(hfh, read_config, response);
@@ -24,7 +39,15 @@ index eaf3e10..a5db536 100644
  		    }
  		    download.Reset();
  		    optional_idx content_length;
-@@ -265,9 +267,13 @@ HTTPFileSystem::RunGetRangeRequest(HTTPFileHandle &hfh, string url, HTTPHeaders
+@@ -120,6 +123,7 @@ unique_ptr<HTTPResponse> HTTPFileSystem::RunGetRequest(HTTPFileHandle &hfh, stri
+ 		    return true;
+ 	    });
+ 
++	hfh.RecordRequestHeaders(get_request.headers);
+ 	return send_request(get_request);
+ }
+ 
+@@ -265,14 +269,19 @@ HTTPFileSystem::RunGetRangeRequest(HTTPFileHandle &hfh, string url, HTTPHeaders
  		return response;
  	}
  
@@ -39,8 +62,23 @@ index eaf3e10..a5db536 100644
  	GetRequestInfo get_request(
  	    url, header_map, http_params, [&](const HTTPResponse &response) { return context.HandleResponse(response); },
  	    [&](const_data_ptr_t data, idx_t data_length) { return context.HandleContent(data, data_length); });
+ 
+ 	get_request.try_request = read_config.auto_fallback_to_full_download;
++	hfh.RecordRequestHeaders(get_request.headers);
+ 	return context.Finalize(send_request(get_request), get_request);
+ }
+ 
+@@ -281,7 +290,7 @@ unique_ptr<HTTPResponse> HTTPFileSystem::HeadRequest(FileHandle &handle, string
+ 	auto captured = hfh.request_session->Capture();
+ 	captured.snapshot->AddConfiguredHeaders(header_map);
+ 	auto request_params = captured.snapshot->CreateRequestParams();
+-	return RunHeadRequest(url, header_map, *request_params, [&](BaseRequest &request) {
++	return RunHeadRequest(hfh, url, header_map, *request_params, [&](BaseRequest &request) {
+ 		return SendSessionRequest(*hfh.request_session, captured, *request_params, request);
+ 	});
+ }
 diff --git a/src/http/httpfs.cpp b/src/http/httpfs.cpp
-index 0fc503a..de01184 100644
+index 0fc503a..ce028fc 100644
 --- a/src/http/httpfs.cpp
 +++ b/src/http/httpfs.cpp
 @@ -7,8 +7,14 @@
@@ -58,13 +96,26 @@ index 0fc503a..de01184 100644
  #include "duckdb/common/types/time.hpp"
  #include "duckdb/function/scalar/strftime_format.hpp"
  #include "duckdb/logging/file_system_logger.hpp"
-@@ -473,6 +479,22 @@ string HTTPFileSystem::GetVersionTag(FileHandle &handle) {
+@@ -17,6 +23,7 @@
+ #include "duckdb/main/secret/secret_manager.hpp"
+ #include "http/http_state.hpp"
+ 
++#include <algorithm>
+ #include <map>
+ #include <string>
+ 
+@@ -473,6 +480,27 @@ string HTTPFileSystem::GetVersionTag(FileHandle &handle) {
  	return sfh.etag;
  }
  
 +optional<timestamp_t> HTTPFileSystem::GetCacheValidUntil(FileHandle &handle) {
 +	auto &sfh = handle.Cast<HTTPFileHandle>();
 +	return sfh.GetCacheValidUntil();
++}
++
++optional<string> HTTPFileSystem::GetRequestIdentifier(FileHandle &handle) {
++	auto &sfh = handle.Cast<HTTPFileHandle>();
++	return sfh.GetRequestIdentifier();
 +}
 +
 +FileMetadata HTTPFileSystem::Stats(FileHandle &handle) {
@@ -81,7 +132,7 @@ index 0fc503a..de01184 100644
  bool HTTPFileSystem::FileExists(const string &filename, optional_ptr<FileOpener> opener) {
  	try {
  		auto handle = OpenFile(filename, FileFlags::FILE_FLAGS_READ, opener);
-@@ -559,6 +581,8 @@ unique_ptr<CachedFileHandle> HTTPFileSystem::FullDownload(HTTPFileHandle &hfh, c
+@@ -559,6 +587,8 @@ unique_ptr<CachedFileHandle> HTTPFileSystem::FullDownload(HTTPFileHandle &hfh, c
  			                    full_download_result->url, static_cast<int>(full_download_result->status),
  			                    full_download_result->GetError());
  		}
@@ -90,7 +141,7 @@ index 0fc503a..de01184 100644
  		return download->Finalize();
  	}
  }
-@@ -574,6 +598,180 @@ bool HTTPFileSystem::TryParseLastModifiedTime(const string &timestamp, timestamp
+@@ -574,6 +604,215 @@ bool HTTPFileSystem::TryParseLastModifiedTime(const string &timestamp, timestamp
  	return true;
  }
  
@@ -152,6 +203,24 @@ index 0fc503a..de01184 100644
 +			return false;
 +		}
 +	}
++	return true;
++}
++
++static bool TryGetVaryHeaders(const HTTPHeaders &headers, vector<string> &result) {
++	if (!headers.HasHeader("Vary")) {
++		return true;
++	}
++	for (const auto &header_value : headers.GetHeaderValues("Vary")) {
++		for (auto header : StringUtil::Split(header_value, ',')) {
++			StringUtil::Trim(header);
++			if (header.empty() || header == "*") {
++				return false;
++			}
++			result.push_back(StringUtil::Lower(header));
++		}
++	}
++	std::sort(result.begin(), result.end());
++	result.erase(std::unique(result.begin(), result.end()), result.end());
 +	return true;
 +}
 +
@@ -238,6 +307,12 @@ index 0fc503a..de01184 100644
 +	return timestamp_t(deadline_micros);
 +}
 +
++void HTTPFileHandle::RecordRequestHeaders(const HTTPHeaders &headers) {
++	annotated_lock_guard<annotated_mutex> guard(cache_policy_lock);
++	request_headers = headers;
++	request_identifier = HTTPMetadataCache::GetRequestIdentifier(vary_headers, request_headers);
++}
++
 +void HTTPFileHandle::ApplyCachePolicy(const HTTPResponse &response, timestamp_t request_time,
 +                                      timestamp_t response_time) {
 +	auto response_valid_until =
@@ -247,12 +322,18 @@ index 0fc503a..de01184 100644
 +		// no-store applies to this response, so only blocks populated by this read are retired.
 +		response_valid_until = timestamp_t::ninfinity();
 +	}
-+	if (response.headers.HasHeader("Vary")) {
-+		// TODO(hjiang): Include Vary-selected request headers in the cache key instead of disabling reuse.
++	vector<string> response_vary_headers;
++	if (!TryGetVaryHeaders(response.headers, response_vary_headers)) {
 +		response_valid_until = timestamp_t::ninfinity();
 +	}
 +
 +	annotated_lock_guard<annotated_mutex> guard(cache_policy_lock);
++	if (!response_vary_headers.empty()) {
++		vary_headers.insert(vary_headers.end(), response_vary_headers.begin(), response_vary_headers.end());
++		std::sort(vary_headers.begin(), vary_headers.end());
++		vary_headers.erase(std::unique(vary_headers.begin(), vary_headers.end()), vary_headers.end());
++		request_identifier = HTTPMetadataCache::GetRequestIdentifier(vary_headers, request_headers);
++	}
 +	if (response_valid_until && (!cache_valid_until || *response_valid_until < *cache_valid_until)) {
 +		cache_valid_until = response_valid_until;
 +	}
@@ -263,6 +344,11 @@ index 0fc503a..de01184 100644
 +	return cache_valid_until;
 +}
 +
++optional<string> HTTPFileHandle::GetRequestIdentifier() const {
++	annotated_lock_guard<annotated_mutex> guard(cache_policy_lock);
++	return request_identifier;
++}
++
 +bool HTTPFileHandle::CanReuseCachedData() const {
 +	annotated_lock_guard<annotated_mutex> guard(cache_policy_lock);
 +	return !cache_valid_until || Timestamp::GetCurrentTimestamp() <= *cache_valid_until;
@@ -271,7 +357,7 @@ index 0fc503a..de01184 100644
  struct HTTPFileInfoParser {
  	static optional_idx TryParseContentRange(const HTTPHeaders &headers) {
  		if (!headers.HasHeader("Content-Range")) {
-@@ -626,8 +824,11 @@ bool HTTPFileHandle::TryLoadFileInfoWithoutRequest() {
+@@ -626,8 +865,11 @@ bool HTTPFileHandle::TryLoadFileInfoWithoutRequest() {
  	return false;
  }
  
@@ -284,7 +370,7 @@ index 0fc503a..de01184 100644
  	if (response->status == HTTPStatusCode::OK_200) {
  		return response;
  	}
-@@ -641,14 +842,17 @@ unique_ptr<HTTPResponse> HTTPFileHandle::RequestFileInfo(HTTPFileSystem &hfs) {
+@@ -641,14 +883,17 @@ unique_ptr<HTTPResponse> HTTPFileHandle::RequestFileInfo(HTTPFileSystem &hfs) {
  	}
  	if (flags.OpenForReading() && response->status != HTTPStatusCode::NotFound_404 &&
  	    response->status != HTTPStatusCode::MovedPermanently_301) {
@@ -304,7 +390,7 @@ index 0fc503a..de01184 100644
  	if (response->status == HTTPStatusCode::PartialContent_206 || response->status == HTTPStatusCode::Accepted_202 ||
  	    response->status == HTTPStatusCode::OK_200) {
  		return response;
-@@ -660,7 +864,7 @@ unique_ptr<HTTPResponse> HTTPFileHandle::RetryFileInfoWithRange(HTTPFileSystem &
+@@ -660,7 +905,7 @@ unique_ptr<HTTPResponse> HTTPFileHandle::RetryFileInfoWithRange(HTTPFileSystem &
  	throw hfs.GetHTTPError(*this, *response, path);
  }
  
@@ -313,7 +399,7 @@ index 0fc503a..de01184 100644
  	length = 0;
  	auto content_size = HTTPFileInfoParser::TryParseContentRange(response.headers);
  	if (!content_size.IsValid()) {
-@@ -675,6 +879,7 @@ void HTTPFileHandle::ApplyFileInfo(const HTTPResponse &response) {
+@@ -675,6 +920,7 @@ void HTTPFileHandle::ApplyFileInfo(const HTTPResponse &response) {
  	if (response.headers.HasHeader("ETag")) {
  		etag = response.headers.GetHeaderValue("ETag");
  	}
@@ -321,7 +407,7 @@ index 0fc503a..de01184 100644
  	if (request_session->Capture().snapshot->Params().s3_version_id_pinning &&
  	    response.headers.HasHeader("x-amz-version-id")) {
  		SetVersionId(response.headers.GetHeaderValue("x-amz-version-id"));
-@@ -694,9 +899,11 @@ void HTTPFileHandle::LoadFileInfo() {
+@@ -694,9 +940,11 @@ void HTTPFileHandle::LoadFileInfo() {
  		return;
  	}
  	auto &hfs = file_system.Cast<HTTPFileSystem>();
@@ -335,26 +421,44 @@ index 0fc503a..de01184 100644
  	}
  }
  
-@@ -716,6 +923,10 @@ void HTTPFileHandle::InitializeFromCacheEntry(const HTTPMetadataCacheEntry &cach
+@@ -716,6 +964,12 @@ void HTTPFileHandle::InitializeFromCacheEntry(const HTTPMetadataCacheEntry &cach
  	last_modified = cache_entry.last_modified;
  	length = cache_entry.length;
  	etag = cache_entry.etag;
 +	{
 +		annotated_lock_guard<annotated_mutex> guard(cache_policy_lock);
 +		cache_valid_until = cache_entry.cache_valid_until;
++		vary_headers = cache_entry.vary_headers;
++		request_identifier = cache_entry.request_identifier;
 +	}
  	SetVersionId(cache_entry.version_id);
  
  	// TODO: handle properties
-@@ -726,6 +937,7 @@ HTTPMetadataCacheEntry HTTPFileHandle::GetCacheEntry() const {
+@@ -726,6 +980,12 @@ HTTPMetadataCacheEntry HTTPFileHandle::GetCacheEntry() const {
  	result.length = length;
  	result.last_modified = last_modified;
  	result.etag = etag;
 +	result.cache_valid_until = GetCacheValidUntil();
++	{
++		annotated_lock_guard<annotated_mutex> guard(cache_policy_lock);
++		result.vary_headers = vary_headers;
++		result.request_identifier = request_identifier;
++	}
  	result.version_id = GetVersionId();
  	// TODO: handle properties
  	return result;
-@@ -793,7 +1005,7 @@ void HTTPFileHandle::InitializeFileInfo(HTTPFileSystem &hfs, optional_ptr<HTTPMe
+@@ -768,7 +1028,9 @@ bool HTTPFileHandle::TryInitializeRead(HTTPFileSystem &hfs, optional_ptr<HTTPMet
+ 
+ 	if (cache) {
+ 		HTTPMetadataCacheEntry value;
+-		if (cache->Find(path, value)) {
++		HTTPHeaders request_headers;
++		request_snapshot->AddConfiguredHeaders(request_headers);
++		if (cache->Find(path, request_headers, value)) {
+ 			InitializeFromCacheEntry(value);
+ 			FinalizeReadConfig();
+ 			return true;
+@@ -793,7 +1055,7 @@ void HTTPFileHandle::InitializeFileInfo(HTTPFileSystem &hfs, optional_ptr<HTTPMe
  		if (should_full_download) {
  			length = hfs.FullDownload(*this, GetReadConfig(), should_write_cache)->GetSize();
  		}
@@ -408,39 +512,118 @@ index 37486e2..ae54f26 100644
  		return result;
  	}
 diff --git a/src/include/http/http_metadata_cache.hpp b/src/include/http/http_metadata_cache.hpp
-index 2908a43..fe60cc0 100644
+index 2908a43..ec179b0 100644
 --- a/src/include/http/http_metadata_cache.hpp
 +++ b/src/include/http/http_metadata_cache.hpp
-@@ -4,6 +4,7 @@
+@@ -2,8 +2,10 @@
+ 
+ #include "duckdb/common/atomic.hpp"
  #include "duckdb/common/chrono.hpp"
++#include "duckdb/common/http_util.hpp"
  #include "duckdb/common/list.hpp"
  #include "duckdb/common/mutex.hpp"
 +#include "duckdb/common/optional.hpp"
  #include "duckdb/common/string.hpp"
  #include "duckdb/common/types.hpp"
  #include "duckdb/common/unordered_map.hpp"
-@@ -19,6 +20,8 @@ struct HTTPMetadataCacheEntry {
+@@ -19,7 +21,11 @@ struct HTTPMetadataCacheEntry {
  	idx_t length;
  	timestamp_t last_modified;
  	string etag;
 +	//! Freshness deadline (inclusive); unset means the server provides no freshness information.
 +	optional<timestamp_t> cache_valid_until;
  	string version_id;
++	vector<string> vary_headers;
++	optional<string> request_identifier;
  	unordered_map<string, string> properties;
  };
-@@ -44,6 +47,10 @@ public:
+ 
+@@ -28,9 +34,39 @@ class HTTPMetadataCache : public ClientContextState {
+ public:
+ 	explicit HTTPMetadataCache(bool flush_on_query_end_p, bool) : flush_on_query_end(flush_on_query_end_p) {};
+ 
++	static optional<string> GetRequestIdentifier(const vector<string> &vary_headers,
++	                                             const HTTPHeaders &request_headers) {
++		if (vary_headers.empty()) {
++			return nullopt;
++		}
++		string result;
++		for (const auto &header : vary_headers) {
++			result += to_string(header.size()) + ":" + header;
++			if (!request_headers.HasHeader(header)) {
++				result += "-1:";
++				continue;
++			}
++			for (const auto &value : request_headers.GetHeaderValues(header)) {
++				result += to_string(value.size()) + ":" + value;
++			}
++		}
++		return result;
++	}
++
+ 	void Insert(const string &path, HTTPMetadataCacheEntry val) DUCKDB_EXCLUDES(lock) {
+ 		annotated_lock_guard<annotated_mutex> guard(lock);
+-		map[path] = std::move(val);
++		auto &entries = map[path];
++		for (auto &entry : entries) {
++			if (entry.vary_headers == val.vary_headers && entry.request_identifier == val.request_identifier) {
++				entry = std::move(val);
++				return;
++			}
++		}
++		static constexpr idx_t MAX_VARIANTS_PER_PATH = 16;
++		if (entries.size() >= MAX_VARIANTS_PER_PATH) {
++			entries.erase(entries.begin());
++		}
++		entries.push_back(std::move(val));
+ 	};
+ 
+ 	void Erase(string path) DUCKDB_EXCLUDES(lock) {
+@@ -38,14 +74,30 @@ public:
+ 		map.erase(path);
+ 	};
+ 
+-	bool Find(string path, HTTPMetadataCacheEntry &ret_val) DUCKDB_EXCLUDES(lock) {
++	bool Find(const string &path, const HTTPHeaders &request_headers, HTTPMetadataCacheEntry &ret_val)
++	    DUCKDB_EXCLUDES(lock) {
+ 		annotated_lock_guard<annotated_mutex> guard(lock);
+ 		auto lookup = map.find(path);
  		if (lookup == map.end()) {
  			return false;
  		}
-+		if (lookup->second.cache_valid_until && Timestamp::GetCurrentTimestamp() > *lookup->second.cache_valid_until) {
-+			map.erase(lookup);
-+			return false;
+-		ret_val = lookup->second;
+-		return true;
++		auto &entries = lookup->second;
++		for (auto entry = entries.begin(); entry != entries.end();) {
++			if (entry->cache_valid_until && Timestamp::GetCurrentTimestamp() > *entry->cache_valid_until) {
++				entry = entries.erase(entry);
++				continue;
++			}
++			const auto identifier = GetRequestIdentifier(entry->vary_headers, request_headers);
++			if (entry->request_identifier == identifier) {
++				ret_val = *entry;
++				return true;
++			}
++			entry++;
 +		}
- 		ret_val = lookup->second;
- 		return true;
++		if (entries.empty()) {
++			map.erase(lookup);
++		}
++		return false;
  	};
+ 
+ 	void Clear() DUCKDB_EXCLUDES(lock) {
+@@ -62,7 +114,7 @@ public:
+ 
+ protected:
+ 	annotated_mutex lock;
+-	unordered_map<string, HTTPMetadataCacheEntry> map DUCKDB_GUARDED_BY(lock);
++	unordered_map<string, vector<HTTPMetadataCacheEntry>> map DUCKDB_GUARDED_BY(lock);
+ 	bool flush_on_query_end;
+ };
+ 
 diff --git a/src/include/http/httpfs.hpp b/src/include/http/httpfs.hpp
-index 1764acc..d6615b1 100644
+index 1764acc..f31e2c1 100644
 --- a/src/include/http/httpfs.hpp
 +++ b/src/include/http/httpfs.hpp
 @@ -2,6 +2,7 @@
@@ -451,18 +634,20 @@ index 1764acc..d6615b1 100644
  #include "http/http_state.hpp"
  #include "duckdb/common/pair.hpp"
  #include "duckdb/common/unordered_map.hpp"
-@@ -85,6 +86,10 @@ public:
+@@ -85,6 +86,12 @@ public:
  	    DUCKDB_EXCLUDES(network_estimator_lock);
  	// Expose the measured network throughput estimate to the (parquet) prefetch cost model.
  	bool TryGetNetworkThroughput(NetworkThroughputEstimate &result) DUCKDB_EXCLUDES(network_estimator_lock);
++	void RecordRequestHeaders(const HTTPHeaders &headers) DUCKDB_EXCLUDES(cache_policy_lock);
 +	void ApplyCachePolicy(const HTTPResponse &response, timestamp_t request_time, timestamp_t response_time)
 +	    DUCKDB_EXCLUDES(cache_policy_lock);
 +	optional<timestamp_t> GetCacheValidUntil() const DUCKDB_EXCLUDES(cache_policy_lock);
++	optional<string> GetRequestIdentifier() const DUCKDB_EXCLUDES(cache_policy_lock);
 +	bool CanReuseCachedData() const DUCKDB_EXCLUDES(cache_policy_lock);
  
  private:
  	// Sequential read/write position
-@@ -102,6 +107,12 @@ private:
+@@ -102,6 +109,15 @@ private:
  	// Minimum payload size for a request to contribute a bandwidth sample
  	constexpr static idx_t MIN_BANDWIDTH_SAMPLE_BYTES = 1 << 16; // 64 KiB
  
@@ -471,11 +656,14 @@ index 1764acc..d6615b1 100644
 +	//! Unset means no freshness information; positive/negative infinity mean always valid/invalid.
 +	//! Used to bound how long cached file data may be served.
 +	optional<timestamp_t> cache_valid_until DUCKDB_GUARDED_BY(cache_policy_lock);
++	HTTPHeaders request_headers DUCKDB_GUARDED_BY(cache_policy_lock);
++	vector<string> vary_headers DUCKDB_GUARDED_BY(cache_policy_lock);
++	optional<string> request_identifier DUCKDB_GUARDED_BY(cache_policy_lock);
 +
  public:
  	void Close() override {
  	}
-@@ -114,15 +125,17 @@ protected:
+@@ -114,15 +130,17 @@ protected:
  	//! TODO: make base function virtual?
  	void TryAddLogger(FileOpener &opener);
  
@@ -497,7 +685,7 @@ index 1764acc..d6615b1 100644
  	void InitializeRequestState(optional_ptr<FileOpener> opener);
  	bool TryInitializeRead(HTTPFileSystem &file_system, optional_ptr<HTTPMetadataCache> cache,
  	                       bool &should_write_cache);
-@@ -133,6 +146,11 @@ private:
+@@ -133,6 +151,11 @@ private:
  class HTTPFileSystem : public FileSystem {
  public:
  	static bool TryParseLastModifiedTime(const string &timestamp, timestamp_t &result);
@@ -509,15 +697,29 @@ index 1764acc..d6615b1 100644
  
  	//! FileSystem overrides.
  	vector<OpenFileInfo> Glob(const string &path, FileOpener *opener = nullptr) override {
-@@ -155,6 +173,8 @@ public:
+@@ -155,6 +178,12 @@ public:
  	int64_t GetFileSize(FileHandle &handle) override;
  	timestamp_t GetLastModifiedTime(FileHandle &handle) override;
  	string GetVersionTag(FileHandle &handle) override;
 +	optional<timestamp_t> GetCacheValidUntil(FileHandle &handle) override;
++	optional<string> GetRequestIdentifier(FileHandle &handle) override;
++	bool UsesRequestIdentifier() const override {
++		return true;
++	}
 +	FileMetadata Stats(FileHandle &handle) override;
  	bool FileExists(const string &filename, optional_ptr<FileOpener> opener) override;
  	void Seek(FileHandle &handle, idx_t location) override;
  	idx_t SeekPosition(FileHandle &handle) override;
+@@ -218,7 +247,8 @@ protected:
+ 	using HTTPSendCallback = std::function<unique_ptr<HTTPResponse>(BaseRequest &)>;
+ 	using HTTPErrorCallback = std::function<HTTPException(const HTTPResponse &)>;
+ 
+-	unique_ptr<HTTPResponse> RunHeadRequest(string url, HTTPHeaders header_map, HTTPFSParams &http_params,
++	unique_ptr<HTTPResponse> RunHeadRequest(HTTPFileHandle &handle, string url, HTTPHeaders header_map,
++	                                        HTTPFSParams &http_params,
+ 	                                        HTTPSendCallback send_request);
+ 	unique_ptr<HTTPResponse> RunDeleteRequest(string url, HTTPHeaders header_map, HTTPFSParams &http_params,
+ 	                                          HTTPSendCallback send_request);
 diff --git a/src/include/s3/s3_auth.hpp b/src/include/s3/s3_auth.hpp
 index 0238d2c..779c242 100644
 --- a/src/include/s3/s3_auth.hpp
@@ -563,6 +765,23 @@ index bfcb219..eaab4bd 100644
  	const auto env_value = std::getenv(env_var_name);
  	if (env_value) {
  		if (StringUtil::Lower(env_value) == "false") {
+diff --git a/src/s3/s3_request.cpp b/src/s3/s3_request.cpp
+index 10802ae..1320869 100644
+--- a/src/s3/s3_request.cpp
++++ b/src/s3/s3_request.cpp
+@@ -716,9 +716,10 @@ unique_ptr<HTTPResponse> S3FileSystem::HeadRequest(FileHandle &handle, string s3
+ 	return S3RequestExecutor::RunHandle(
+ 	    GetEncryptionUtil(), s3_handle, s3_url, "HEAD", {}, [&](S3RequestData &request_data) {
+ 		    auto &params = request_data.http_params->Cast<HTTPFSParams>();
+-		    return RunHeadRequest(request_data.http_url, request_data.headers, params, [&](BaseRequest &request) {
++		    return RunHeadRequest(s3_handle, request_data.http_url, request_data.headers, params,
++		                          [&](BaseRequest &request) {
+ 			    return S3RequestExecutor::SendHandleRequest(s3_handle, request_data.captured, params, request);
+-		    });
++		                          });
+ 	    });
+ }
+ 
 diff --git a/test/sql/metadata_stats.test b/test/sql/metadata_stats.test
 index dfe7a26..27cb0a6 100644
 --- a/test/sql/metadata_stats.test

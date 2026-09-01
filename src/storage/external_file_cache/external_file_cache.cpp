@@ -24,13 +24,14 @@ bool CacheValidationInfo::IsExpired() const {
 
 class ExternalFileCache::ExternalFileCacheObjectCacheEntry : public ObjectCacheEntry {
 public:
-	ExternalFileCacheObjectCacheEntry(ExternalFileCache &cache_p, string path_p, idx_t generation_p)
-	    : cache(cache_p), cached_file(make_shared_ptr<CachedFile>(std::move(path_p), generation_p)) {
-		cache.InsertCachedFileKey(cached_file->path);
+	ExternalFileCacheObjectCacheEntry(ExternalFileCache &cache_p, string cache_key_p, string path_p, idx_t generation_p)
+	    : cache(cache_p), cache_key(std::move(cache_key_p)),
+	      cached_file(make_shared_ptr<CachedFile>(std::move(path_p), generation_p)) {
+		cache.InsertCachedFileKey(cache_key);
 	}
 
 	~ExternalFileCacheObjectCacheEntry() override {
-		cache.EraseCachedFileKey(cached_file->path);
+		cache.EraseCachedFileKey(cache_key);
 	}
 
 	static string ObjectType() {
@@ -62,6 +63,7 @@ public:
 
 private:
 	ExternalFileCache &cache;
+	string cache_key;
 	shared_ptr<CachedFile> cached_file;
 };
 
@@ -394,24 +396,30 @@ void ExternalFileCache::DeleteObjectCacheEntries(const vector<string> &paths) {
 	}
 }
 
-shared_ptr<ExternalFileCache::CachedFile> ExternalFileCache::GetOrCreateCachedFile(const string &path) {
+shared_ptr<ExternalFileCache::CachedFile>
+ExternalFileCache::GetOrCreateCachedFile(const string &path, const optional<string> &request_identifier) {
 	auto &object_cache = buffer_manager.GetDatabase().GetObjectCache();
+	auto cache_key = path;
+	if (request_identifier) {
+		cache_key.push_back('\0');
+		cache_key += *request_identifier;
+	}
 	while (true) {
 		const auto current_generation = generation.load();
 		if (!enable) {
 			return make_shared_ptr<CachedFile>(path, current_generation);
 		}
 
-		auto entry = object_cache.GetOrCreateWithTypePrefix<ExternalFileCacheObjectCacheEntry>(path, *this, path,
-		                                                                                       current_generation);
+		auto entry = object_cache.GetOrCreateWithTypePrefix<ExternalFileCacheObjectCacheEntry>(
+		    cache_key, *this, cache_key, path, current_generation);
 		auto cached_file = entry->GetCachedFile();
 
 		if (!enable) {
-			object_cache.DeleteWithTypePrefix<ExternalFileCacheObjectCacheEntry>(path);
+			object_cache.DeleteWithTypePrefix<ExternalFileCacheObjectCacheEntry>(cache_key);
 			return make_shared_ptr<CachedFile>(path, current_generation);
 		}
 		if (cached_file->generation != current_generation) {
-			object_cache.DeleteWithTypePrefix<ExternalFileCacheObjectCacheEntry>(path);
+			object_cache.DeleteWithTypePrefix<ExternalFileCacheObjectCacheEntry>(cache_key);
 			continue;
 		}
 		return cached_file;

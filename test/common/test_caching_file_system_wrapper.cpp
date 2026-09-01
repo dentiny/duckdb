@@ -104,6 +104,27 @@ public:
 	}
 };
 
+class RequestIdentifierFileSystem : public TrackingFileSystem {
+public:
+	optional<string> GetRequestIdentifier(FileHandle &handle) override {
+		const annotated_lock_guard<annotated_mutex> lock(identifier_mutex);
+		return request_identifier;
+	}
+
+	bool UsesRequestIdentifier() const override {
+		return true;
+	}
+
+	void SetRequestIdentifier(optional<string> identifier) {
+		const annotated_lock_guard<annotated_mutex> lock(identifier_mutex);
+		request_identifier = std::move(identifier);
+	}
+
+private:
+	annotated_mutex identifier_mutex;
+	optional<string> request_identifier DUCKDB_GUARDED_BY(identifier_mutex);
+};
+
 // A file system that counts OpenFile calls to verify when the underlying file is (not) opened.
 class CountingFileSystem : public LocalFileSystem {
 public:
@@ -899,6 +920,43 @@ TEST_CASE("Fully cached read skips doesn't open file", "[file_system][caching]")
 		REQUIRE(result == content);
 		REQUIRE(counting_fs_ptr->GetOpenCount() == 1);
 	}
+}
+
+TEST_CASE("Request identifiers select separate cache variants", "[file_system][caching]") {
+	DuckDB db = MakeCacheLocalFilesDB();
+	auto &db_instance = *db.instance;
+	auto request_fs = make_uniq<RequestIdentifierFileSystem>();
+	auto *request_fs_ptr = request_fs.get();
+
+	const string content = "request-specific cache content";
+	TestFileGuard test_file("test_request_identifier.bin", content);
+	CachingFileSystem cfs(*request_fs, db_instance);
+
+	OpenFileInfo file_info(test_file.GetPath());
+	file_info.extended_info = make_shared_ptr<ExtendedOpenFileInfo>();
+	file_info.extended_info->options["validate_external_file_cache"] = Value::BOOLEAN(false);
+	FileOpenFlags flags {FileFlags::FILE_FLAGS_READ};
+	flags.SetCachingMode(CachingMode::ALWAYS_CACHE);
+
+	auto read_file = [&]() {
+		auto handle = cfs.OpenFile(file_info, flags);
+		auto group = handle->Read(content.size(), 0);
+		string result(content.size(), '\0');
+		group.CopyTo(reinterpret_cast<data_ptr_t>(&result[0]), result.size());
+		REQUIRE(result == content);
+	};
+
+	request_fs_ptr->SetRequestIdentifier("gzip");
+	read_file();
+	REQUIRE(request_fs_ptr->GetReadCount(test_file.GetPath(), 0, content.size()) == 1);
+
+	request_fs_ptr->SetRequestIdentifier("identity");
+	read_file();
+	REQUIRE(request_fs_ptr->GetReadCount(test_file.GetPath(), 0, content.size()) == 2);
+
+	request_fs_ptr->SetRequestIdentifier("gzip");
+	read_file();
+	REQUIRE(request_fs_ptr->GetReadCount(test_file.GetPath(), 0, content.size()) == 2);
 }
 
 } // namespace duckdb

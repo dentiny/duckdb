@@ -37,6 +37,7 @@ CacheValidationInfo GetValidationInfo(FileSystem &file_system, FileHandle &handl
 	result.last_modified = stats.last_modification_time;
 	result.cache_valid_until = stats.cache_valid_until;
 	result.version_tag = std::move(stats.version_tag);
+	result.request_identifier = file_system.GetRequestIdentifier(handle);
 	return result;
 }
 
@@ -202,10 +203,20 @@ bool CachingFileHandle::StripForceFullDownloadIfPresent() {
 }
 
 shared_ptr<CachingFileHandle::CachedFile> CachingFileHandle::EnsureCachedFileCurrent() {
+	if (caching_file_system.file_system.UsesRequestIdentifier()) {
+		GetFileHandle();
+	}
 	bool needs_reopen = false;
 	shared_ptr<CachedFile> current_cached_file;
 	{
 		annotated_lock_guard<annotated_mutex> guard(file_handle_mutex);
+		if (file_handle) {
+			auto current_identifier = caching_file_system.file_system.GetRequestIdentifier(*file_handle);
+			if (current_identifier != validation_info.request_identifier) {
+				validation_info.request_identifier = std::move(current_identifier);
+				cached_file.reset();
+			}
+		}
 		if (cached_file && cached_file->generation == external_file_cache.GetGeneration()) {
 			return cached_file;
 		}
@@ -213,7 +224,7 @@ shared_ptr<CachingFileHandle::CachedFile> CachingFileHandle::EnsureCachedFileCur
 		if (needs_reopen) {
 			file_handle.reset();
 		}
-		cached_file = external_file_cache.GetOrCreateCachedFile(path.path);
+		cached_file = external_file_cache.GetOrCreateCachedFile(path.path, validation_info.request_identifier);
 		current_cached_file = cached_file;
 	}
 
@@ -270,7 +281,11 @@ CachingFileHandle::CachingFileHandle(QueryContext context, CachingFileSystem &ca
       opener(opener_p), validate(ExternalFileCacheUtil::GetCacheValidationMode(path_p, context.GetClientContext(),
                                                                                caching_file_system_p.db)),
       cached_file(nullptr), position(0) {
-	cached_file = external_file_cache.GetOrCreateCachedFile(path_p.path);
+	if (!caching_file_system.file_system.UsesRequestIdentifier()) {
+		cached_file = external_file_cache.GetOrCreateCachedFile(path_p.path);
+	} else {
+		GetFileHandle();
+	}
 	if (!external_file_cache.IsEnabled() || Validate()) {
 		// If caching is disabled, or if we must validate cache entries, we always have to open the file
 		GetFileHandle();
@@ -307,6 +322,9 @@ shared_ptr<FileHandle> CachingFileHandle::GetFileHandle() {
 	file_handle = caching_file_system.file_system.OpenFile(path, internal_flags, opener);
 	// Snapshot the metadata with a single Stats call, avoiding repeated metadata lookups (e.g., fstat)
 	validation_info = GetValidationInfo(caching_file_system.file_system, *file_handle);
+	if (!cached_file || caching_file_system.file_system.UsesRequestIdentifier()) {
+		cached_file = external_file_cache.GetOrCreateCachedFile(path.path, validation_info.request_identifier);
+	}
 
 	{
 		annotated_lock_guard<annotated_mutex> meta_guard(cached_file->meta_lock);
@@ -564,7 +582,9 @@ void CachingFileHandle::ReadAndRecord(QueryContext context, data_ptr_t buffer, i
 
 bool CachingFileHandle::IsCacheReuseProhibited() {
 	const annotated_lock_guard<annotated_mutex> guard(file_handle_mutex);
-	return validation_info.IsCacheReuseProhibited();
+	return validation_info.IsCacheReuseProhibited() ||
+	       (file_handle &&
+	        caching_file_system.file_system.GetRequestIdentifier(*file_handle) != validation_info.request_identifier);
 }
 
 void CachingFileHandle::RecordReadThroughput(double total_seconds, idx_t bytes) {

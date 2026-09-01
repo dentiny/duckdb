@@ -49,6 +49,8 @@ struct CacheValidationInfo {
 	//! Unset means the storage backend does not provide expiry information.
 	//! Positive/negative infinity mean always valid/invalid.
 	optional<timestamp_t> cache_valid_until;
+	//! Opaque identifier for a request-selected representation of this path.
+	optional<string> request_identifier;
 	idx_t file_size = 0;
 };
 
@@ -106,7 +108,8 @@ public:
 	BufferManager &GetBufferManager() const;
 	//! Gets the shared cached file for the given path, creating it if not yet present.
 	//! When caching is disabled, returns a transient CachedFile that is not tracked in the cached file map.
-	shared_ptr<CachedFile> GetOrCreateCachedFile(const string &path);
+	shared_ptr<CachedFile> GetOrCreateCachedFile(const string &path,
+	                                             const optional<string> &request_identifier = nullopt);
 
 	//! Allocate a buffer holding a cache block of the given file. Blocks of remote files spill to the
 	//! temporary directory when they are evicted, instead of being dropped and re-fetched from the
