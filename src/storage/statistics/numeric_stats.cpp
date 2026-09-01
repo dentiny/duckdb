@@ -7,17 +7,10 @@
 #include "duckdb/common/serializer/deserializer.hpp"
 #include "duckdb/common/serializer/serializer.hpp"
 #include "duckdb/common/types/vector.hpp"
+#include "duckdb/common/value_operations/value_operations.hpp"
 #include "duckdb/storage/statistics/base_statistics.hpp"
 
 namespace duckdb {
-
-static bool StatsValueLessThan(const Value &left, const Value &right) {
-	if (left.type().id() == LogicalTypeId::TIME_TZ) {
-		return LogicalTypeComparison::Operation<LessThan>(left.type().id(), left.GetValueUnsafe<int64_t>(),
-		                                                  right.GetValueUnsafe<int64_t>());
-	}
-	return left < right;
-}
 
 BaseStatistics NumericStats::CreateUnknown(LogicalType type) {
 	BaseStatistics result(std::move(type));
@@ -52,7 +45,7 @@ void NumericStats::Merge(BaseStatistics &stats, const BaseStatistics &other) {
 	D_ASSERT(stats.GetType() == other.GetType());
 	if (NumericStats::HasMin(other) && NumericStats::HasMin(stats)) {
 		auto other_min = NumericStats::Min(other);
-		if (StatsValueLessThan(other_min, NumericStats::Min(stats))) {
+		if (ValueOperations::LessThan(other_min, NumericStats::Min(stats))) {
 			NumericStats::SetMin(stats, other_min);
 		}
 	} else {
@@ -60,7 +53,7 @@ void NumericStats::Merge(BaseStatistics &stats, const BaseStatistics &other) {
 	}
 	if (NumericStats::HasMax(other) && NumericStats::HasMax(stats)) {
 		auto other_max = NumericStats::Max(other);
-		if (StatsValueLessThan(NumericStats::Max(stats), other_max)) {
+		if (ValueOperations::LessThan(NumericStats::Max(stats), other_max)) {
 			NumericStats::SetMax(stats, other_max);
 		}
 	} else {
@@ -330,7 +323,7 @@ bool NumericStats::ConstantsCoverRange(const BaseStatistics &stats, array_ptr<co
 }
 
 bool NumericStats::IsConstant(const BaseStatistics &stats) {
-	return !StatsValueLessThan(NumericStats::Min(stats), NumericStats::Max(stats));
+	return !ValueOperations::LessThan(NumericStats::Min(stats), NumericStats::Max(stats));
 }
 
 void SetNumericValueInternal(const Value &input, const LogicalType &type, NumericValueUnion &val, bool &has_val) {
@@ -441,7 +434,7 @@ Value NumericValueUnionToValue(const LogicalType &type, const NumericValueUnion 
 
 bool NumericStats::HasMinMax(const BaseStatistics &stats) {
 	return NumericStats::HasMin(stats) && NumericStats::HasMax(stats) &&
-	       !StatsValueLessThan(NumericStats::Max(stats), NumericStats::Min(stats));
+	       !ValueOperations::LessThan(NumericStats::Max(stats), NumericStats::Min(stats));
 }
 
 bool NumericStats::HasMin(const BaseStatistics &stats) {
