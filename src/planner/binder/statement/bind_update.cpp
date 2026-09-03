@@ -74,7 +74,7 @@ void Binder::BindUpdateSet(TableIndex proj_index, unique_ptr<LogicalOperator> &r
 			auto source_binding = ColumnBinding(proj_index, expr_index);
 
 			update_expressions.push_back(table.GetDefaultExpressionForColumn(
-			    context, bound_type, column.Type(), source_binding, *bound_defaults[column.StorageOid()]));
+			    context, bound_type, column, source_binding, *bound_defaults[column.StorageOid()]));
 		}
 	}
 }

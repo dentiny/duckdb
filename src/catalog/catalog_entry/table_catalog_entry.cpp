@@ -9,13 +9,17 @@
 #include "duckdb/main/settings.hpp"
 #include "duckdb/parser/constraints/list.hpp"
 #include "duckdb/parser/expression/cast_expression.hpp"
+#include "duckdb/parser/expression/function_expression.hpp"
 #include "duckdb/parser/parsed_data/create_table_info.hpp"
 #include "duckdb/planner/binder.hpp"
 #include "duckdb/planner/constraints/bound_check_constraint.hpp"
+#include "duckdb/planner/expression_binder/constant_binder.hpp"
+#include "duckdb/planner/expression/bound_constant_expression.hpp"
 #include "duckdb/planner/expression/bound_columnref_expression.hpp"
 #include "duckdb/planner/operator/logical_get.hpp"
 #include "duckdb/planner/operator/logical_projection.hpp"
 #include "duckdb/planner/operator/logical_update.hpp"
+#include "duckdb/function/scalar/struct_functions.hpp"
 #include "duckdb/storage/table_storage_info.hpp"
 #include "duckdb/planner/column_binding.hpp"
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
@@ -355,18 +359,135 @@ bool TableCatalogEntry::HasPrimaryKey() const {
 }
 
 LogicalType TableCatalogEntry::GetExpectedTypeForInsert(const ColumnDefinition &column) const {
+	if (column.HasNestedDefaults()) {
+		return LogicalType::INVALID;
+	}
 	return column.Type();
+}
+
+static child_list_t<LogicalType> GetRemappableChildren(const LogicalType &type) {
+	switch (type.id()) {
+	case LogicalTypeId::STRUCT:
+		return StructType::GetChildTypes(type);
+	case LogicalTypeId::LIST:
+		return {{"list", ListType::GetChildType(type)}};
+	case LogicalTypeId::MAP:
+		return {{"key", MapType::KeyType(type)}, {"value", MapType::ValueType(type)}};
+	default:
+		throw InternalException("Cannot get nested defaults for type %s", type);
+	}
+}
+
+static optional_ptr<const ParsedExpression> FindNestedDefault(const ParsedExpression &defaults,
+                                                              const Identifier &name) {
+	if (defaults.GetExpressionClass() != ExpressionClass::FUNCTION) {
+		throw InternalException("Nested defaults must be stored as a struct_pack expression");
+	}
+	auto &function = defaults.Cast<FunctionExpression>();
+	if (function.FunctionName() != "struct_pack") {
+		throw InternalException("Nested defaults must be stored as a struct_pack expression");
+	}
+	for (auto &argument : function.GetArguments()) {
+		if (argument.GetName() == name) {
+			return argument.GetExpression();
+		}
+	}
+	return nullptr;
+}
+
+static unique_ptr<ParsedExpression> BuildNestedDefaults(const LogicalType &source_type, const LogicalType &target_type,
+                                                        optional_ptr<const ParsedExpression> stored_defaults) {
+	auto source_children = GetRemappableChildren(source_type);
+	auto target_children = GetRemappableChildren(target_type);
+	identifier_map_t<LogicalType> source_map;
+	for (auto &child : source_children) {
+		source_map.emplace(child.first, child.second);
+	}
+
+	vector<FunctionArgument> defaults;
+	for (auto &target_child : target_children) {
+		auto source_entry = source_map.find(target_child.first);
+		auto stored_default = stored_defaults ? FindNestedDefault(*stored_defaults, target_child.first)
+		                                      : optional_ptr<const ParsedExpression>();
+		if (source_entry == source_map.end()) {
+			auto default_value =
+			    stored_default ? stored_default->Copy() : make_uniq<ConstantExpression>(Value(target_child.second));
+			defaults.emplace_back(target_child.first, std::move(default_value));
+			continue;
+		}
+		if (source_entry->second == target_child.second || !source_entry->second.IsNested() ||
+		    !target_child.second.IsNested() || source_entry->second.id() != target_child.second.id()) {
+			continue;
+		}
+		auto child_defaults = BuildNestedDefaults(source_entry->second, target_child.second, stored_default);
+		if (child_defaults) {
+			defaults.emplace_back(target_child.first, std::move(child_defaults));
+		}
+	}
+	if (defaults.empty()) {
+		return nullptr;
+	}
+	return make_uniq<FunctionExpression>("struct_pack", std::move(defaults));
+}
+
+static Value ConstructRemapMapping(const LogicalType &source_type, const LogicalType &target_type) {
+	auto source_children = GetRemappableChildren(source_type);
+	auto target_children = GetRemappableChildren(target_type);
+	identifier_map_t<LogicalType> target_map;
+	for (auto &child : target_children) {
+		target_map.emplace(child.first, child.second);
+	}
+
+	child_list_t<Value> mapping;
+	for (auto &source_child : source_children) {
+		auto target_entry = target_map.find(source_child.first);
+		if (target_entry == target_map.end()) {
+			continue;
+		}
+		Value mapping_value(source_child.first);
+		if (source_child.second.IsNested() && target_entry->second.IsNested() &&
+		    source_child.second.id() == target_entry->second.id()) {
+			vector<Value> nested_mapping;
+			nested_mapping.emplace_back(source_child.first);
+			nested_mapping.push_back(ConstructRemapMapping(source_child.second, target_entry->second));
+			mapping_value = Value::TUPLE(std::move(nested_mapping));
+		}
+		mapping.emplace_back(source_child.first, std::move(mapping_value));
+	}
+	return Value::STRUCT(std::move(mapping));
 }
 
 unique_ptr<Expression> TableCatalogEntry::GetDefaultExpressionForColumn(ClientContext &context,
                                                                         const LogicalType &input_type,
-                                                                        const LogicalType &result_type,
+                                                                        const ColumnDefinition &column,
                                                                         ColumnBinding binding,
                                                                         const Expression &constant_value) const {
-	(void)context;
 	(void)constant_value;
-	return BoundCastExpression::AddCastToType(context, make_uniq<BoundColumnRefExpression>(input_type, binding),
-	                                          result_type);
+	return ApplyNestedDefaults(context, make_uniq<BoundColumnRefExpression>(input_type, binding), column);
+}
+
+unique_ptr<Expression> TableCatalogEntry::ApplyNestedDefaults(ClientContext &context, unique_ptr<Expression> input,
+                                                              const ColumnDefinition &column) {
+	auto &input_type = input->GetReturnType();
+	if (!column.HasNestedDefaults() || input_type == column.Type() || !input_type.IsNested() ||
+	    input_type.id() != column.Type().id()) {
+		return BoundCastExpression::AddCastToType(context, std::move(input), column.Type());
+	}
+
+	auto defaults = BuildNestedDefaults(input_type, column.Type(), column.NestedDefaults());
+	if (!defaults) {
+		return BoundCastExpression::AddCastToType(context, std::move(input), column.Type());
+	}
+	auto binder = Binder::CreateBinder(context);
+	ConstantBinder default_binder(*binder, context, "nested DEFAULT value");
+	auto bound_defaults = default_binder.Bind(defaults);
+
+	vector<unique_ptr<Expression>> children;
+	children.push_back(std::move(input));
+	children.push_back(make_uniq<BoundConstantExpression>(Value(column.Type())));
+	children.push_back(make_uniq<BoundConstantExpression>(ConstructRemapMapping(input_type, column.Type())));
+	children.push_back(std::move(bound_defaults));
+	return RemapStructFun::GetFunction().Bind(context, std::move(children));
 }
 
 virtual_column_map_t TableCatalogEntry::GetVirtualColumns() const {

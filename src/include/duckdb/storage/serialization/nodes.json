@@ -515,6 +515,11 @@
         "name": "tags",
         "type": "InsertionOrderPreservingMap<string>",
         "default": "InsertionOrderPreservingMap<string>()"
+      },
+      {
+        "id": 107,
+        "name": "nested_defaults",
+        "type": "ParsedExpression*"
       }
     ],
     "constructor": [

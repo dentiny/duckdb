@@ -131,6 +131,7 @@ void ExpressionListRef::Serialize(Serializer &serializer) const {
 	serializer.WritePropertyWithDefault<vector<Identifier>>(200, "expected_names", expected_names);
 	serializer.WritePropertyWithDefault<vector<LogicalType>>(201, "expected_types", expected_types);
 	serializer.WritePropertyWithDefault<vector<vector<unique_ptr<ParsedExpression>>>>(202, "values", values);
+	serializer.WritePropertyWithDefault<vector<ColumnDefinition>>(203, "expected_columns", expected_columns);
 }
 
 unique_ptr<TableRef> ExpressionListRef::Deserialize(Deserializer &deserializer) {
@@ -138,6 +139,7 @@ unique_ptr<TableRef> ExpressionListRef::Deserialize(Deserializer &deserializer) 
 	deserializer.ReadPropertyWithDefault<vector<Identifier>>(200, "expected_names", result->expected_names);
 	deserializer.ReadPropertyWithDefault<vector<LogicalType>>(201, "expected_types", result->expected_types);
 	deserializer.ReadPropertyWithDefault<vector<vector<unique_ptr<ParsedExpression>>>>(202, "values", result->values);
+	deserializer.ReadPropertyWithDefault<vector<ColumnDefinition>>(203, "expected_columns", result->expected_columns);
 	return std::move(result);
 }
 

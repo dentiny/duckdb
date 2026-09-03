@@ -141,8 +141,10 @@ public:
 
 	virtual LogicalType GetExpectedTypeForInsert(const ColumnDefinition &column) const;
 	virtual unique_ptr<Expression> GetDefaultExpressionForColumn(ClientContext &context, const LogicalType &input_type,
-	                                                             const LogicalType &result_type, ColumnBinding binding,
+	                                                             const ColumnDefinition &column, ColumnBinding binding,
 	                                                             const Expression &constant_value) const;
+	static unique_ptr<Expression> ApplyNestedDefaults(ClientContext &context, unique_ptr<Expression> input,
+	                                                  const ColumnDefinition &column);
 
 	//! Returns the virtual columns for this table
 	virtual virtual_column_map_t GetVirtualColumns() const;
