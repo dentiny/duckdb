@@ -5,6 +5,7 @@
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
 #include "duckdb/planner/operator/logical_expression_get.hpp"
 #include "duckdb/planner/operator/logical_dummy_scan.hpp"
+#include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 
 namespace duckdb {
 
@@ -37,6 +38,11 @@ BoundStatement Binder::Bind(ExpressionListRef &expr) {
 				binder.target_type = LogicalType(LogicalTypeId::INVALID);
 			}
 			auto bound_expr = binder.Bind(expression_list[val_idx]);
+			if (!expr.expected_columns.empty()) {
+				D_ASSERT(expr.expected_columns.size() == expression_list.size());
+				bound_expr =
+				    TableCatalogEntry::ApplyNestedDefaults(context, std::move(bound_expr), expr.expected_columns[val_idx]);
+			}
 			list.push_back(std::move(bound_expr));
 		}
 		values.push_back(std::move(list));

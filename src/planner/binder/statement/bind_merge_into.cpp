@@ -146,7 +146,7 @@ Binder::BindMergeAction(LogicalMergeInto &merge_into, TableCatalogEntry &table, 
 				result->expressions.push_back(merge_into.bound_defaults[storage_idx]->Copy());
 			} else {
 				result->expressions.push_back(table.GetDefaultExpressionForColumn(
-				    context, insert_types[mapped_index], col.Type(), insert_bindings[mapped_index],
+				    context, insert_types[mapped_index], col, insert_bindings[mapped_index],
 				    *merge_into.bound_defaults[storage_idx]));
 			}
 		}

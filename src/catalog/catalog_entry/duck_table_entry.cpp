@@ -585,6 +585,32 @@ unique_ptr<ParsedExpression> PackExpression(unique_ptr<ParsedExpression> expr, I
 	return make_uniq<FunctionExpression>("struct_pack", std::move(children));
 }
 
+static unique_ptr<ParsedExpression> MergeNestedDefaults(unique_ptr<ParsedExpression> existing,
+                                                        unique_ptr<ParsedExpression> added) {
+	if (!existing) {
+		return added;
+	}
+	auto &existing_function = existing->Cast<FunctionExpression>();
+	auto &added_function = added->Cast<FunctionExpression>();
+	D_ASSERT(existing_function.FunctionName() == "struct_pack");
+	D_ASSERT(added_function.FunctionName() == "struct_pack");
+
+	auto &existing_arguments = existing_function.GetArgumentsMutable();
+	for (auto &added_argument : added_function.GetArgumentsMutable()) {
+		auto existing_entry =
+		    std::find_if(existing_arguments.begin(), existing_arguments.end(), [&](const FunctionArgument &argument) {
+			    return argument.GetName() == added_argument.GetName();
+		    });
+		if (existing_entry == existing_arguments.end()) {
+			existing_arguments.emplace_back(added_argument.GetName(), std::move(added_argument.GetExpressionMutable()));
+			continue;
+		}
+		existing_entry->GetExpressionMutable() = MergeNestedDefaults(std::move(existing_entry->GetExpressionMutable()),
+		                                                             std::move(added_argument.GetExpressionMutable()));
+	}
+	return existing;
+}
+
 static child_list_t<LogicalType> GetChildList(const LogicalType &type) {
 	child_list_t<LogicalType> child_types;
 	switch (type.id()) {
@@ -605,6 +631,48 @@ static child_list_t<LogicalType> GetChildList(const LogicalType &type) {
 		throw BinderException("Can't ConstructMapping for type '%s'", type.ToString());
 	}
 	return child_types;
+}
+
+static bool TransformNestedDefaults(ParsedExpression &defaults, const LogicalType &type,
+                                    const vector<Identifier> &column_path, idx_t depth,
+                                    optional_ptr<const Identifier> new_name) {
+	auto &function = defaults.Cast<FunctionExpression>();
+	D_ASSERT(function.FunctionName() == "struct_pack");
+	auto child_types = GetChildList(type);
+	auto path_name = column_path[depth];
+	if (type.id() == LogicalTypeId::LIST && path_name == "element") {
+		path_name = "list";
+	}
+
+	optional_ptr<const LogicalType> child_type;
+	for (auto &entry : child_types) {
+		if (entry.first == path_name) {
+			child_type = entry.second;
+			break;
+		}
+	}
+	D_ASSERT(child_type);
+
+	vector<FunctionArgument> transformed;
+	for (auto &argument : function.GetArgumentsMutable()) {
+		auto argument_name = argument.GetName();
+		auto argument_expression = std::move(argument.GetExpressionMutable());
+		if (argument_name != path_name) {
+			transformed.emplace_back(std::move(argument_name), std::move(argument_expression));
+			continue;
+		}
+		if (depth + 1 == column_path.size()) {
+			if (new_name) {
+				transformed.emplace_back(*new_name, std::move(argument_expression));
+			}
+			continue;
+		}
+		if (!TransformNestedDefaults(*argument_expression, *child_type, column_path, depth + 1, new_name)) {
+			transformed.emplace_back(std::move(argument_name), std::move(argument_expression));
+		}
+	}
+	function.GetArgumentsMutable() = std::move(transformed);
+	return function.GetArguments().empty();
 }
 
 static LogicalType ConstructNewType(const LogicalType &original_type, child_list_t<LogicalType> new_child_types) {
@@ -730,13 +798,17 @@ unique_ptr<CatalogEntry> DuckTableEntry::AddField(ClientContext &context, AddFie
 	children.push_back(make_uniq<ConstantExpression>(Value(res.new_type)));
 	children.push_back(make_uniq<ConstantExpression>(ConstructMapping(col.Name(), col.Type())));
 	D_ASSERT(res.default_value);
+	auto nested_defaults = info.new_field.HasDefaultValue() ? res.default_value->Copy() : nullptr;
 	children.push_back(std::move(res.default_value));
 
 	auto function = make_uniq<FunctionExpression>("remap_struct", std::move(children));
 
 	ChangeColumnTypeInfo change_column_type(info.GetAlterEntryData(), info.column_path[0], std::move(res.new_type),
 	                                        std::move(function));
-	return ChangeColumnType(context, change_column_type, AlterTableType::ADD_FIELD);
+	return ChangeColumnType(context, change_column_type, AlterTableType::ADD_FIELD, [&](ColumnDefinition &column) {
+		auto defaults = column.HasNestedDefaults() ? column.NestedDefaults().Copy() : nullptr;
+		column.SetNestedDefaults(MergeNestedDefaults(std::move(defaults), std::move(nested_defaults)));
+	});
 }
 
 void DuckTableEntry::UpdateConstraintsOnColumnDrop(const LogicalIndex &removed_index,
@@ -988,9 +1060,19 @@ unique_ptr<CatalogEntry> DuckTableEntry::RemoveField(ClientContext &context, Rem
 
 	auto function = make_uniq<FunctionExpression>("remap_struct", std::move(children));
 
+	auto old_type = col.Type();
 	ChangeColumnTypeInfo change_column_type(info.GetAlterEntryData(), info.column_path[0], std::move(res.new_type),
 	                                        std::move(function));
-	return ChangeColumnType(context, change_column_type, AlterTableType::REMOVE_FIELD);
+	return ChangeColumnType(context, change_column_type, AlterTableType::REMOVE_FIELD, [&](ColumnDefinition &column) {
+		if (!column.HasNestedDefaults()) {
+			return;
+		}
+		auto defaults = column.NestedDefaults().Copy();
+		if (TransformNestedDefaults(*defaults, old_type, info.column_path, 1, nullptr)) {
+			defaults.reset();
+		}
+		column.SetNestedDefaults(std::move(defaults));
+	});
 }
 
 DroppedFieldMapping RenameFieldFromStruct(const LogicalType &type, const vector<Identifier> &column_path,
@@ -1082,9 +1164,17 @@ unique_ptr<CatalogEntry> DuckTableEntry::RenameField(ClientContext &context, Ren
 	children.push_back(make_uniq<ConstantExpression>(Value()));
 
 	auto function = make_uniq<FunctionExpression>("remap_struct", std::move(children));
+	auto old_type = col.Type();
 	ChangeColumnTypeInfo change_column_type(info.GetAlterEntryData(), info.column_path[0], std::move(res.new_type),
 	                                        std::move(function));
-	return ChangeColumnType(context, change_column_type, AlterTableType::RENAME_FIELD);
+	return ChangeColumnType(context, change_column_type, AlterTableType::RENAME_FIELD, [&](ColumnDefinition &column) {
+		if (!column.HasNestedDefaults()) {
+			return;
+		}
+		auto defaults = column.NestedDefaults().Copy();
+		TransformNestedDefaults(*defaults, old_type, info.column_path, 1, info.new_name);
+		column.SetNestedDefaults(std::move(defaults));
+	});
 }
 
 unique_ptr<CatalogEntry> DuckTableEntry::SetDefault(ClientContext &context, SetDefaultInfo &info) {
@@ -1173,7 +1263,8 @@ unique_ptr<CatalogEntry> DuckTableEntry::DropNotNull(ClientContext &context, Dro
 }
 
 unique_ptr<CatalogEntry> DuckTableEntry::ChangeColumnType(ClientContext &context, ChangeColumnTypeInfo &info,
-                                                          AlterTableType alter_table_type) {
+                                                          AlterTableType alter_table_type,
+                                                          const std::function<void(ColumnDefinition &)> &callback) {
 	// Bind type
 	auto type_binder = Binder::CreateBinder(context);
 	type_binder->SetSearchPath(catalog, schema.name);
@@ -1212,6 +1303,9 @@ unique_ptr<CatalogEntry> DuckTableEntry::ChangeColumnType(ClientContext &context
 			if (alter_table_type == AlterTableType::RENAME_FIELD && copy.HasDefaultValue()) {
 				copy.SetDefaultValue(
 				    RemapStructDefault(copy.DefaultValue().Copy(), info.target_type, GetRemapStructMapping(info)));
+			}
+			if (callback) {
+				callback(copy);
 			}
 		}
 		// TODO: check if the generated_expression breaks, only delete it if it does
