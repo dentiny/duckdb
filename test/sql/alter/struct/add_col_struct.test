@@ -77,3 +77,22 @@ statement error
 ALTER TABLE test ADD COLUMN s.x.a INTEGER
 ----
 does not exist
+
+# defaults on added fields apply to rows inserted after the alter
+statement ok
+CREATE TABLE test_added_field_default(s STRUCT(a INTEGER, b INTEGER))
+
+statement ok
+INSERT INTO test_added_field_default VALUES ({'a': 0, 'b': 0})
+
+statement ok
+ALTER TABLE test_added_field_default ADD COLUMN s.c INTEGER DEFAULT 9
+
+statement ok
+INSERT INTO test_added_field_default VALUES ({'a': 1, 'b': 2})
+
+query II
+SELECT s.a, s.c FROM test_added_field_default ORDER BY s.a
+----
+0	9
+1	9
