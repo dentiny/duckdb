@@ -34,6 +34,15 @@ DuckIndexEntry::DuckIndexEntry(Catalog &catalog, SchemaCatalogEntry &schema, Cre
     : IndexCatalogEntry(catalog, schema, create_info), info(std::move(storage_info)), initial_index_size(0) {
 }
 
+unique_ptr<CreateInfo> DuckIndexEntry::GetInfo() const {
+	auto result = IndexCatalogEntry::GetInfo();
+	vector<column_t> column_ids;
+	if (GetDataTableInfo().GetIndexes().TryGetIndexColumnIds(name, column_ids)) {
+		result->Cast<CreateIndexInfo>().column_ids = std::move(column_ids);
+	}
+	return result;
+}
+
 unique_ptr<CatalogEntry> DuckIndexEntry::Copy(ClientContext &context) const {
 	auto info_copy = GetInfo();
 	auto &cast_info = info_copy->Cast<CreateIndexInfo>();

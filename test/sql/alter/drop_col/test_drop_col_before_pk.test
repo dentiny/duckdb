@@ -9,13 +9,27 @@ statement ok
 INSERT INTO t VALUES (1, 10), (2, 20);
 
 statement ok
+BEGIN TRANSACTION;
+
+statement ok
+INSERT INTO t VALUES (3, 30);
+
+statement ok
 ALTER TABLE t DROP COLUMN a;
+
+statement ok
+INSERT INTO t VALUES (40);
+
+statement ok
+COMMIT;
 
 query I
 SELECT * FROM t ORDER BY b
 ----
 10
 20
+30
+40
 
 statement error
 INSERT INTO t VALUES (10);

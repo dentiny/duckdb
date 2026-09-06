@@ -33,6 +33,7 @@ public:
 	DuckIndexEntry(Catalog &catalog, SchemaCatalogEntry &schema, CreateIndexInfo &create_info,
 	               shared_ptr<IndexDataTableInfo> storage_info);
 
+	unique_ptr<CreateInfo> GetInfo() const override;
 	unique_ptr<CatalogEntry> Copy(ClientContext &context) const override;
 	void Rollback(CatalogEntry &prev_entry) override;
 

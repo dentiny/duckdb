@@ -3,7 +3,7 @@
 # group: [drop_col]
 
 statement ok
-CREATE TABLE test(i INTEGER, j INTEGER)
+CREATE TABLE test(i INTEGER, j INTEGER PRIMARY KEY)
 
 statement ok
 INSERT INTO test VALUES (1, 1), (2, 2)
@@ -12,7 +12,7 @@ statement ok
 BEGIN TRANSACTION
 
 statement ok
-ALTER TABLE test DROP COLUMN j
+ALTER TABLE test DROP COLUMN i
 
 query I
 SELECT * FROM test
@@ -30,4 +30,9 @@ SELECT * FROM test
 1
 2
 2
+
+statement error
+INSERT INTO test VALUES (3, 1)
+----
+<REGEX>:Constraint Error.*Duplicate key "j: 1" violates primary key constraint.*
 
