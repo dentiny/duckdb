@@ -60,3 +60,14 @@ query I
 SELECT count(*) FROM doubles WHERE i NOT IN (1, 2, 3);
 ----
 1
+
+# A NULL anywhere in the NOT IN list prevents every row from matching.
+query I
+SELECT count(*) FROM mixed WHERE i NOT IN (1, NULL, 3);
+----
+0
+
+query II
+EXPLAIN ANALYZE SELECT count(*) FROM mixed WHERE i NOT IN (1, NULL, 3);
+----
+analyzed_plan	<REGEX>:.*Empty Result.*
