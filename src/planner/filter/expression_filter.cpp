@@ -667,9 +667,11 @@ static FilterPropagateResult CheckNotOperatorStatistics(optional_ptr<ClientConte
 	auto &child = *op_expr.GetChildren()[0];
 	if (child.GetExpressionType() == ExpressionType::COMPARE_IN) {
 		auto &children = child.Cast<BoundOperatorExpression>().GetChildren();
-		if (children.size() == 2 && children[1]->GetExpressionType() == ExpressionType::VALUE_CONSTANT &&
-		    children[1]->Cast<BoundConstantExpression>().GetValue().IsNull()) {
-			return FilterPropagateResult::FILTER_FALSE_OR_NULL;
+		for (idx_t i = 1; i < children.size(); i++) {
+			if (children[i]->GetExpressionType() == ExpressionType::VALUE_CONSTANT &&
+			    children[i]->Cast<BoundConstantExpression>().GetValue().IsNull()) {
+				return FilterPropagateResult::FILTER_FALSE_OR_NULL;
+			}
 		}
 	}
 	auto bool_ref = CheckBoolRefStatistics(child, input_stats, true);
