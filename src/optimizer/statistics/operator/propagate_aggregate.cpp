@@ -201,19 +201,11 @@ bool TryGetNonNullCount(const vector<PartitionStatistics> &partition_stats, cons
 		if (!row_group || row_group->HasPendingWrites()) {
 			return false;
 		}
-		auto column_stats = row_group->GetColumnStatistics(storage_index);
-		if (!column_stats) {
+		auto null_count = row_group->GetColumnNullCount(storage_index);
+		if (!null_count.IsValid() || null_count.GetIndex() > stats.count) {
 			return false;
 		}
-		if (!column_stats->CanHaveNull()) {
-			count += stats.count;
-		} else if (column_stats->CanHaveNoNull()) {
-			auto null_count = row_group->GetColumnNullCount(storage_index);
-			if (!null_count.IsValid() || null_count.GetIndex() > stats.count) {
-				return false;
-			}
-			count += stats.count - null_count.GetIndex();
-		}
+		count += stats.count - null_count.GetIndex();
 	}
 	return true;
 }
