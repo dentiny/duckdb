@@ -23,3 +23,16 @@ query II
 SELECT count(*), count(x) FROM '{TEST_DIR}/count_null_stats.parquet';
 ----
 100000	50000
+
+# A top-level nested column expands to multiple Parquet leaf columns. The NULL count for x must use x's leaf index.
+statement ok
+COPY (
+  SELECT struct_pack(a := i::INTEGER, b := i::INTEGER) AS nested,
+         CASE WHEN i % 2 = 0 THEN NULL ELSE i::INTEGER END AS x
+  FROM range(0, 100000) tbl(i)
+) TO '{TEST_DIR}/count_null_stats_after_nested.parquet' (FORMAT PARQUET, ROW_GROUP_SIZE 10000);
+
+query I
+SELECT count(x) FROM '{TEST_DIR}/count_null_stats_after_nested.parquet';
+----
+50000
