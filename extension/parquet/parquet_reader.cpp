@@ -2150,7 +2150,9 @@ struct ParquetPartitionRowGroup : public PartitionRowGroup {
 		D_ASSERT(metadata.row_groups.size() > row_group_idx);
 		D_ASSERT(root_schema->children.size() > primary_index);
 		const auto &column_schema = root_schema->children[primary_index];
-		if (column_schema.type.IsNested()) {
+		if (column_schema.schema_type == ParquetColumnSchemaType::FILE_ROW_NUMBER ||
+		    column_schema.schema_type == ParquetColumnSchemaType::FILE_ROW_GROUP_NUMBER ||
+		    column_schema.type.IsNested()) {
 			return optional_idx();
 		}
 		const auto &row_group = metadata.row_groups[row_group_idx];

@@ -41,3 +41,19 @@ query IIII
 SELECT max(x), count(*), count(x), min(x) FROM '{TEST_DIR}/count_null_stats_after_nested.parquet';
 ----
 99999	100000	50000	1
+
+statement ok
+COPY (SELECT NULL::INTEGER AS x FROM range(10000))
+TO '{TEST_DIR}/count_file_row_number.parquet' (FORMAT PARQUET);
+
+query II
+EXPLAIN SELECT count(file_row_number)
+FROM read_parquet('{TEST_DIR}/count_file_row_number.parquet', file_row_number = true);
+----
+physical_plan	<!REGEX>:.*PARQUET_SCAN.*
+
+query I
+SELECT count(file_row_number)
+FROM read_parquet('{TEST_DIR}/count_file_row_number.parquet', file_row_number = true);
+----
+10000
