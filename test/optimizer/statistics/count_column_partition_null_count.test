@@ -32,7 +32,12 @@ COPY (
   FROM range(0, 100000) tbl(i)
 ) TO '{TEST_DIR}/count_null_stats_after_nested.parquet' (FORMAT PARQUET, ROW_GROUP_SIZE 10000);
 
-query I
-SELECT count(x) FROM '{TEST_DIR}/count_null_stats_after_nested.parquet';
+query II
+EXPLAIN SELECT count(x) FROM '{TEST_DIR}/count_null_stats_after_nested.parquet';
 ----
-50000
+physical_plan	<!REGEX>:.*PARQUET_SCAN.*
+
+query IIII
+SELECT max(x), count(*), count(x), min(x) FROM '{TEST_DIR}/count_null_stats_after_nested.parquet';
+----
+99999	100000	50000	1

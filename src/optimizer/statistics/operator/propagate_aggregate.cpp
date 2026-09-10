@@ -31,18 +31,21 @@ namespace duckdb {
 
 namespace {
 
-struct AggColumnInfo {
-	idx_t aggr_idx;
-	ColumnBinding binding;
-	LogicalType input_type;
-	LogicalType result_type;
-	StorageIndex storage_index;
-};
-
 struct ValueComparator {
 	virtual ~ValueComparator() = default;
 	virtual bool Compare(Value &lhs, Value &rhs) const = 0;
 	virtual Value GetVal(BaseStatistics &stats) const = 0;
+};
+
+enum class PrecomputedAggregateType : uint8_t { COUNT_STAR, COUNT, MIN_MAX };
+
+struct PrecomputedAggregate {
+	PrecomputedAggregateType type;
+	ColumnBinding binding;
+	LogicalType input_type;
+	LogicalType result_type;
+	StorageIndex storage_index;
+	unique_ptr<ValueComparator> comparator;
 };
 
 template <typename StatsType>
@@ -94,7 +97,7 @@ bool IsSafeCast(const LogicalType &source, const LogicalType &target) {
 	return LogicalType::DefaultTryGetMaxLogicalTypeUnchecked(source, target, max_type) && max_type == target;
 }
 
-bool TryGetAggColumnInfo(const Expression &expr, AggColumnInfo &info) {
+bool TryGetAggColumnInfo(const Expression &expr, PrecomputedAggregate &info) {
 	if (expr.GetExpressionType() == ExpressionType::BOUND_COLUMN_REF) {
 		const auto &col_ref = expr.Cast<BoundColumnRefExpression>();
 		info.binding = col_ref.Binding();
@@ -120,9 +123,9 @@ bool TryGetAggColumnInfo(const Expression &expr, AggColumnInfo &info) {
 	return true;
 }
 
-bool WalkAggColumnThroughProjection(const LogicalProjection &proj, AggColumnInfo &info) {
+bool WalkAggColumnThroughProjection(const LogicalProjection &proj, PrecomputedAggregate &info) {
 	auto &expr = proj.GetExpression(info.binding);
-	AggColumnInfo projection_info;
+	PrecomputedAggregate projection_info;
 	if (!TryGetAggColumnInfo(expr, projection_info)) {
 		return false;
 	}
@@ -187,6 +190,45 @@ bool GroupingSetCanIntroduceNull(const LogicalAggregate &aggr, idx_t group_idx) 
 	return false;
 }
 
+bool TryGetNonNullCount(const vector<PartitionStatistics> &partition_stats, const StorageIndex &storage_index,
+                        idx_t &count) {
+	count = 0;
+	for (const auto &stats : partition_stats) {
+		if (stats.count_type == CountType::COUNT_APPROXIMATE) {
+			return false;
+		}
+		auto row_group = stats.partition_row_group;
+		if (!row_group || row_group->HasPendingWrites()) {
+			return false;
+		}
+		auto column_stats = row_group->GetColumnStatistics(storage_index);
+		if (!column_stats) {
+			return false;
+		}
+		if (!column_stats->CanHaveNull()) {
+			count += stats.count;
+		} else if (column_stats->CanHaveNoNull()) {
+			auto null_count = row_group->GetColumnNullCount(storage_index);
+			if (!null_count.IsValid() || null_count.GetIndex() > stats.count) {
+				return false;
+			}
+			count += stats.count - null_count.GetIndex();
+		}
+	}
+	return true;
+}
+
+bool TryGetRowCount(const vector<PartitionStatistics> &partition_stats, idx_t &count) {
+	count = 0;
+	for (const auto &stats : partition_stats) {
+		if (stats.count_type == CountType::COUNT_APPROXIMATE) {
+			return false;
+		}
+		count += stats.count;
+	}
+	return true;
+}
+
 } // namespace
 
 void StatisticsPropagator::TryExecuteAggregates(LogicalAggregate &aggr, unique_ptr<LogicalOperator> &node_ptr) {
@@ -194,14 +236,9 @@ void StatisticsPropagator::TryExecuteAggregates(LogicalAggregate &aggr, unique_p
 		// not possible with groups
 		return;
 	}
-	// check if all aggregates are COUNT(*), COUNT(single_col), MIN or MAX
-	vector<idx_t> count_star_idxs;
-	vector<AggColumnInfo> count_columns;
-	vector<AggColumnInfo> min_max_columns;
-	vector<unique_ptr<ValueComparator>> comparators;
+	vector<PrecomputedAggregate> aggregates;
 
-	for (idx_t i = 0; i < aggr.expressions.size(); i++) {
-		auto &aggr_ref = aggr.expressions[i];
+	for (auto &aggr_ref : aggr.expressions) {
 		if (aggr_ref->GetExpressionClass() != ExpressionClass::BOUND_AGGREGATE) {
 			// not an aggregate
 			return;
@@ -216,52 +253,42 @@ void StatisticsPropagator::TryExecuteAggregates(LogicalAggregate &aggr, unique_p
 			return;
 		}
 		auto &fun_name = aggr_expr.Function().GetName();
+		PrecomputedAggregate info;
 		if (fun_name == "min" || fun_name == "max") {
 			if (aggr_expr.GetChildren().size() != 1) {
 				return;
 			}
-			AggColumnInfo column_info;
-			if (!TryGetAggColumnInfo(*aggr_expr.GetChildren()[0], column_info)) {
+			info.type = PrecomputedAggregateType::MIN_MAX;
+			if (!TryGetAggColumnInfo(*aggr_expr.GetChildren()[0], info)) {
 				return;
 			}
-			column_info.aggr_idx = i;
-			auto comparator = GetComparator(fun_name, column_info.input_type);
-			if (!comparator) {
+			info.comparator = GetComparator(fun_name, info.input_type);
+			if (!info.comparator) {
 				// Type has no min max statistics
 				return;
 			}
-			min_max_columns.push_back(std::move(column_info));
-			comparators.push_back(std::move(comparator));
 		} else if (fun_name == "count_star") {
-			count_star_idxs.push_back(i);
+			info.type = PrecomputedAggregateType::COUNT_STAR;
 		} else if (fun_name == "count") {
-			// count(col) can be folded when we can determine per-partition non-null counts
 			if (aggr_expr.GetChildren().size() != 1 || aggr_expr.IsDistinct()) {
 				return;
 			}
-			AggColumnInfo column_info;
-			if (!TryGetAggColumnInfo(*aggr_expr.GetChildren()[0], column_info)) {
+			info.type = PrecomputedAggregateType::COUNT;
+			if (!TryGetAggColumnInfo(*aggr_expr.GetChildren()[0], info)) {
 				return;
 			}
-			column_info.aggr_idx = i;
-			count_columns.push_back(std::move(column_info));
 		} else {
-			// aggregate is not count star, count(col), min or max - bail
 			return;
 		}
+		aggregates.push_back(std::move(info));
 	}
 
 	// skip any projections
 	reference<LogicalOperator> child_ref = *aggr.children[0];
 	while (child_ref.get().type == LogicalOperatorType::LOGICAL_PROJECTION) {
 		auto &proj = child_ref.get().Cast<LogicalProjection>();
-		for (auto &info : min_max_columns) {
-			if (!WalkAggColumnThroughProjection(proj, info)) {
-				return;
-			}
-		}
-		for (auto &info : count_columns) {
-			if (!WalkAggColumnThroughProjection(proj, info)) {
+		for (auto &info : aggregates) {
+			if (info.type != PrecomputedAggregateType::COUNT_STAR && !WalkAggColumnThroughProjection(proj, info)) {
 				return;
 			}
 		}
@@ -290,14 +317,10 @@ void StatisticsPropagator::TryExecuteAggregates(LogicalAggregate &aggr, unique_p
 		return;
 	}
 
-	//! Resolve each column's storage index; bail if a column (e.g. generated) has none.
-	for (auto &info : min_max_columns) {
-		auto &column_index = get.GetColumnIndex(info.binding);
-		if (!get.TryGetStorageIndex(column_index, info.storage_index)) {
-			return;
+	for (auto &info : aggregates) {
+		if (info.type == PrecomputedAggregateType::COUNT_STAR) {
+			continue;
 		}
-	}
-	for (auto &info : count_columns) {
 		auto &column_index = get.GetColumnIndex(info.binding);
 		if (!get.TryGetStorageIndex(column_index, info.storage_index)) {
 			return;
@@ -379,72 +402,36 @@ void StatisticsPropagator::TryExecuteAggregates(LogicalAggregate &aggr, unique_p
 		return;
 	}
 
-	// Execute min/max aggregates on partition statistics
-	for (idx_t i = 0; i < min_max_columns.size(); i++) {
-		const auto &info = min_max_columns[i];
-		auto &comparator = comparators[i];
-
-		Value agg_result;
-		if (!TryGetValueFromStats(partition_stats[0], info.storage_index, *comparator, info.result_type, agg_result)) {
-			return;
-		}
-		for (idx_t partition_idx = 1; partition_idx < partition_stats.size(); partition_idx++) {
-			Value rhs;
-			if (!TryGetValueFromStats(partition_stats[partition_idx], info.storage_index, *comparator, info.result_type,
-			                          rhs)) {
+	for (const auto &info : aggregates) {
+		Value result;
+		if (info.type == PrecomputedAggregateType::MIN_MAX) {
+			if (!TryGetValueFromStats(partition_stats[0], info.storage_index, *info.comparator, info.result_type,
+			                          result)) {
 				return;
 			}
-			if (!comparator->Compare(agg_result, rhs)) {
-				agg_result = rhs;
+			for (idx_t partition_idx = 1; partition_idx < partition_stats.size(); partition_idx++) {
+				Value rhs;
+				if (!TryGetValueFromStats(partition_stats[partition_idx], info.storage_index, *info.comparator,
+				                          info.result_type, rhs)) {
+					return;
+				}
+				if (!info.comparator->Compare(result, rhs)) {
+					result = rhs;
+				}
 			}
-		}
-		types.push_back(agg_result.type());
-		agg_results.push_back(make_uniq<BoundConstantExpression>(agg_result));
-	}
-	// Fold count_star and count(col) into constants, then splice into agg_results in ascending aggregate-index order
-	// (min/max entries are already appended in aggregate-index order above).
-	if (!count_star_idxs.empty() || !count_columns.empty()) {
-		idx_t total_row_count = 0;
-		for (const auto &stats : partition_stats) {
-			if (stats.count_type == CountType::COUNT_APPROXIMATE) {
+		} else {
+			idx_t count;
+			if (info.type == PrecomputedAggregateType::COUNT_STAR) {
+				if (!TryGetRowCount(partition_stats, count)) {
+					return;
+				}
+			} else if (!TryGetNonNullCount(partition_stats, info.storage_index, count)) {
 				return;
 			}
-			total_row_count += stats.count;
+			result = Value::BIGINT(NumericCast<int64_t>(count));
 		}
-		vector<pair<idx_t, idx_t>> constants;
-		for (auto idx : count_star_idxs) {
-			constants.emplace_back(idx, total_row_count);
-		}
-		for (const auto &info : count_columns) {
-			idx_t non_null = 0;
-			for (const auto &stats : partition_stats) {
-				auto prg = stats.partition_row_group;
-				if (!prg || prg->HasPendingWrites()) {
-					return;
-				}
-				auto column_stats = prg->GetColumnStatistics(info.storage_index);
-				if (!column_stats) {
-					return;
-				}
-				if (!column_stats->CanHaveNull()) {
-					non_null += stats.count;
-				} else if (column_stats->CanHaveNoNull()) {
-					auto nc = prg->GetColumnNullCount(info.storage_index);
-					if (!nc.IsValid() || nc.GetIndex() > stats.count) {
-						return;
-					}
-					non_null += stats.count - nc.GetIndex();
-				}
-				// else: partition is entirely NULL, contributes 0
-			}
-			constants.emplace_back(info.aggr_idx, non_null);
-		}
-		std::sort(constants.begin(), constants.end());
-		for (auto &entry : constants) {
-			auto expr = make_uniq<BoundConstantExpression>(Value::BIGINT(NumericCast<int64_t>(entry.second)));
-			agg_results.emplace(agg_results.begin() + NumericCast<int64_t>(entry.first), std::move(expr));
-			types.insert(types.begin() + NumericCast<int64_t>(entry.first), LogicalType::BIGINT);
-		}
+		types.push_back(result.type());
+		agg_results.push_back(make_uniq<BoundConstantExpression>(result));
 	}
 
 	if (need_to_scan) {
