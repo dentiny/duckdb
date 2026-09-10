@@ -2148,11 +2148,16 @@ struct ParquetPartitionRowGroup : public PartitionRowGroup {
 	optional_idx GetColumnNullCount(const StorageIndex &storage_index) override {
 		const idx_t primary_index = storage_index.GetPrimaryIndex();
 		D_ASSERT(metadata.row_groups.size() > row_group_idx);
-		const auto &row_group = metadata.row_groups[row_group_idx];
-		if (primary_index >= row_group.columns.size()) {
+		D_ASSERT(root_schema->children.size() > primary_index);
+		const auto &column_schema = root_schema->children[primary_index];
+		if (column_schema.type.IsNested()) {
 			return optional_idx();
 		}
-		const auto &column_chunk = row_group.columns[primary_index];
+		const auto &row_group = metadata.row_groups[row_group_idx];
+		if (column_schema.column_index >= row_group.columns.size()) {
+			return optional_idx();
+		}
+		const auto &column_chunk = row_group.columns[column_schema.column_index];
 		if (!column_chunk.__isset.meta_data || !column_chunk.meta_data.__isset.statistics) {
 			return optional_idx();
 		}
