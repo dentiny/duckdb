@@ -35,11 +35,11 @@ struct LeftRightGrapheme {
 
 template <class OP>
 static string_t LeftScalarFunction(Vector &result, const string_t str, int64_t pos) {
+	int64_t num_characters = OP::template Operation<string_t, int64_t>(str);
 	if (pos >= 0) {
-		return OP::Substring(result, str, 1, pos);
+		return OP::Substring(result, str, 1, MinValue<int64_t>(num_characters, pos));
 	}
 
-	int64_t num_characters = OP::template Operation<string_t, int64_t>(str);
 	pos = MaxValue<int64_t>(0, num_characters + pos);
 	return OP::Substring(result, str, 1, pos);
 }

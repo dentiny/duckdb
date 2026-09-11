@@ -26,6 +26,16 @@ SELECT {FUN}('🦆ab', 0), {FUN}('🦆ab', -1), {FUN}('🦆ab', -2), {FUN}('🦆
 ----
 (empty)	🦆a	🦆	(empty)	(empty)
 
+query I
+SELECT {FUN}('abc', 5000000000)
+----
+abc
+
+query T
+SELECT {FUN}('abc', -5000000000)
+----
+(empty)
+
 # test LEFT on NULL values
 query TTT
 SELECT {FUN}(NULL, 0), {FUN}('abc', NULL), {FUN}(NULL, NULL)
