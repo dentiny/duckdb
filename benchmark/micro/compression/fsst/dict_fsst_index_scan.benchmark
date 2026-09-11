@@ -1,0 +1,21 @@
+# name: benchmark/micro/compression/fsst/dict_fsst_index_scan.benchmark
+# description: ART index scan fetching rows from a DICT_FSST compressed string column
+# group: [fsst]
+
+name dict_fsst index scan
+group fsst
+storage persistent latest
+
+load
+DROP TABLE IF EXISTS test;
+PRAGMA force_compression='dict_fsst';
+CREATE TABLE test AS SELECT i AS id, 'prefix_' || (i%100000)::VARCHAR AS s FROM range(0, 2000000) tbl(i);
+CREATE INDEX idx ON test(id);
+checkpoint;
+SET index_scan_percentage=1.0;
+
+run
+SELECT sum(length(s))::BIGINT FROM test WHERE id >= 1;
+
+result I
+23777792
