@@ -150,10 +150,15 @@ void DictFSSTCompressionStorage::StringScan(ColumnSegment &segment, ColumnScanSt
 //===--------------------------------------------------------------------===//
 void DictFSSTCompressionStorage::StringFetchRow(ColumnSegment &segment, ColumnFetchState &state, row_t row_id,
                                                 Vector &result, idx_t result_idx) {
-	// fetch a single row from the string segment
-	CompressedStringScanState scan_state(segment, state.GetOrInsertHandle(segment));
-	scan_state.Initialize(false);
-	scan_state.ScanToFlatVector(result, result_idx, NumericCast<idx_t>(row_id), 1);
+	// fetch a single row from the string segment - re-use the initialized scan state for the segment
+	auto entry = state.scan_states.find(&segment);
+	if (entry == state.scan_states.end()) {
+		auto scan_state = make_uniq<CompressedStringScanState>(segment, state.GetOrInsertHandle(segment));
+		scan_state->Initialize(false);
+		entry = state.scan_states.emplace(&segment, std::move(scan_state)).first;
+	}
+	entry->second->Cast<CompressedStringScanState>().ScanToFlatVector(result, result_idx, NumericCast<idx_t>(row_id),
+	                                                                  1);
 }
 
 //===--------------------------------------------------------------------===//

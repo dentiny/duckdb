@@ -1,0 +1,20 @@
+# name: benchmark/micro/compression/fsst/dict_fsst_fetch_row.benchmark
+# description: Fetching rows one-by-one from a DICT_FSST compressed string column (fetch-row path)
+# group: [fsst]
+
+name dict_fsst fetch-row scan
+group fsst
+storage persistent latest
+
+load
+DROP TABLE IF EXISTS test;
+PRAGMA force_compression='dict_fsst';
+CREATE TABLE test AS SELECT i AS id, 'prefix_' || (i%100000)::VARCHAR AS s FROM range(0, 2000000) tbl(i);
+checkpoint;
+SET debug_force_fetch_row=true;
+
+run
+SELECT sum(length(s))::BIGINT FROM test;
+
+result I
+23777800
