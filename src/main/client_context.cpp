@@ -1321,7 +1321,13 @@ unique_ptr<QueryResult> ClientContext::ExecutePendingQueryInternal(ClientContext
 
 void ClientContext::Interrupt() {
 	ClientInterruptState expected = ClientInterruptState::NOT_INTERRUPTED;
-	interrupt_state.compare_exchange_strong(expected, ClientInterruptState::INTERRUPTED);
+	if (!interrupt_state.compare_exchange_strong(expected, ClientInterruptState::INTERRUPTED)) {
+		return;
+	}
+	lock_guard<mutex> guard(interrupt_callbacks_lock);
+	for (auto &entry : interrupt_callbacks) {
+		entry.second();
+	}
 }
 
 bool ClientContext::IsInterrupted() const {
@@ -1332,11 +1338,41 @@ void ClientContext::ClearInterrupt() {
 	interrupt_state = ClientInterruptState::NOT_INTERRUPTED;
 }
 
+unique_ptr<ClientContextInterruptCallback> ClientContext::RegisterInterruptCallback(std::function<void()> callback) {
+	idx_t callback_id;
+	{
+		lock_guard<mutex> guard(interrupt_callbacks_lock);
+		callback_id = next_interrupt_callback_id++;
+		auto entry = interrupt_callbacks.emplace(callback_id, std::move(callback));
+		if (IsInterrupted()) {
+			entry.first->second();
+		}
+	}
+	return make_uniq<ClientContextInterruptCallback>(*this, callback_id);
+}
+
+void ClientContext::RemoveInterruptCallback(idx_t callback_id) {
+	lock_guard<mutex> guard(interrupt_callbacks_lock);
+	interrupt_callbacks.erase(callback_id);
+}
+
+ClientContextInterruptCallback::ClientContextInterruptCallback(ClientContext &context_p, idx_t callback_id_p)
+    : context(context_p), callback_id(callback_id_p) {
+}
+
+ClientContextInterruptCallback::~ClientContextInterruptCallback() {
+	context.RemoveInterruptCallback(callback_id);
+}
+
 void ClientContext::SuppressInterrupts() {
 	interrupt_state = ClientInterruptState::INTERRUPTS_SUPPRESSED;
 }
 
 void ClientContext::InterruptCheck() const {
+	InterruptCheck(false);
+}
+
+void ClientContext::InterruptCheck(bool force_timeout_check) const {
 	// Counter for throttling timeout checks - only check every N iterations
 	static constexpr uint32_t TIMEOUT_CHECK_INTERVAL = 256;
 	thread_local uint32_t timeout_check_counter = 0;
@@ -1345,7 +1381,7 @@ void ClientContext::InterruptCheck() const {
 		throw InterruptException();
 	}
 	// Only check timeout every N calls to avoid expensive steady_clock::now() syscall
-	if (query_deadline.IsValid() && ++timeout_check_counter % TIMEOUT_CHECK_INTERVAL == 0) {
+	if (query_deadline.IsValid() && (force_timeout_check || ++timeout_check_counter % TIMEOUT_CHECK_INTERVAL == 0)) {
 		auto now = NumericCast<idx_t>(duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
 		if (now >= query_deadline.GetIndex()) {
 			throw InterruptException("Query exceeded maximum execution time");

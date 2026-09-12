@@ -12,6 +12,7 @@
 #include "duckdb/common/shared_ptr.hpp"
 
 namespace duckdb {
+class ClientContext;
 struct StorageLockInternals;
 
 enum class StorageLockType { SHARED = 0, EXCLUSIVE = 1 };
@@ -37,6 +38,8 @@ public:
 
 	//! Get an exclusive lock
 	unique_ptr<StorageLockKey> GetExclusiveLock();
+	//! Wait for and get an exclusive lock without blocking new readers while waiting
+	unique_ptr<StorageLockKey> GetExclusiveLock(ClientContext &context);
 	//! Get a shared lock
 	unique_ptr<StorageLockKey> GetSharedLock();
 	//! Try to get an exclusive lock - if we cannot get it immediately we return `nullptr`

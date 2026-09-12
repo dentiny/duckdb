@@ -4,8 +4,10 @@
 #include "duckdb/execution/physical_plan_generator.hpp"
 #include "duckdb/main/materialized_query_result.hpp"
 #include "duckdb/parallel/task_scheduler.hpp"
+#include "duckdb/common/chrono.hpp"
 #include "duckdb/common/virtual_file_system.hpp"
 #include "duckdb/main/settings.hpp"
+#include "duckdb/storage/storage_lock.hpp"
 #include "duckdb/storage/storage_info.hpp"
 
 #include <thread>
@@ -135,6 +137,31 @@ TEST_CASE("Test async threads", "[api]") {
 
 	con.Query("SET async_threads=2");
 	REQUIRE(scheduler.NumberOfAsyncThreads() == 2);
+}
+
+TEST_CASE("Interruptible checkpoint lock waits can be cancelled", "[api]") {
+	DuckDB db(nullptr);
+	Connection con(db);
+	StorageLock storage_lock;
+	auto shared_lock = storage_lock.GetSharedLock();
+	atomic<bool> interrupted {false};
+
+	std::thread writer([&]() {
+		try {
+			auto exclusive_lock = storage_lock.GetExclusiveLock(*con.context);
+		} catch (InterruptException &) {
+			interrupted = true;
+		}
+	});
+	std::this_thread::sleep_for(milliseconds(10));
+	con.Interrupt();
+	writer.join();
+
+	REQUIRE(interrupted);
+	con.context->ClearInterrupt();
+	shared_lock.reset();
+	auto next_reader = storage_lock.GetSharedLock();
+	REQUIRE(next_reader != nullptr);
 }
 
 static idx_t ColumnDataScanMaxThreads(Connection &con, MaterializedQueryResult &result,
