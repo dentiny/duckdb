@@ -7,10 +7,13 @@
 #include "duckdb/common/types/value.hpp"
 #include "duckdb/common/unique_ptr.hpp"
 #include "duckdb/common/vector.hpp"
+#include "duckdb/execution/expression_executor.hpp"
+#include "duckdb/function/arg_properties.hpp"
 #include "duckdb/function/partition_stats.hpp"
 #include "duckdb/optimizer/optimizer.hpp"
 #include "duckdb/optimizer/column_binding_replacer.hpp"
 #include "duckdb/planner/binder.hpp"
+#include "duckdb/planner/expression_iterator.hpp"
 #include "duckdb/optimizer/statistics_propagator.hpp"
 #include "duckdb/planner/filter/expression_filter.hpp"
 #include "duckdb/planner/operator/logical_aggregate.hpp"
@@ -31,16 +34,23 @@ namespace duckdb {
 
 namespace {
 
-struct MinMaxColumnInfo {
-	ColumnBinding binding;
+struct MonotonicExpressionTransform {
+	unique_ptr<Expression> expression;
+	ColumnBinding input_binding;
 	LogicalType input_type;
-	LogicalType result_type;
 };
 
 struct ValueComparator {
 	virtual ~ValueComparator() = default;
 	virtual bool Compare(Value &lhs, Value &rhs) const = 0;
 	virtual Value GetVal(BaseStatistics &stats) const = 0;
+};
+
+struct MonotonicEndpointInfo {
+	ColumnBinding binding;
+	LogicalType input_type;
+	LogicalType result_type;
+	vector<MonotonicExpressionTransform> transforms;
 };
 
 template <typename StatsType>
@@ -92,29 +102,136 @@ bool IsSafeMinMaxCast(const LogicalType &source, const LogicalType &target) {
 	return LogicalType::DefaultTryGetMaxLogicalTypeUnchecked(source, target, max_type) && max_type == target;
 }
 
-bool TryGetMinMaxColumnInfo(const Expression &expr, MinMaxColumnInfo &info) {
+struct MonotonicExpressionInfo {
+	ColumnBinding binding;
+	LogicalType input_type;
+};
+
+bool TryGetMonotonicExpressionInfo(const Expression &expr, MonotonicExpressionInfo &info) {
 	if (expr.GetExpressionType() == ExpressionType::BOUND_COLUMN_REF) {
 		const auto &col_ref = expr.Cast<BoundColumnRefExpression>();
 		info.binding = col_ref.Binding();
 		info.input_type = col_ref.GetReturnType();
-		info.result_type = col_ref.GetReturnType();
 		return true;
 	}
-	if (!BoundCastExpression::IsCast(expr)) {
+	if (BoundCastExpression::IsCast(expr)) {
+		const auto &cast = expr.Cast<BoundFunctionExpression>();
+		const auto &cast_child = BoundCastExpression::Child(cast);
+		if (!IsSafeMinMaxCast(cast_child.GetReturnType(), BoundCastExpression::TargetType(cast))) {
+			return false;
+		}
+		return TryGetMonotonicExpressionInfo(cast_child, info);
+	}
+	if (expr.GetExpressionClass() != ExpressionClass::BOUND_FUNCTION) {
 		return false;
 	}
-	const auto &cast = expr.Cast<BoundFunctionExpression>();
-	const auto &cast_child = BoundCastExpression::Child(cast);
-	if (cast_child.GetExpressionType() != ExpressionType::BOUND_COLUMN_REF) {
+	const auto &func = expr.Cast<BoundFunctionExpression>();
+	if (!func.Function().HasArgProperties() || func.Function().GetStability() != FunctionStability::CONSISTENT) {
 		return false;
 	}
-	const auto &col_ref = cast_child.Cast<BoundColumnRefExpression>();
-	if (!IsSafeMinMaxCast(col_ref.GetReturnType(), BoundCastExpression::TargetType(cast))) {
+
+	bool has_input = false;
+	for (idx_t i = 0; i < func.GetChildren().size(); i++) {
+		const auto &child = *func.GetChildren()[i];
+		if (child.IsFoldable()) {
+			continue;
+		}
+		if (has_input) {
+			// Multiple varying arguments can have extrema originating from different rows.
+			return false;
+		}
+		MonotonicExpressionInfo child_info;
+		if (!TryGetMonotonicExpressionInfo(child, child_info)) {
+			return false;
+		}
+		const auto monotonicity = func.Function().GetArgProperties(i).monotonicity;
+		if (!IsMonotonicIncreasing(monotonicity) && !IsMonotonicDecreasing(monotonicity)) {
+			return false;
+		}
+		info = std::move(child_info);
+		has_input = true;
+	}
+	return has_input;
+}
+
+bool TryGetMonotonicEndpointInfo(const Expression &expr, MonotonicEndpointInfo &info) {
+	MonotonicExpressionInfo expression_info;
+	if (!TryGetMonotonicExpressionInfo(expr, expression_info)) {
 		return false;
 	}
-	info.binding = col_ref.Binding();
-	info.input_type = col_ref.GetReturnType();
-	info.result_type = BoundCastExpression::TargetType(cast);
+	info.binding = expression_info.binding;
+	info.input_type = expression_info.input_type;
+	info.result_type = expr.GetReturnType();
+	if (expr.GetExpressionType() != ExpressionType::BOUND_COLUMN_REF) {
+		info.transforms.push_back({expr.Copy(), expression_info.binding, expression_info.input_type});
+	}
+	return true;
+}
+
+bool ReplaceInputWithConstant(unique_ptr<Expression> &expr, const ColumnBinding &binding, const Value &value) {
+	if (expr->GetExpressionType() == ExpressionType::BOUND_COLUMN_REF) {
+		const auto &col_ref = expr->Cast<BoundColumnRefExpression>();
+		if (col_ref.Binding() != binding) {
+			return false;
+		}
+		expr = make_uniq<BoundConstantExpression>(value);
+		return true;
+	}
+	bool success = true;
+	bool found_input = false;
+	ExpressionIterator::EnumerateChildren(*expr, [&](unique_ptr<Expression> &child) {
+		if (!success || child->IsFoldable()) {
+			return;
+		}
+		if (!ReplaceInputWithConstant(child, binding, value)) {
+			success = false;
+			return;
+		}
+		found_input = true;
+	});
+	return success && found_input;
+}
+
+bool IsUnusableMonotonicValue(const Value &value) {
+	if (value.IsNull()) {
+		return true;
+	}
+	if (value.type().id() == LogicalTypeId::DOUBLE) {
+		return Value::IsNan(value.GetValue<double>());
+	}
+	if (value.type().id() == LogicalTypeId::FLOAT) {
+		return Value::IsNan(value.GetValue<float>());
+	}
+	return false;
+}
+
+bool EvaluateMonotonicExpression(ClientContext &context, const MonotonicEndpointInfo &info, Value input,
+                                 Value &result) {
+	for (auto transform = info.transforms.rbegin(); transform != info.transforms.rend(); ++transform) {
+		if (input.type() != transform->input_type) {
+			auto cast = input.DefaultTryCastAs(transform->input_type);
+			if (!cast) {
+				return false;
+			}
+			input = std::move(*cast);
+		}
+		auto expression = transform->expression->Copy();
+		if (!ReplaceInputWithConstant(expression, transform->input_binding, input) ||
+		    !ExpressionExecutor::TryEvaluateScalar(context, *expression, input) || IsUnusableMonotonicValue(input)) {
+			return false;
+		}
+	}
+	if (input.type() != info.result_type) {
+		auto cast = input.DefaultTryCastAs(info.result_type);
+		if (!cast) {
+			return false;
+		}
+		input = std::move(*cast);
+	}
+	if (!info.transforms.empty() && IsUnusableMonotonicValue(input)) {
+		return false;
+	}
+	result = std::move(input);
 	return true;
 }
 
@@ -158,6 +275,48 @@ bool TryGetValueFromStats(const PartitionStatistics &stats, const StorageIndex &
 	return true;
 }
 
+bool TryExecuteMonotonicEndpoint(ClientContext &context, const vector<PartitionStatistics> &partition_stats,
+                                 const StorageIndex &storage_index, const ValueComparator &comparator,
+                                 const MonotonicEndpointInfo &info, Value &result) {
+	auto min_comparator = GetComparator(Identifier("min"), info.input_type);
+	auto max_comparator = GetComparator(Identifier("max"), info.input_type);
+	if (!min_comparator || !max_comparator) {
+		return false;
+	}
+
+	auto get_partition_result = [&](const PartitionStatistics &stats, Value &partition_result) {
+		Value input_min, input_max;
+		if (!TryGetValueFromStats(stats, storage_index, *min_comparator, info.input_type, input_min) ||
+		    !TryGetValueFromStats(stats, storage_index, *max_comparator, info.input_type, input_max)) {
+			return false;
+		}
+		Value output_min, output_max;
+		if (!EvaluateMonotonicExpression(context, info, std::move(input_min), output_min) ||
+		    !EvaluateMonotonicExpression(context, info, std::move(input_max), output_max)) {
+			return false;
+		}
+		partition_result = std::move(output_min);
+		if (!comparator.Compare(partition_result, output_max)) {
+			partition_result = std::move(output_max);
+		}
+		return true;
+	};
+
+	if (!get_partition_result(partition_stats[0], result)) {
+		return false;
+	}
+	for (idx_t partition_idx = 1; partition_idx < partition_stats.size(); partition_idx++) {
+		Value partition_result;
+		if (!get_partition_result(partition_stats[partition_idx], partition_result)) {
+			return false;
+		}
+		if (!comparator.Compare(result, partition_result)) {
+			result = std::move(partition_result);
+		}
+	}
+	return true;
+}
+
 bool GroupingSetCanIntroduceNull(const LogicalAggregate &aggr, idx_t group_idx) {
 	if (aggr.grouping_sets.empty()) {
 		return false;
@@ -180,7 +339,7 @@ void StatisticsPropagator::TryExecuteAggregates(LogicalAggregate &aggr, unique_p
 	}
 	// check if all aggregates are COUNT(*), MIN or MAX
 	vector<idx_t> count_star_idxs;
-	vector<MinMaxColumnInfo> min_max_columns;
+	vector<MonotonicEndpointInfo> endpoints;
 	vector<unique_ptr<ValueComparator>> comparators;
 
 	for (idx_t i = 0; i < aggr.expressions.size(); i++) {
@@ -203,16 +362,16 @@ void StatisticsPropagator::TryExecuteAggregates(LogicalAggregate &aggr, unique_p
 			if (aggr_expr.GetChildren().size() != 1) {
 				return;
 			}
-			MinMaxColumnInfo column_info;
-			if (!TryGetMinMaxColumnInfo(*aggr_expr.GetChildren()[0], column_info)) {
+			MonotonicEndpointInfo endpoint;
+			if (!TryGetMonotonicEndpointInfo(*aggr_expr.GetChildren()[0], endpoint)) {
 				return;
 			}
-			min_max_columns.push_back(column_info);
-			auto comparator = GetComparator(fun_name, column_info.input_type);
+			auto comparator = GetComparator(fun_name, endpoint.result_type);
 			if (!comparator) {
 				// Type has no min max statistics
 				return;
 			}
+			endpoints.push_back(std::move(endpoint));
 			comparators.push_back(std::move(comparator));
 		} else if (fun_name == "count_star") {
 			count_star_idxs.push_back(i);
@@ -225,18 +384,21 @@ void StatisticsPropagator::TryExecuteAggregates(LogicalAggregate &aggr, unique_p
 	// skip any projections
 	reference<LogicalOperator> child_ref = *aggr.children[0];
 	while (child_ref.get().type == LogicalOperatorType::LOGICAL_PROJECTION) {
-		for (auto &column_info : min_max_columns) {
+		for (auto &endpoint : endpoints) {
 			auto &proj = child_ref.get().Cast<LogicalProjection>();
-			auto &expr = proj.GetExpression(column_info.binding);
-			MinMaxColumnInfo projection_info;
-			if (!TryGetMinMaxColumnInfo(expr, projection_info)) {
+			auto &expr = proj.GetExpression(endpoint.binding);
+			MonotonicEndpointInfo projection_info;
+			if (!TryGetMonotonicEndpointInfo(expr, projection_info)) {
 				return;
 			}
-			if (!IsSafeMinMaxCast(projection_info.result_type, column_info.input_type)) {
+			if (!IsSafeMinMaxCast(projection_info.result_type, endpoint.input_type)) {
 				return;
 			}
-			column_info.binding = projection_info.binding;
-			column_info.input_type = projection_info.input_type;
+			endpoint.binding = projection_info.binding;
+			endpoint.input_type = projection_info.input_type;
+			for (auto &transform : projection_info.transforms) {
+				endpoint.transforms.push_back(std::move(transform));
+			}
 		}
 		child_ref = *child_ref.get().children[0];
 	}
@@ -263,11 +425,11 @@ void StatisticsPropagator::TryExecuteAggregates(LogicalAggregate &aggr, unique_p
 		return;
 	}
 
-	vector<StorageIndex> min_max_storage_indexes(min_max_columns.size());
-	for (idx_t i = 0; i < min_max_columns.size(); i++) {
-		auto &binding = min_max_columns[i].binding;
-		auto &column_index = get.GetColumnIndex(binding);
-		if (!get.TryGetStorageIndex(column_index, min_max_storage_indexes[i])) {
+	vector<StorageIndex> endpoint_storage_indexes(endpoints.size());
+	for (idx_t i = 0; i < endpoints.size(); i++) {
+		auto &endpoint = endpoints[i];
+		auto &column_index = get.GetColumnIndex(endpoint.binding);
+		if (!get.TryGetStorageIndex(column_index, endpoint_storage_indexes[i])) {
 			//! Can't get a storage index for this column, so it doesn't have stats we can use
 			//! This happens when we're dealing with a generated column for example
 			return;
@@ -349,31 +511,14 @@ void StatisticsPropagator::TryExecuteAggregates(LogicalAggregate &aggr, unique_p
 		return;
 	}
 
-	if (!min_max_columns.empty()) {
-		// Execute min/max aggregates on partition statistics
-		for (idx_t agg_idx = 0; agg_idx < min_max_storage_indexes.size(); agg_idx++) {
-			const auto &storage_index = min_max_storage_indexes[agg_idx];
-			const auto &result_type = min_max_columns[agg_idx].result_type;
-			auto &comparator = comparators[agg_idx];
-
-			Value agg_result;
-			if (!TryGetValueFromStats(partition_stats[0], storage_index, *comparator, result_type, agg_result)) {
-				return;
-			}
-			for (idx_t partition_idx = 1; partition_idx < partition_stats.size(); partition_idx++) {
-				Value rhs;
-				if (!TryGetValueFromStats(partition_stats[partition_idx], storage_index, *comparator, result_type,
-				                          rhs)) {
-					return;
-				}
-				if (!comparator->Compare(agg_result, rhs)) {
-					agg_result = rhs;
-				}
-			}
-			types.push_back(agg_result.type());
-			auto expr = make_uniq<BoundConstantExpression>(agg_result);
-			agg_results.push_back(std::move(expr));
+	for (idx_t i = 0; i < endpoints.size(); i++) {
+		Value result;
+		if (!TryExecuteMonotonicEndpoint(context, partition_stats, endpoint_storage_indexes[i], *comparators[i],
+		                                 endpoints[i], result)) {
+			return;
 		}
+		types.push_back(result.type());
+		agg_results.push_back(make_uniq<BoundConstantExpression>(std::move(result)));
 	}
 	if (!count_star_idxs.empty()) {
 		// Execute count_star aggregates on partition statistics
