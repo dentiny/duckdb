@@ -765,6 +765,11 @@ void DuckTableEntry::UpdateConstraintsOnColumnDrop(const LogicalIndex &removed_i
                                                    const RemoveColumnInfo &info, CreateTableInfo &create_info,
                                                    const vector<unique_ptr<BoundConstraint>> &bound_constraints,
                                                    bool is_generated) {
+	optional_idx removed_physical_index;
+	if (!columns.GetColumn(removed_index).Generated()) {
+		removed_physical_index = columns.LogicalToPhysical(removed_index).index;
+	}
+
 	// handle constraints for the new table
 	D_ASSERT(constraints.size() == bound_constraints.size());
 	for (idx_t constr_idx = 0; constr_idx < constraints.size(); constr_idx++) {
@@ -848,6 +853,21 @@ void DuckTableEntry::UpdateConstraintsOnColumnDrop(const LogicalIndex &removed_i
 					throw CatalogException(
 					    "Cannot drop column %s because there is a FOREIGN KEY constraint that depends on it",
 					    info.removed_column);
+				}
+			}
+			if (removed_physical_index.IsValid()) {
+				auto remap_keys = [&](vector<PhysicalIndex> &keys) {
+					for (auto &key : keys) {
+						if (key.index > removed_physical_index.GetIndex()) {
+							key.index--;
+						}
+					}
+				};
+				if (fk.info.type != ForeignKeyType::FK_TYPE_FOREIGN_KEY_TABLE) {
+					remap_keys(fk.info.pk_keys);
+				}
+				if (fk.info.type != ForeignKeyType::FK_TYPE_PRIMARY_KEY_TABLE) {
+					remap_keys(fk.info.fk_keys);
 				}
 			}
 			create_info.constraints.push_back(std::move(copy));
@@ -1397,6 +1417,17 @@ void DuckTableEntry::Rollback(CatalogEntry &prev_entry) {
 	auto &prev_table = prev_entry.Cast<DuckTableEntry>();
 	auto &prev_info = prev_table.GetStorage().GetDataTableInfo();
 	auto &prev_indexes = prev_info->GetIndexes();
+
+	const auto &columns = table.GetStorage().Columns();
+	const auto &prev_columns = prev_table.GetStorage().Columns();
+	if (columns.size() + 1 == prev_columns.size()) {
+		idx_t removed_column = 0;
+		while (removed_column < columns.size() &&
+		       columns[removed_column].Name() == prev_columns[removed_column].Name()) {
+			removed_column++;
+		}
+		prev_indexes.RemapColumnIdsForDrop(removed_column, true);
+	}
 
 	// Find all index-based constraints that exist in rollback_table, but not in table.
 	// Then, remove them.

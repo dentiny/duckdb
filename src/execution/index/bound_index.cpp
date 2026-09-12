@@ -165,6 +165,28 @@ bool BoundIndex::IndexIsUpdated(const vector<PhysicalIndex> &column_ids_p) const
 	return false;
 }
 
+void BoundIndex::RemapColumnIdsForDrop(const column_t removed_column, const bool undo) {
+	for (auto &column_id : column_ids) {
+		D_ASSERT(undo || column_id != removed_column);
+		if (undo ? column_id >= removed_column : column_id > removed_column) {
+			column_id = undo ? column_id + 1 : column_id - 1;
+		}
+	}
+	column_id_set.clear();
+	column_id_set.insert(column_ids.begin(), column_ids.end());
+
+	for (auto &expression : bound_expressions) {
+		ExpressionIterator::VisitExpressionMutable<BoundReferenceExpression>(
+		    expression, [&](BoundReferenceExpression &bound_ref, unique_ptr<Expression> &) {
+			    auto &index = bound_ref.IndexMutable();
+			    D_ASSERT(undo || index != removed_column);
+			    if (undo ? index >= removed_column : index > removed_column) {
+				    index = undo ? index + 1 : index - 1;
+			    }
+		    });
+	}
+}
+
 bool BoundIndex::SupportsDeltaIndexes() const {
 	return false;
 }

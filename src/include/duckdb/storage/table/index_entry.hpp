@@ -132,6 +132,8 @@ public:
 	Identifier GetName() const;
 	//! Returns the physical index type.
 	string GetIndexType() const;
+	//! Returns the physical table columns referenced by the index.
+	vector<column_t> GetColumnIds() const;
 	//! Destroys the physical index.
 	void Retire();
 	//! Binds the unbound physical index without replacing it.
@@ -148,6 +150,8 @@ public:
 	string GetConstraintViolationMessage(VerifyExistenceType verify_type, idx_t failed_index, DataChunk &input) const;
 	//! Verifies that the physical index is not updated by the given columns.
 	void VerifyUpdate(const vector<PhysicalIndex> &column_ids) const;
+	//! Remaps physical column IDs after a column drop, or restores them when the drop is rolled back.
+	void RemapColumnIdsForDrop(column_t removed_column, bool undo);
 	//! Vacuums the physical index if it is bound.
 	void Vacuum();
 	//! Rebuilds the bound physical index with chunks supplied by the scan callback.

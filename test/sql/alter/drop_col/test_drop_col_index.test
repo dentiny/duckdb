@@ -17,8 +17,20 @@ ALTER TABLE test DROP COLUMN j
 ----
 Catalog Error: Cannot drop this column: an index depends on it
 
-# we also cannot drop the column i (for now) because an index depends on a subsequent column
-statement error
+# dropping a column before an indexed column remaps the index
+statement ok
 ALTER TABLE test DROP COLUMN i
+
+query I
+SELECT * FROM test ORDER BY j
 ----
-Catalog Error: Cannot drop this column: an index depends on a column
+1
+2
+
+statement ok
+INSERT INTO test VALUES (3)
+
+query I
+SELECT j FROM test WHERE j = 3
+----
+3

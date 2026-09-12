@@ -1,0 +1,37 @@
+# name: test/sql/alter/drop_col/test_drop_col_before_pk.test
+# description: DROP COLUMN must succeed for a non-key column that appears before a PRIMARY KEY column
+# group: [drop_col]
+
+statement ok
+CREATE TABLE t(a INTEGER, b INTEGER PRIMARY KEY);
+
+statement ok
+INSERT INTO t VALUES (1, 10), (2, 20);
+
+statement ok
+BEGIN TRANSACTION;
+
+statement ok
+INSERT INTO t VALUES (3, 30);
+
+statement ok
+ALTER TABLE t DROP COLUMN a;
+
+statement ok
+INSERT INTO t VALUES (40);
+
+statement ok
+COMMIT;
+
+query I
+SELECT * FROM t ORDER BY b
+----
+10
+20
+30
+40
+
+statement error
+INSERT INTO t VALUES (10);
+----
+<REGEX>:Constraint Error.*Duplicate key "b: 10" violates primary key constraint.*

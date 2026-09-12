@@ -315,6 +315,11 @@ string IndexEntry::GetIndexType() const {
 	return owned_index->GetIndexType();
 }
 
+vector<column_t> IndexEntry::GetColumnIds() const {
+	auto entry_lock = lock.GetSharedLock();
+	return owned_index->GetColumnIds();
+}
+
 void IndexEntry::Retire() {
 	auto entry_lock = lock.GetExclusiveLock();
 	deltas.Reset();
@@ -394,6 +399,18 @@ void IndexEntry::VerifyUpdate(const vector<PhysicalIndex> &column_ids) const {
 	const auto &bound_index = owned_index->Cast<BoundIndex>();
 	D_ASSERT(!bound_index.IndexIsUpdated(column_ids));
 #endif
+}
+
+void IndexEntry::RemapColumnIdsForDrop(const column_t removed_column, const bool undo) {
+	auto entry_lock = lock.GetExclusiveLock();
+	D_ASSERT(owned_index->IsBound());
+	owned_index->Cast<BoundIndex>().RemapColumnIdsForDrop(removed_column, undo);
+	for (auto delta_type : {IndexDeltaType::DELETED_ROWS_IN_USE, IndexDeltaType::ADDED_DATA_DURING_CHECKPOINT,
+	                        IndexDeltaType::REMOVED_DATA_DURING_CHECKPOINT}) {
+		if (auto delta = deltas.Find(delta_type)) {
+			delta->RemapColumnIdsForDrop(removed_column, undo);
+		}
+	}
 }
 
 void IndexEntry::Vacuum() {

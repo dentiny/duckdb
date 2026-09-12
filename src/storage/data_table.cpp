@@ -130,8 +130,6 @@ DataTable::DataTable(ClientContext &context, DataTable &parent, idx_t removed_co
 	for (const auto column_id : info->indexes.GetIndexedColumns()) {
 		if (column_id == removed_column) {
 			throw CatalogException("Cannot drop this column: an index depends on it!");
-		} else if (column_id > removed_column) {
-			throw CatalogException("Cannot drop this column: an index depends on a column after it!");
 		}
 	}
 
@@ -154,6 +152,8 @@ DataTable::DataTable(ClientContext &context, DataTable &parent, idx_t removed_co
 
 	// scan the original table, and fill the new column with the transformed value
 	local_storage.DropColumn(parent, *this, removed_column);
+
+	info->indexes.RemapColumnIdsForDrop(removed_column, false);
 
 	// this table replaces the previous table, hence the parent is no longer the root DataTable
 	parent.version = DataTableVersion::ALTERED;

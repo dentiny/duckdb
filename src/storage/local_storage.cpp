@@ -45,6 +45,7 @@ LocalTableStorage::LocalTableStorage(ClientContext &context, DataTable &new_data
 	row_groups = std::move(parent.row_groups);
 	row_groups->collection = std::move(new_collection);
 
+	parent.append_indexes.RemapColumnIdsForDrop(drop_column_index, false);
 	append_indexes.Move(parent.append_indexes);
 	delete_indexes.Move(parent.delete_indexes);
 }

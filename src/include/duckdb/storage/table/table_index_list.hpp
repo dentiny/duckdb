@@ -75,6 +75,8 @@ public:
 	bool Contains(const Identifier &name) const;
 	//! Returns shared ownership of the stable logical index entry matching the name.
 	shared_ptr<IndexEntry> FindEntry(const Identifier &name) const;
+	//! Returns the physical columns of an index, including when the index is unbound.
+	bool TryGetIndexColumnIds(const Identifier &name, vector<column_t> &result) const;
 	//! Binds unbound indexes possibly present after loading an extension.
 	void Bind(ClientContext &context, DataTableInfo &table_info, const optional<string> &index_type = {});
 	//! Returns true, if there are no index entries.
@@ -104,6 +106,8 @@ public:
 	void VerifyBuffers() const;
 	//! Verifies that no index is updated by the given columns.
 	void VerifyUpdate(const vector<PhysicalIndex> &column_ids) const;
+	//! Remaps physical column IDs after a column drop, or restores them when the drop is rolled back.
+	void RemapColumnIdsForDrop(column_t removed_column, bool undo);
 	//! Returns table storage metadata for all indexes.
 	vector<IndexInfo> GetStorageInfo() const;
 	//! Returns the combined in-memory size of all bound indexes.

@@ -279,6 +279,13 @@ void TableIndexList::VerifyUpdate(const vector<PhysicalIndex> &column_ids) const
 #endif
 }
 
+void TableIndexList::RemapColumnIdsForDrop(const column_t removed_column, const bool undo) {
+	annotated_lock_guard lock(index_entries_lock);
+	for (const auto &entry : index_entries) {
+		entry->RemapColumnIdsForDrop(removed_column, undo);
+	}
+}
+
 vector<IndexInfo> TableIndexList::GetStorageInfo() const {
 	annotated_lock_guard lock(index_entries_lock);
 	vector<IndexInfo> result;
@@ -352,6 +359,17 @@ shared_ptr<IndexEntry> TableIndexList::FindEntry(const Identifier &name) const {
 		return entry;
 	}
 	return nullptr;
+}
+
+bool TableIndexList::TryGetIndexColumnIds(const Identifier &name, vector<column_t> &result) const {
+	annotated_lock_guard lock(index_entries_lock);
+	for (const auto &entry : index_entries) {
+		if (entry->GetName() == name) {
+			result = entry->GetColumnIds();
+			return true;
+		}
+	}
+	return false;
 }
 
 void TableIndexList::Bind(ClientContext &context, DataTableInfo &table_info, const optional<string> &index_type) {
