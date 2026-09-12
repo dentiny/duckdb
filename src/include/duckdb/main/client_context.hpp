@@ -17,6 +17,7 @@
 #include "duckdb/common/enums/prepared_statement_mode.hpp"
 #include "duckdb/common/error_data.hpp"
 #include "duckdb/common/pair.hpp"
+#include "duckdb/common/unordered_map.hpp"
 #include "duckdb/common/unordered_set.hpp"
 #include "duckdb/common/winapi.hpp"
 #include "duckdb/main/client_config.hpp"
@@ -29,6 +30,8 @@
 #include "duckdb/transaction/transaction_context.hpp"
 #include "duckdb/common/query_context.hpp"
 #include "duckdb/common/query_parameters.hpp"
+
+#include <functional>
 
 namespace duckdb {
 class Logger;
@@ -49,6 +52,7 @@ class Relation;
 class BufferedFileWriter;
 class QueryProfiler;
 class ClientContextLock;
+class ClientContextInterruptCallback;
 struct CreateScalarFunctionInfo;
 class ScalarFunctionCatalogEntry;
 struct ActiveQueryContext;
@@ -58,6 +62,7 @@ class BufferedData;
 struct ClientData;
 class ClientContextState;
 class RegisteredStateManager;
+struct StorageLockInternals;
 
 struct PendingQueryParameters {
 	//! Prepared statement parameters (if any)
@@ -338,8 +343,22 @@ private:
 	bool ErrorInvalidatesTransaction(ExceptionType type);
 
 private:
+	friend class ClientContextInterruptCallback;
+	friend struct StorageLockInternals;
+
+	unique_ptr<ClientContextInterruptCallback> RegisterInterruptCallback(std::function<void()> callback);
+	void RemoveInterruptCallback(idx_t callback_id);
+	void InterruptCheck(bool force_timeout_check) const;
+	optional_idx GetQueryDeadline() const {
+		return query_deadline;
+	}
+
 	//! Lock on using the ClientContext in parallel
 	mutex context_lock;
+	//! Callbacks used to wake operations blocked during query execution
+	mutex interrupt_callbacks_lock;
+	unordered_map<idx_t, std::function<void()>> interrupt_callbacks;
+	idx_t next_interrupt_callback_id = 0;
 	//! The currently active query context
 	unique_ptr<ActiveQueryContext> active_query;
 	//! The current query progress
@@ -351,6 +370,16 @@ private:
 	//! `Catalog::RemoteExecute(string)` and wraps the returned TableRef into a SelectStatement.
 	weak_ptr<AttachedDatabase> connected_to_database;
 	bool is_connected = false;
+};
+
+class ClientContextInterruptCallback {
+public:
+	ClientContextInterruptCallback(ClientContext &context, idx_t callback_id);
+	~ClientContextInterruptCallback();
+
+private:
+	ClientContext &context;
+	idx_t callback_id;
 };
 
 class ClientContextLock {

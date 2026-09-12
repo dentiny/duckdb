@@ -3,7 +3,9 @@
 #include "duckdb/common/mutex.hpp"
 #include "duckdb/common/common.hpp"
 #include "duckdb/common/assert.hpp"
+#include "duckdb/common/chrono.hpp"
 #include "duckdb/common/thread_annotation/thread_annotation.hpp"
+#include "duckdb/main/client_context.hpp"
 
 #include <condition_variable>
 
@@ -33,6 +35,32 @@ public:
 		state_cv.wait(guard, [&]() { return !writer_active && read_count == 0; });
 		writer_active = true;
 		return make_uniq<StorageLockKey>(shared_from_this(), StorageLockType::EXCLUSIVE);
+	}
+
+	unique_ptr<StorageLockKey> GetExclusiveLock(ClientContext &context) DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
+		auto interrupt_callback =
+		    context.RegisterInterruptCallback([internals = shared_from_this()]() { internals->NotifyWaiters(); });
+		auto deadline = context.GetQueryDeadline();
+		context.InterruptCheck(true);
+		unique_lock<mutex> guard(state_lock);
+		auto can_wake = [&]() {
+			return context.IsInterrupted() || (!writer_active && read_count == 0);
+		};
+		if (deadline.IsValid()) {
+			auto deadline_time = steady_clock::time_point(milliseconds(deadline.GetIndex()));
+			state_cv.wait_until(guard, deadline_time, can_wake);
+		} else {
+			state_cv.wait(guard, can_wake);
+		}
+		context.InterruptCheck(true);
+		writer_tickets++;
+		writer_active = true;
+		return make_uniq<StorageLockKey>(shared_from_this(), StorageLockType::EXCLUSIVE);
+	}
+
+	void NotifyWaiters() DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
+		lock_guard<mutex> guard(state_lock);
+		state_cv.notify_all();
 	}
 
 	unique_ptr<StorageLockKey> GetSharedLock() DUCKDB_NO_THREAD_SAFETY_ANALYSIS {
@@ -112,6 +140,10 @@ StorageLock::~StorageLock() {
 
 unique_ptr<StorageLockKey> StorageLock::GetExclusiveLock() {
 	return internals->GetExclusiveLock();
+}
+
+unique_ptr<StorageLockKey> StorageLock::GetExclusiveLock(ClientContext &context) {
+	return internals->GetExclusiveLock(context);
 }
 
 unique_ptr<StorageLockKey> StorageLock::TryGetExclusiveLock() {
