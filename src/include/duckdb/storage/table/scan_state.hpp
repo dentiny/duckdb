@@ -163,6 +163,8 @@ struct ColumnFetchState {
 	QueryContext context;
 	//! The set of pinned block handles for this set of fetches
 	buffer_handle_set_t handles;
+	//! Cached per-segment scan states, for compression functions with expensive scan state initialization
+	unordered_map<const ColumnSegment *, unique_ptr<SegmentScanState>> scan_states;
 	//! Any child states of the fetch
 	vector<unique_ptr<ColumnFetchState>> child_states;
 	//! The current row group we are fetching from

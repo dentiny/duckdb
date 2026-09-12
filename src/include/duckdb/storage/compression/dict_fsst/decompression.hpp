@@ -47,11 +47,9 @@ public:
 	buffer_ptr<SelectionVector> sel_vec;
 	idx_t sel_vec_size = 0;
 
-	// decompress offset/position - used for scanning without a dictionary
-	uint32_t decompress_offset = 0;
-	idx_t decompress_position = 0;
-
 	vector<uint32_t> string_lengths;
+	//! Prefix sum over string_lengths - the dictionary offset of every entry, for O(1) lookups in any order
+	vector<uint32_t> string_offsets;
 
 	//! Start of the block (pointing to the dictionary_header)
 	data_ptr_t baseptr;

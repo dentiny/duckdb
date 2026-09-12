@@ -230,8 +230,8 @@ idx_t ColumnData::ScanVector(ColumnScanState &state, Vector &result, idx_t remai
 		idx_t result_offset = base_result_offset + initial_remaining - remaining;
 		if (scan_count > 0) {
 			if (state.scan_options && state.scan_options->force_fetch_row) {
+				ColumnFetchState fetch_state;
 				for (idx_t i = 0; i < scan_count; i++) {
-					ColumnFetchState fetch_state;
 					current.FetchRow(fetch_state, UnsafeNumericCast<row_t>(state.offset_in_column + i - current_start),
 					                 result, result_offset + i);
 				}
@@ -268,9 +268,9 @@ void ColumnData::SelectVector(ColumnScanState &state, Vector &result, idx_t targ
 		throw InternalException("ColumnData::SelectVector should be able to fetch everything from one segment");
 	}
 	if (state.scan_options && state.scan_options->force_fetch_row) {
+		ColumnFetchState fetch_state;
 		for (idx_t i = 0; i < sel_count; i++) {
 			auto source_idx = sel.get_index(i);
-			ColumnFetchState fetch_state;
 			current.FetchRow(fetch_state, UnsafeNumericCast<row_t>(state.offset_in_column + source_idx), result, i);
 		}
 	} else {
@@ -869,9 +869,9 @@ unique_ptr<ColumnCheckpointState> ColumnData::CreateCheckpointState(const RowGro
 void ColumnData::CheckpointScan(ColumnSegment &segment, ColumnScanState &state, idx_t count,
                                 Vector &scan_vector) const {
 	if (state.scan_options && state.scan_options->force_fetch_row) {
+		ColumnFetchState fetch_state;
+		fetch_state.row_group = state.parent->row_group;
 		for (idx_t i = 0; i < count; i++) {
-			ColumnFetchState fetch_state;
-			fetch_state.row_group = state.parent->row_group;
 			segment.FetchRow(fetch_state, UnsafeNumericCast<row_t>(state.offset_in_column + i), scan_vector, i);
 		}
 	} else {

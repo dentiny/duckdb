@@ -102,6 +102,15 @@ void CompressedStringScanState::Initialize(bool initialize_dictionary) {
 	string_lengths.resize(AlignValue<uint32_t, BitpackingPrimitives::BITPACKING_ALGORITHM_GROUP_SIZE>(dict_count));
 	BitpackingPrimitives::UnPackBuffer<uint32_t>(data_ptr_cast(string_lengths.data()),
 	                                             data_ptr_cast(string_lengths_ptr), dict_count, string_lengths_width);
+
+	// Build the prefix sums over the string lengths, so any dictionary entry can be located in O(1)
+	string_offsets.resize(dict_count);
+	uint32_t current_offset = 0;
+	for (uint32_t i = 0; i < dict_count; i++) {
+		string_offsets[i] = current_offset;
+		current_offset += string_lengths[i];
+	}
+
 	if (!initialize_dictionary || mode == DictFSSTMode::FSST_ONLY) {
 		// Used by fetch, as fetch will never produce a DictionaryVector
 		return;
@@ -114,12 +123,9 @@ void CompressedStringScanState::Initialize(bool initialize_dictionary) {
 	D_ASSERT(dict_count >= 1);
 	validity.SetInvalid(0);
 
-	uint32_t offset = 0;
 	for (uint32_t i = 0; i < dict_count; i++) {
 		//! We can uncompress during fetching, we need the length of the string inside the dictionary
-		auto string_len = string_lengths[i];
-		dict_child_data[i] = FetchStringFromDict(dict_data, offset, i);
-		offset += string_len;
+		dict_child_data[i] = FetchStringFromDict(dict_data, string_offsets[i], i);
 	}
 }
 
@@ -180,13 +186,7 @@ void CompressedStringScanState::ScanToFlatVector(Vector &result, idx_t result_of
 				result_data.WriteNull();
 				continue;
 			}
-			if (decompress_position > string_number) {
-				throw InternalException("DICT_FSST: not performing a sequential scan?");
-			}
-			for (; decompress_position < string_number; decompress_position++) {
-				decompress_offset += string_lengths[decompress_position];
-			}
-			result_data.WriteStringRef(FetchStringFromDict(result, decompress_offset, string_number));
+			result_data.WriteStringRef(FetchStringFromDict(result, string_offsets[string_number], string_number));
 		}
 	}
 	result.Verify();
@@ -200,13 +200,7 @@ void CompressedStringScanState::Select(Vector &result, idx_t start, const Select
 	for (idx_t i = 0; i < sel_count; i++) {
 		// Lookup dict offset in index buffer
 		auto string_number = start_offset + sel.get_index(i);
-		if (decompress_position > string_number) {
-			throw InternalException("DICT_FSST: not performing a sequential scan?");
-		}
-		for (; decompress_position < string_number; decompress_position++) {
-			decompress_offset += string_lengths[decompress_position];
-		}
-		result_data.WriteValue(FetchStringFromDict(result, decompress_offset, string_number));
+		result_data.WriteValue(FetchStringFromDict(result, string_offsets[string_number], string_number));
 	}
 }
 
