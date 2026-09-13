@@ -28,7 +28,7 @@ public:
 	//! The set of referenced physical columns (for UPDATE)
 	vector<PhysicalIndex> referenced_columns;
 	//! Columns targeted by the UPDATE action
-	vector<PhysicalIndex> updated_columns;
+	vector<PhysicalIndex> columns_to_update;
 	//! Set of expressions for INSERT or UPDATE
 	vector<unique_ptr<Expression>> expressions;
 	//! Deprecated: Column index map (for INSERT)

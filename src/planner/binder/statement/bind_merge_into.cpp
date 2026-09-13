@@ -84,7 +84,7 @@ Binder::BindMergeAction(LogicalMergeInto &merge_into, TableCatalogEntry &table, 
 		LogicalUpdate update(table);
 		update.return_chunk = merge_into.return_chunk;
 		update.referenced_columns = std::move(result->referenced_columns);
-		update.updated_columns = update.referenced_columns;
+		update.columns_to_update = update.referenced_columns;
 		update.expressions = std::move(result->expressions);
 		update.bound_defaults = std::move(merge_into.bound_defaults);
 		update.bound_constraints = std::move(merge_into.bound_constraints);
@@ -98,7 +98,7 @@ Binder::BindMergeAction(LogicalMergeInto &merge_into, TableCatalogEntry &table, 
 		merge_into.bound_constraints = std::move(update.bound_constraints);
 		expressions = std::move(proj.expressions);
 		result->referenced_columns = std::move(update.referenced_columns);
-		result->updated_columns = std::move(update.updated_columns);
+		result->columns_to_update = std::move(update.columns_to_update);
 		result->expressions = std::move(update.expressions);
 		result->update_is_del_and_insert = update.update_is_del_and_insert;
 		break;

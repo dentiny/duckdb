@@ -68,7 +68,7 @@ unique_ptr<MergeIntoOperator> PlanMergeIntoAction(ClientContext &context, Logica
 		auto &action_input = PlanMergeActionSource(planner, plan, condition, *result);
 		result->op = planner.Make<PhysicalUpdate>(
 		    std::move(return_types), op.table.Cast<DuckTableEntry>(), op.table.GetStorage(),
-		    std::move(action.referenced_columns), std::move(action.updated_columns), std::move(action.expressions),
+		    std::move(action.referenced_columns), std::move(action.columns_to_update), std::move(action.expressions),
 		    std::move(defaults), std::move(bound_constraints), cardinality, op.return_chunk, /*capture_old_rows=*/false,
 		    /*old_row_columns=*/vector<idx_t>(),
 		    /*row_id_handling=*/RowIdHandling::ASSUME_UNIQUE);
@@ -233,7 +233,7 @@ static unique_ptr<MergeIntoOperator> PlanGenericMergeIntoAction(ClientContext &c
 
 		LogicalUpdate update(op.table);
 		update.referenced_columns = std::move(action.referenced_columns);
-		update.updated_columns = std::move(action.updated_columns);
+		update.columns_to_update = std::move(action.columns_to_update);
 		update.expressions = std::move(update_expressions);
 		update.update_is_del_and_insert = action.update_is_del_and_insert;
 		update.bound_constraints = CopyBoundConstraints(op);

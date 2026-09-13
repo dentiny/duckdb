@@ -234,7 +234,7 @@ BoundStatement Binder::BindNode(UpdateQueryNode &node) {
 	                              update->referenced_columns, node.prioritize_table_when_binding);
 	D_ASSERT(proj_tmp->type == LogicalOperatorType::LOGICAL_PROJECTION);
 	auto proj = unique_ptr_cast<LogicalOperator, LogicalProjection>(std::move(proj_tmp));
-	update->updated_columns = update->referenced_columns;
+	update->columns_to_update = update->referenced_columns;
 
 	// bind any extra columns necessary for CHECK constraints or indexes
 	table.BindUpdateConstraints(*this, *get, *proj, *update, context);

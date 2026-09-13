@@ -10,7 +10,7 @@ namespace duckdb {
 PhysicalOperator &DuckCatalog::PlanUpdate(ClientContext &context, PhysicalPlanGenerator &planner, LogicalUpdate &op,
                                           PhysicalOperator &plan) {
 	auto &update = planner.Make<PhysicalUpdate>(op.types, op.table.Cast<DuckTableEntry>(), op.table.GetStorage(),
-	                                            op.referenced_columns, op.updated_columns, std::move(op.expressions),
+	                                            op.referenced_columns, op.columns_to_update, std::move(op.expressions),
 	                                            std::move(op.bound_defaults), std::move(op.bound_constraints),
 	                                            op.estimated_cardinality, op.return_chunk, op.capture_old_rows,
 	                                            std::move(op.old_row_columns), op.row_id_handling);

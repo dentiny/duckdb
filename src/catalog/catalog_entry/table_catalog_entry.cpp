@@ -305,7 +305,7 @@ void TableCatalogEntry::BindUpdateConstraints(Binder &binder, LogicalGet &get, L
 	update.update_is_del_and_insert = Settings::Get<ForceUpdateToDelAndInsertSetting>(context);
 	TableStorageInfo table_storage_info = GetStorageInfo(context);
 	for (auto index : table_storage_info.index_info) {
-		for (auto &column : update.updated_columns) {
+		for (auto &column : update.columns_to_update) {
 			if (index.column_set.find(column.index) != index.column_set.end()) {
 				update.update_is_del_and_insert = true;
 				break;
@@ -314,7 +314,7 @@ void TableCatalogEntry::BindUpdateConstraints(Binder &binder, LogicalGet &get, L
 	}
 
 	// we also convert any updates on LIST columns into delete + insert
-	for (auto &col_index : update.updated_columns) {
+	for (auto &col_index : update.columns_to_update) {
 		auto &column = GetColumns().GetColumn(col_index);
 		if (!column.Type().SupportsRegularUpdate()) {
 			update.update_is_del_and_insert = true;

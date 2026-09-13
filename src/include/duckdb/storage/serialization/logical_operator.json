@@ -887,7 +887,7 @@
       },
       {
         "id": 210,
-        "name": "updated_columns",
+        "name": "columns_to_update",
         "type": "vector<PhysicalIndex>"
       }
     ],
@@ -982,7 +982,7 @@
       },
       {
         "id": 206,
-        "name": "updated_columns",
+        "name": "columns_to_update",
         "type": "vector<PhysicalIndex>"
       }
     ]

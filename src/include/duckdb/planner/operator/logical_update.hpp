@@ -39,7 +39,7 @@ public:
 	//! Columns materialized for constraint checks, RETURNING, or reinsertion
 	vector<PhysicalIndex> referenced_columns;
 	//! Columns targeted by the SET clause
-	vector<PhysicalIndex> updated_columns;
+	vector<PhysicalIndex> columns_to_update;
 	vector<unique_ptr<Expression>> bound_defaults;
 	vector<unique_ptr<BoundConstraint>> bound_constraints;
 	bool update_is_del_and_insert;

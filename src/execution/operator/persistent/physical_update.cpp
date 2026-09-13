@@ -20,14 +20,14 @@ namespace duckdb {
 
 PhysicalUpdate::PhysicalUpdate(PhysicalPlan &physical_plan, vector<LogicalType> types, DuckTableEntry &tableref,
                                DataTable &table, vector<PhysicalIndex> referenced_columns,
-                               vector<PhysicalIndex> updated_columns, vector<unique_ptr<Expression>> expressions,
+                               vector<PhysicalIndex> columns_to_update, vector<unique_ptr<Expression>> expressions,
                                vector<unique_ptr<Expression>> bound_defaults,
                                vector<unique_ptr<BoundConstraint>> bound_constraints, idx_t estimated_cardinality,
                                bool return_chunk, bool capture_old_rows, vector<idx_t> old_row_columns,
                                RowIdHandling row_id_handling)
     : PhysicalOperator(physical_plan, PhysicalOperatorType::UPDATE, std::move(types), estimated_cardinality),
       tableref(tableref), table(table), referenced_columns(std::move(referenced_columns)),
-      updated_columns(std::move(updated_columns)), expressions(std::move(expressions)),
+      columns_to_update(std::move(columns_to_update)), expressions(std::move(expressions)),
       bound_defaults(std::move(bound_defaults)), bound_constraints(std::move(bound_constraints)),
       return_chunk(return_chunk), capture_old_rows(capture_old_rows), old_row_columns(std::move(old_row_columns)),
       row_id_handling(row_id_handling), index_update(false) {
@@ -199,7 +199,7 @@ SinkResultType PhysicalUpdate::Sink(ExecutionContext &context, DataChunk &chunk,
 			mock_chunk.CheckCardinality(update_count);
 		}
 		auto &update_state = l_state.GetUpdateState(table, tableref, context.client);
-		table.Update(update_state, context.client, tableref, update_row_ids, referenced_columns, updated_columns,
+		table.Update(update_state, context.client, tableref, update_row_ids, referenced_columns, columns_to_update,
 		             update_chunk);
 
 		if (return_chunk) {
