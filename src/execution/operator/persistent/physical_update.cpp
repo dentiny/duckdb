@@ -199,8 +199,8 @@ SinkResultType PhysicalUpdate::Sink(ExecutionContext &context, DataChunk &chunk,
 			mock_chunk.CheckCardinality(update_count);
 		}
 		auto &update_state = l_state.GetUpdateState(table, tableref, context.client);
-		table.Update(update_state, context.client, tableref, update_row_ids, referenced_columns, update_chunk,
-		             updated_columns);
+		table.Update(update_state, context.client, tableref, update_row_ids, referenced_columns, updated_columns,
+		             update_chunk);
 
 		if (return_chunk) {
 			lock_guard<mutex> glock(g_state.lock);

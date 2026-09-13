@@ -1481,13 +1481,8 @@ unique_ptr<TableUpdateState> DataTable::InitializeUpdate(TableCatalogEntry &tabl
 }
 
 void DataTable::Update(TableUpdateState &state, ClientContext &context, DuckTableEntry &table_entry, Vector &row_ids,
-                       const vector<PhysicalIndex> &column_ids, DataChunk &updates) {
-	Update(state, context, table_entry, row_ids, column_ids, updates, column_ids);
-}
-
-void DataTable::Update(TableUpdateState &state, ClientContext &context, DuckTableEntry &table_entry, Vector &row_ids,
-                       const vector<PhysicalIndex> &referenced_column_ids, DataChunk &updates,
-                       const vector<PhysicalIndex> &updated_column_ids) {
+                       const vector<PhysicalIndex> &referenced_column_ids,
+                       const vector<PhysicalIndex> &updated_column_ids, DataChunk &updates) {
 	D_ASSERT(row_ids.GetType().InternalType() == ROW_TYPE);
 	D_ASSERT(referenced_column_ids.size() == updates.ColumnCount());
 	updates.Verify(context.db);
