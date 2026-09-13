@@ -855,8 +855,7 @@
       },
       {
         "id": 204,
-        "name": "columns",
-        "property": "referenced_columns",
+        "name": "referenced_columns",
         "type": "vector<PhysicalIndex>"
       },
       {
@@ -961,8 +960,7 @@
       },
       {
         "id": 202,
-        "name": "columns",
-        "property": "referenced_columns",
+        "name": "referenced_columns",
         "type": "vector<PhysicalIndex>"
       },
       {
@@ -987,11 +985,6 @@
         "name": "updated_columns",
         "type": "vector<PhysicalIndex>"
       }
-    ],
-    "finalize_deserialization": [
-      "if (result->updated_columns.empty()) {",
-      "\tresult->updated_columns = result->referenced_columns;",
-      "}"
     ]
   },
   {

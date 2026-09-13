@@ -60,10 +60,6 @@ string LogicalUpdate::GetName() const {
 
 void LogicalUpdate::RewriteInPlaceUpdates(LogicalOperator &update_op) {
 	auto &update = update_op.Cast<LogicalUpdate>();
-	if (update.updated_columns.empty()) {
-		// Plans serialized before updated_columns was added treated every materialized column as updated.
-		update.updated_columns = update.referenced_columns;
-	}
 
 	if (update.update_is_del_and_insert) {
 		return;
