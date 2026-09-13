@@ -1457,7 +1457,7 @@ void ClientContext::RunTransactionStatement(const TransactionInfo &info) {
 			if (transaction.HasActiveTransaction() && transaction.GetAutoRollback()) {
 				transaction.Rollback(result->GetErrorObject());
 			}
-			interrupt_state = ClientInterruptState::NOT_INTERRUPTED;
+			ClearInterrupt();
 			result->ThrowError();
 		}
 		return;
