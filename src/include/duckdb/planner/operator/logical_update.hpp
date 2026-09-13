@@ -36,7 +36,10 @@ public:
 	bool capture_old_rows = false;
 	//! input-chunk index of each captured OLD physical column, in physical table order (only when capture_old_rows)
 	vector<idx_t> old_row_columns;
-	vector<PhysicalIndex> columns;
+	//! Columns materialized for constraint checks, RETURNING, or reinsertion
+	vector<PhysicalIndex> referenced_columns;
+	//! Columns targeted by the SET clause
+	vector<PhysicalIndex> updated_columns;
 	vector<unique_ptr<Expression>> bound_defaults;
 	vector<unique_ptr<BoundConstraint>> bound_constraints;
 	bool update_is_del_and_insert;
