@@ -195,6 +195,9 @@ shared_ptr<AttachedDatabase> DatabaseManager::AttachDatabase(ClientContext &cont
 	if (AttachedDatabase::NameIsReserved(info.name)) {
 		throw BinderException("Attached database name %s cannot be used because it is a reserved name", info.name);
 	}
+	if (info.on_conflict == OnCreateConflict::ERROR_ON_CONFLICT && GetDatabase(info.name)) {
+		throw BinderException("Failed to attach database: database with name \"%s\" already exists", info.name);
+	}
 	if (!extension.empty()) {
 		if (!ExtensionHelper::TryAutoLoadExtension(context, extension)) {
 			throw MissingExtensionException("Attaching path '%s' requires extension '%s' to be loaded", info.path,

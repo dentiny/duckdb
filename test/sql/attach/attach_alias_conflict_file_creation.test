@@ -1,0 +1,16 @@
+# name: test/sql/attach/attach_alias_conflict_file_creation.test
+# description: An ATTACH alias conflict should not create a database file
+# group: [attach]
+
+statement ok
+ATTACH ':memory:' AS taken;
+
+statement error
+ATTACH '{TEST_DIR}/attach_alias_conflict_file_creation.db' AS taken;
+----
+already exists
+
+query I
+SELECT count(*) FROM glob('{TEST_DIR}/attach_alias_conflict_file_creation.db');
+----
+0
