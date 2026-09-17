@@ -1336,7 +1336,7 @@ block_id_t SingleFileBlockManager::CalculateTruncation(set<block_id_t> &all_free
 		if (newly_used_blocks.find(block_id) != newly_used_blocks.end()) {
 			break;
 		}
-		if (TryGetBlock(block_id)) {
+		if (BlockIsRegistered(block_id)) {
 			break;
 		}
 		blocks_to_truncate++;
