@@ -1349,6 +1349,25 @@ void SingleFileBlockManager::WriteHeader(QueryContext context, DatabaseHeader he
 		written_multi_use_blocks.erase(newly_used_block);
 	}
 
+	// calculate trailing free blocks that will be truncated after checkpoint
+	idx_t blocks_to_truncate = 0;
+	for (auto entry = all_free_blocks.rbegin(); entry != all_free_blocks.rend(); entry++) {
+		auto block_id = *entry;
+		if (block_id + 1 != max_block - NumericCast<block_id_t>(blocks_to_truncate)) {
+			break;
+		}
+		if (newly_used_blocks.find(block_id) != newly_used_blocks.end()) {
+			break;
+		}
+		if (TryGetBlock(block_id)) {
+			break;
+		}
+		blocks_to_truncate++;
+	}
+	// exclude truncated blocks from the persisted free list and header block count
+	auto post_truncate_max = max_block - NumericCast<block_id_t>(blocks_to_truncate);
+	all_free_blocks.erase(all_free_blocks.lower_bound(post_truncate_max), all_free_blocks.end());
+
 	if (!free_list_blocks.empty()) {
 		// there are blocks to write, either in the free_list or in the modified_blocks
 		// we write these blocks specifically to the free_list_blocks
@@ -1377,9 +1396,7 @@ void SingleFileBlockManager::WriteHeader(QueryContext context, DatabaseHeader he
 	lock.unlock();
 	metadata_manager.Flush(context);
 
-	lock.lock();
-	header.block_count = NumericCast<idx_t>(max_block);
-	lock.unlock();
+	header.block_count = NumericCast<idx_t>(post_truncate_max);
 
 	header.storage_compatibility = options.storage_version;
 
