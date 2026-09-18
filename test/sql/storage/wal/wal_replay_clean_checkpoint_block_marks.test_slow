@@ -31,6 +31,10 @@ Checkpoint aborted
 
 restart
 
+# the crash simulation is done - the abort setting survives the restart, reset it
+statement ok
+PRAGMA debug_checkpoint_abort='none';
+
 # the checkpoint completed cleanly, so the WAL is discarded without being replayed -
 # the deserialize-only scan must not have leaked block usage marks for the ROW_GROUP_DATA blocks
 statement ok
