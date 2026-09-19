@@ -646,7 +646,21 @@ void LocalStorage::Commit(optional_ptr<StorageCommitState> commit_state) {
 	for (auto &entry : table_storage) {
 		auto table = entry.first;
 		auto storage = entry.second.get();
-		Flush(table, *storage, commit_state);
+		try {
+			Flush(table, *storage, commit_state);
+		} catch (...) {
+			// Flush has rolled back the failed table - roll back the tables that were not
+			// flushed yet, they can still hold flushed blocks
+			entry.second.reset();
+			for (auto &remaining : table_storage) {
+				if (!remaining.second) {
+					continue;
+				}
+				remaining.second->Rollback();
+				remaining.second.reset();
+			}
+			throw;
+		}
 		entry.second.reset();
 	}
 }
