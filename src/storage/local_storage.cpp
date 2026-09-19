@@ -585,9 +585,15 @@ void LocalStorage::Flush(DataTable &table, LocalTableStorage &storage, optional_
 		// there are no optimistically written blocks to manage, and merging avoids re-appending
 		// row by row.
 		// first flush any outstanding blocks
-		storage.FlushBlocks();
-		// Append to the indexes.
-		storage.AppendToIndexes(transaction, append_state);
+		try {
+			storage.FlushBlocks();
+			// Append to the indexes.
+			storage.AppendToIndexes(transaction, append_state);
+		} catch (...) {
+			// reclaim the flushed blocks before propagating the error
+			storage.Rollback();
+			throw;
+		}
 		// finally move over the row groups
 		table.MergeStorage(storage.GetCollection(), commit_state);
 	} else {
@@ -596,6 +602,8 @@ void LocalStorage::Flush(DataTable &table, LocalTableStorage &storage, optional_
 		// so we need to revert the data we have already written
 		// this happens when rows were deleted after a bulk append, or when the optimistic writer
 		// flushed a partial row group that does not qualify as a bulk append
+		// Rollback() also serves as exception safety: after it runs, local storage owns no
+		// flushed blocks, so a failure in the appends below cannot leak blocks
 		storage.Rollback();
 		// append to the indexes
 		storage.AppendToIndexes(transaction, append_state);
