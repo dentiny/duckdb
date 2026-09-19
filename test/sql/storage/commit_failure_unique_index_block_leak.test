@@ -1,0 +1,39 @@
+# name: test/sql/storage/commit_failure_unique_index_block_leak.test
+# description: Blocks flushed by local storage are reclaimed when the commit fails afterwards (commit-time unique violation)
+# group: [storage]
+
+require noforcestorage
+
+require skip_reload
+
+load {TEST_DIR}/commit_failure_unique_index_block_leak.db
+
+statement ok
+CREATE TABLE t(s VARCHAR);
+
+# 200000 rows (> 1 row group) with only 100000 distinct values: local storage flushes its blocks
+# to the block manager at commit, and the unique index build fails right after
+statement ok
+BEGIN;
+
+statement ok
+INSERT INTO t SELECT md5((range % 100000)::VARCHAR)||md5(((range%100000)*7)::VARCHAR)||md5(((range%100000)*13)::VARCHAR) FROM range(200000);
+
+statement ok
+CREATE UNIQUE INDEX idx ON t(s);
+
+statement error
+COMMIT;
+----
+<REGEX>:.*PRIMARY KEY or UNIQUE constraint violation.*
+
+# the data is correctly rolled back
+query I
+SELECT count(*) FROM t;
+----
+0
+
+query I
+SELECT used_blocks <= 5 AS no_leaked_blocks FROM pragma_database_size();
+----
+true

@@ -669,16 +669,8 @@ void SingleFileStorageCommitState::RevertCommit() {
 		// remove any entries written into the WAL by truncating it
 		wal.Truncate(initial_wal_size);
 	}
-	auto &block_manager = storage.GetBlockManager();
-	for (auto &entry : optimistically_written_data) {
-		for (auto &rg_entry : entry.second) {
-			if (rg_entry.second.row_group_data) {
-				for (auto &block_id : rg_entry.second.row_group_data->GetBlockIds()) {
-					block_manager.MarkBlockAsModified(block_id);
-				}
-			}
-		}
-	}
+	// the optimistically written blocks are reclaimed by the revert of the merged row groups
+	// (RowGroupCollection::RevertAppendInternal), which runs on every failed commit
 	state = WALCommitState::TRUNCATED;
 }
 
