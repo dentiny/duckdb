@@ -628,7 +628,6 @@ public:
 	bool HasRowGroupData() override;
 
 private:
-	StorageManager &storage;
 	idx_t initial_wal_size = 0;
 	idx_t initial_written = 0;
 	WriteAheadLog &wal;
