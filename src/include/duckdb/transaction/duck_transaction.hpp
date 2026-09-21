@@ -76,6 +76,13 @@ public:
 
 	//! Rollback
 	ErrorData Rollback();
+	void MarkRollbackUnsafe() noexcept {
+		rollback_safe = false;
+	}
+	bool CanRollback() const {
+		return rollback_safe;
+	}
+	void InvalidateCommit(const ErrorData &error);
 	//! Cleanup the undo buffer
 	void Cleanup(VisibilityBound lowest_visibility_bound);
 
@@ -85,7 +92,8 @@ public:
 	void PushDelete(DuckTableEntry &table_entry, RowVersionManager &info, idx_t vector_idx, row_t rows[], idx_t count,
 	                idx_t base_row);
 	void PushSequenceUsage(SequenceCatalogEntry &entry, const SequenceData &data);
-	void PushAppend(DuckTableEntry &table_entry, idx_t row_start, idx_t row_count);
+	UndoBufferReference PrepareAppend(DuckTableEntry &table_entry, idx_t row_start, idx_t row_count);
+	static void FinishAppend(UndoBufferReference &entry) noexcept;
 	UndoBufferReference CreateUpdateInfo(DuckTableEntry &table_entry, idx_t type_size, idx_t entries,
 	                                     idx_t row_group_start);
 
@@ -131,6 +139,7 @@ private:
 	reference_map_t<DataTableInfo, unique_ptr<ActiveTableLock>> active_locks;
 	//! Flag to prevent auto-checkpointing inside a checkpoint transaction.
 	bool is_checkpoint_transaction = false;
+	bool rollback_safe = true;
 };
 
 } // namespace duckdb

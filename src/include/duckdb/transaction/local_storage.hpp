@@ -20,6 +20,7 @@ class BoundConstraint;
 class Catalog;
 class CollectionScanState;
 class ColumnDefinition;
+class CommitDropState;
 class DataChunk;
 class DataTable;
 class DuckTableEntry;
@@ -94,9 +95,10 @@ public:
 	//! Whether this storage holds optimistically written (flushed) row groups
 	bool HasFlushedRowGroups() const;
 	void Rollback();
+	void MoveRollbackBlocks(vector<unique_ptr<CommitDropState>> &rollback_blocks);
 	idx_t EstimatedSize() const;
 
-	void AppendToIndexes(DuckTransaction &transaction, TableAppendState &append_state);
+	ErrorData AppendToIndexes(DuckTransaction &transaction, TableAppendState &append_state);
 	void AppendToTable(DuckTransaction &transaction, TableAppendState &append_state);
 	ErrorData AppendToIndexes(DuckTransaction &transaction, RowGroupCollection &source, TableIndexList &index_list,
 	                          const vector<LogicalType> &table_types, row_t &start_row);
@@ -117,6 +119,7 @@ public:
 
 private:
 	mutex collections_lock;
+	bool owns_blocks = true;
 };
 
 class LocalTableManager {
@@ -147,6 +150,7 @@ public:
 
 public:
 	explicit LocalStorage(ClientContext &context, DuckTransaction &transaction);
+	~LocalStorage();
 
 	static LocalStorage &Get(DuckTransaction &transaction);
 	static LocalStorage &Get(ClientContext &context, AttachedDatabase &db);
@@ -190,8 +194,10 @@ public:
 
 	//! Commits the local storage, writing it to the WAL and completing the commit
 	void Commit(optional_ptr<StorageCommitState> commit_state);
-	//! Rollback the local storage
-	void Rollback();
+	//! Preserve block references before undo can destroy their collections.
+	void PrepareRollback();
+	void RollbackBlocks();
+	void FinalizeCommit();
 
 	bool ChangesMade() noexcept;
 	idx_t EstimatedSize();
@@ -234,6 +240,7 @@ private:
 	ClientContext &context;
 	DuckTransaction &transaction;
 	LocalTableManager table_manager;
+	vector<unique_ptr<CommitDropState>> rollback_blocks;
 	bool synced_flushed_blocks = false;
 
 private:

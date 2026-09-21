@@ -19,6 +19,7 @@
 #include "duckdb/main/database_manager.hpp"
 #include "duckdb/transaction/meta_transaction.hpp"
 #include "duckdb/main/settings.hpp"
+#include "duckdb/main/valid_checker.hpp"
 #include "duckdb/storage/checkpoint/checkpoint_options.hpp"
 #include "duckdb/common/string_util.hpp"
 
@@ -31,6 +32,27 @@ static ErrorData BuildAutocheckpointError(AttachedDatabase &db, const std::excep
 	string msg = StringUtil::Format("Transaction COMMIT succeeded and is durable, but the autocheckpoint failed. %s %s",
 	                                recovery, original.RawMessage());
 	return ErrorData(original.Type(), msg);
+}
+
+static bool CheckTransactionState(AttachedDatabase &db, DuckTransaction &transaction, ErrorData &error) {
+	if (!transaction.CanRollback()) {
+		if (!error.HasError()) {
+			error =
+			    ErrorData(FatalException("Transaction has an unsafe commit outcome; reopen the database to recover"));
+		}
+		return false;
+	}
+	string reason;
+	if (ValidChecker::IsInvalidated(db.GetDatabase())) {
+		reason = ValidChecker::InvalidatedMessage(db.GetDatabase());
+	} else if (ValidChecker::IsInvalidated(db)) {
+		reason = ValidChecker::InvalidatedMessage(db);
+	} else {
+		return true;
+	}
+	transaction.MarkRollbackUnsafe();
+	error.Merge(ErrorData(FatalException("Cannot finish transaction on an invalidated database: %s", reason)));
+	return false;
 }
 
 void DuckCleanupInfo::Cleanup() {
@@ -299,202 +321,262 @@ void DuckTransactionManager::CleanupTransactions() {
 
 ErrorData DuckTransactionManager::CommitTransaction(ClientContext &context, Transaction &transaction_p) {
 	auto &transaction = transaction_p.Cast<DuckTransaction>();
-	// flush the transaction-local blocks of bulk appends before taking any commit locks (see PreFlushOptimisticBlocks)
-	ErrorData error = transaction.PreFlushOptimisticBlocks(db);
-	unique_lock<mutex> t_lock(transaction_lock);
-	if (!db.IsSystem() && !db.IsTemporary()) {
-		if (transaction.ChangesMade()) {
-			if (transaction.IsReadOnly()) {
-				throw InternalException("Attempting to commit a transaction that is read-only but has made changes - "
-				                        "this should not be possible");
-			}
-		}
-	}
-
-	// check if we can checkpoint
-	unique_ptr<StorageLockKey> lock;
-	auto undo_properties = transaction.GetUndoProperties();
-	auto checkpoint_decision = CanCheckpoint(transaction, lock, undo_properties);
+	ErrorData error;
+	unique_lock<mutex> t_lock;
 	unique_lock<mutex> held_wal_lock;
+	unique_ptr<StorageLockKey> lock;
 	unique_ptr<StorageCommitState> commit_state;
-	bool skip_wal_write_due_to_checkpoint = false;
-	bool wal_written = false;
-	if (checkpoint_decision.can_checkpoint) {
-		// we can perform an automatic checkpoint
-		// we have two options:
-		// either we write to the WAL, in which case we can perform concurrent commits while running
-		// OR we skip writing to the WAL, in which case we cannot perform concurrent commits
-		// the reason for this is that if we don't write this transactions' changes to the WAL
-		// any failure during checkpoint will cause this transactions' changes to be lost,
-		// while later concurrent commits will not be
-		// this can cause undefined state, as those commits were made assuming this one was already committed
-		if (undo_properties.estimated_size >= Settings::Get<AutoCheckpointSkipWalThresholdSetting>(context)) {
-			skip_wal_write_due_to_checkpoint = true;
+	bool transaction_removed = false;
+	bool wal_commit_succeeded = false;
+	try {
+		// flush the transaction-local blocks of bulk appends before taking any commit locks (see
+		// PreFlushOptimisticBlocks)
+		if (!CheckTransactionState(db, transaction, error)) {
+			return error;
 		}
-	}
-	bool should_write_to_wal = !error.HasError() && transaction.ShouldWriteToWAL(db);
-	if (should_write_to_wal) {
-		auto &storage_manager = db.GetStorageManager().Cast<SingleFileStorageManager>();
-		// if we are committing changes and we are not doing a "checkpoint instead of WAL write"
-		// we need to write to the WAL to make the changes durable
-		// since WAL writes can take a long time - we grab the WAL lock here and unlock the transaction lock
-		// read-only transactions can bypass this branch and start/commit while the WAL write is happening
-		// unlock the transaction lock while we write to the WAL
-		// note: we can only drop the transaction lock if we are NOT checkpointing
-		// if we are checkpointing, we have already made certain decisions (e.g. the CheckpointType)
-		t_lock.unlock();
-		// grab the WAL lock and hold it until the entire commit is finished
-		held_wal_lock = storage_manager.GetWALLock();
-
-		// Commit the changes to the WAL.
-		if (!skip_wal_write_due_to_checkpoint) {
-			error = transaction.WriteToWAL(context, db, commit_state);
-			wal_written = true;
+		error = transaction.PreFlushOptimisticBlocks(db);
+		t_lock = unique_lock<mutex>(transaction_lock);
+		if (!CheckTransactionState(db, transaction, error)) {
+			return error;
 		}
-
-		// after we finish writing to the WAL we grab the transaction lock again
-		t_lock.lock();
-	}
-	if (!error.HasError() && checkpoint_decision.can_checkpoint) {
-		// now that we have the transaction lock again, new transactions can't start
-		// figure out the checkpoint type now
-		checkpoint_decision = GetCheckpointType(transaction, undo_properties);
-		if (should_write_to_wal && skip_wal_write_due_to_checkpoint && !checkpoint_decision.can_checkpoint) {
-			// we have not written to the WAL but we have now realized we can't checkpoint after all
-			// in order to commit we need backpeddle and write to the WAL after all
-			D_ASSERT(held_wal_lock.owns_lock());
-			// unlock the transaction lock while we are writing to the WAL
-			t_lock.unlock();
-			error = transaction.WriteToWAL(context, db, commit_state);
-			wal_written = true;
-			t_lock.lock();
-			skip_wal_write_due_to_checkpoint = false;
-		}
-	}
-	// in-memory databases don't have a WAL - we estimate how large their changeset is based on the undo properties
-	if (!db.IsSystem()) {
-		auto &storage_manager = db.GetStorageManager();
-		if (storage_manager.InMemory() || db.GetRecoveryMode() == RecoveryMode::NO_WAL_WRITES) {
-			storage_manager.AddWALSize(undo_properties.estimated_size);
-		}
-	}
-	// obtain a commit id for the transaction
-	CommitInfo info;
-	info.commit_id = GetCommitTimestamp();
-
-	// commit the UndoBuffer of the transaction
-	if (!error.HasError()) {
-		if (HasOtherTransactions(transaction)) {
-			info.active_transactions = ActiveTransactionState::OTHER_TRANSACTIONS;
-		} else {
-			info.active_transactions = ActiveTransactionState::NO_OTHER_TRANSACTIONS;
-		}
-		error = transaction.Commit(db, info, std::move(commit_state));
-	}
-
-	if (error.HasError()) {
-		DUCKDB_LOG(context, TransactionLogType, db, "Rollback (after failed commit)", info.commit_id);
-
-		// COMMIT not successful: ROLLBACK.
-		checkpoint_decision = CheckpointDecision(error.Message());
-		transaction.commit_id = 0;
-
-		auto rollback_error = transaction.Rollback();
-		if (rollback_error.HasError()) {
-			throw FatalException(
-			    "Failed to rollback transaction. Cannot continue operation.\nOriginal Error: %s\nRollback Error: %s",
-			    error.Message(), rollback_error.Message());
-		}
-	} else {
-		DUCKDB_LOG(context, TransactionLogType, db, "Commit", info.commit_id);
-		last_commit = info.commit_id;
-
-		// check if catalog changes were made
-		if (transaction.catalog_version >= TRANSACTION_ID_START) {
-			transaction.catalog_version = ++last_committed_version;
-		}
-	}
-	OnCommitCheckpointDecision(checkpoint_decision, transaction);
-
-	if (!checkpoint_decision.can_checkpoint && lock) {
-		// we won't checkpoint after all due to an error during commit: unlock the checkpoint lock again
-		skip_wal_write_due_to_checkpoint = false;
-		lock.reset();
-	}
-
-	// commit successful: remove the transaction id from the list of active transactions
-	// potentially resulting in garbage collection
-	bool store_transaction = undo_properties.has_updates || undo_properties.has_index_deletes ||
-	                         undo_properties.has_catalog_changes || error.HasError();
-
-	// Remove the transaction from the list of active transactions and gather cleanup information.
-	QueueCleanup(RemoveTransaction(transaction, store_transaction, CreateCleanupInfo()));
-
-	// We do not need to hold the transaction lock during cleanup of transactions,
-	// as they (1) have been removed, or (2) enter cleanup_info.
-	t_lock.unlock();
-	// if we have skipped the WAL write due to checkpoint, we keep the WAL lock while checkpointing
-	// this prevents any concurrent transactions from happening during this time
-	if (!skip_wal_write_due_to_checkpoint && held_wal_lock.owns_lock()) {
-		held_wal_lock.unlock();
-	}
-
-	CleanupTransactions();
-
-	// A failed commit rolls back inline, queueing teardowns as RollbackTransaction does. Drain here too,
-	// so the call that fills the queue is the one that empties it.
-	DatabaseManager::Get(db.GetDatabase()).DrainPendingTeardowns();
-
-	// now perform a checkpoint if (1) we are able to checkpoint, and (2) the WAL has reached sufficient size to
-	// checkpoint
-	if (checkpoint_decision.can_checkpoint) {
-		if (!lock || lock->GetType() != StorageLockType::EXCLUSIVE) {
-			throw InternalException("Checkpointing requires an exclusive lock to be held");
-		}
-		// we can unlock the transaction lock while checkpointing
-		// checkpoint the database to disk
-		CheckpointOptions options;
-		options.action = CheckpointAction::ALWAYS_CHECKPOINT;
-		options.type = checkpoint_decision.type;
-		options.wal_lock = held_wal_lock.owns_lock() ? &held_wal_lock : nullptr;
-		auto &storage_manager = db.GetStorageManager();
-		try {
-			storage_manager.CreateCheckpoint(context, options);
-		} catch (std::exception &ex) {
-			if (wal_written) {
-				context.transaction.SetAutocheckpointError(BuildAutocheckpointError(db, ex));
-			} else {
-				error.Merge(ErrorData(ex));
+		if (!db.IsSystem() && !db.IsTemporary()) {
+			if (transaction.ChangesMade()) {
+				if (transaction.IsReadOnly()) {
+					throw InternalException(
+					    "Attempting to commit a transaction that is read-only but has made changes - "
+					    "this should not be possible");
+				}
 			}
 		}
-	}
 
-	return error;
+		// check if we can checkpoint
+		auto undo_properties = transaction.GetUndoProperties();
+		auto checkpoint_decision = CanCheckpoint(transaction, lock, undo_properties);
+		bool skip_wal_write_due_to_checkpoint = false;
+		bool wal_written = false;
+		if (checkpoint_decision.can_checkpoint) {
+			// we can perform an automatic checkpoint
+			// we have two options:
+			// either we write to the WAL, in which case we can perform concurrent commits while running
+			// OR we skip writing to the WAL, in which case we cannot perform concurrent commits
+			// the reason for this is that if we don't write this transactions' changes to the WAL
+			// any failure during checkpoint will cause this transactions' changes to be lost,
+			// while later concurrent commits will not be
+			// this can cause undefined state, as those commits were made assuming this one was already committed
+			if (undo_properties.estimated_size >= Settings::Get<AutoCheckpointSkipWalThresholdSetting>(context)) {
+				skip_wal_write_due_to_checkpoint = true;
+			}
+		}
+		bool should_write_to_wal = !error.HasError() && transaction.ShouldWriteToWAL(db);
+		if (should_write_to_wal) {
+			auto &storage_manager = db.GetStorageManager().Cast<SingleFileStorageManager>();
+			// if we are committing changes and we are not doing a "checkpoint instead of WAL write"
+			// we need to write to the WAL to make the changes durable
+			// since WAL writes can take a long time - we grab the WAL lock here and unlock the transaction lock
+			// read-only transactions can bypass this branch and start/commit while the WAL write is happening
+			// unlock the transaction lock while we write to the WAL
+			// note: we can only drop the transaction lock if we are NOT checkpointing
+			// if we are checkpointing, we have already made certain decisions (e.g. the CheckpointType)
+			t_lock.unlock();
+			// grab the WAL lock and hold it until the entire commit is finished
+			held_wal_lock = storage_manager.GetWALLock();
+			if (!CheckTransactionState(db, transaction, error)) {
+				return error;
+			}
+
+			// Commit the changes to the WAL.
+			if (!skip_wal_write_due_to_checkpoint) {
+				error = transaction.WriteToWAL(context, db, commit_state);
+				wal_written = true;
+			}
+
+			// after we finish writing to the WAL we grab the transaction lock again
+			t_lock.lock();
+		}
+		if (!CheckTransactionState(db, transaction, error)) {
+			return error;
+		}
+		if (!error.HasError() && checkpoint_decision.can_checkpoint) {
+			// now that we have the transaction lock again, new transactions can't start
+			// figure out the checkpoint type now
+			checkpoint_decision = GetCheckpointType(transaction, undo_properties);
+			if (should_write_to_wal && skip_wal_write_due_to_checkpoint && !checkpoint_decision.can_checkpoint) {
+				// we have not written to the WAL but we have now realized we can't checkpoint after all
+				// in order to commit we need backpeddle and write to the WAL after all
+				D_ASSERT(held_wal_lock.owns_lock());
+				// unlock the transaction lock while we are writing to the WAL
+				t_lock.unlock();
+				error = transaction.WriteToWAL(context, db, commit_state);
+				wal_written = true;
+				t_lock.lock();
+				skip_wal_write_due_to_checkpoint = false;
+			}
+		}
+		// in-memory databases don't have a WAL - we estimate how large their changeset is based on the undo properties
+		if (!db.IsSystem()) {
+			auto &storage_manager = db.GetStorageManager();
+			if (storage_manager.InMemory() || db.GetRecoveryMode() == RecoveryMode::NO_WAL_WRITES) {
+				storage_manager.AddWALSize(undo_properties.estimated_size);
+			}
+		}
+		// obtain a commit id for the transaction
+		CommitInfo info;
+		info.commit_id = GetCommitTimestamp();
+
+		if (!CheckTransactionState(db, transaction, error)) {
+			return error;
+		}
+
+		// commit the UndoBuffer of the transaction
+		if (!error.HasError()) {
+			if (HasOtherTransactions(transaction)) {
+				info.active_transactions = ActiveTransactionState::OTHER_TRANSACTIONS;
+			} else {
+				info.active_transactions = ActiveTransactionState::NO_OTHER_TRANSACTIONS;
+			}
+			error = transaction.Commit(db, info, std::move(commit_state));
+			wal_commit_succeeded = !error.HasError() && wal_written;
+		}
+
+		if (!CheckTransactionState(db, transaction, error)) {
+			if (wal_commit_succeeded) {
+				error = ErrorData(error.Type(), "Transaction COMMIT succeeded and is durable. " + error.RawMessage());
+			}
+			return error;
+		}
+
+		if (error.HasError()) {
+			DUCKDB_LOG(context, TransactionLogType, db, "Rollback (after failed commit)", info.commit_id);
+
+			// COMMIT not successful: ROLLBACK.
+			checkpoint_decision = CheckpointDecision(error.Message());
+			transaction.commit_id = 0;
+
+			auto rollback_error = transaction.Rollback();
+			if (rollback_error.HasError()) {
+				throw FatalException("Failed to rollback transaction. Cannot continue operation.\nOriginal Error: "
+				                     "%s\nRollback Error: %s",
+				                     error.Message(), rollback_error.Message());
+			}
+		} else {
+			DUCKDB_LOG(context, TransactionLogType, db, "Commit", info.commit_id);
+			last_commit = info.commit_id;
+
+			// check if catalog changes were made
+			if (transaction.catalog_version >= TRANSACTION_ID_START) {
+				transaction.catalog_version = ++last_committed_version;
+			}
+		}
+		OnCommitCheckpointDecision(checkpoint_decision, transaction);
+
+		if (!checkpoint_decision.can_checkpoint && lock) {
+			// we won't checkpoint after all due to an error during commit: unlock the checkpoint lock again
+			skip_wal_write_due_to_checkpoint = false;
+			lock.reset();
+		}
+
+		// commit successful: remove the transaction id from the list of active transactions
+		// potentially resulting in garbage collection
+		bool store_transaction = undo_properties.has_updates || undo_properties.has_index_deletes ||
+		                         undo_properties.has_catalog_changes || error.HasError();
+
+		// Remove the transaction from the list of active transactions and gather cleanup information.
+		auto cleanup_info = RemoveTransaction(transaction, store_transaction, CreateCleanupInfo());
+		transaction_removed = true;
+		QueueCleanup(std::move(cleanup_info));
+
+		// We do not need to hold the transaction lock during cleanup of transactions,
+		// as they (1) have been removed, or (2) enter cleanup_info.
+		t_lock.unlock();
+		// if we have skipped the WAL write due to checkpoint, we keep the WAL lock while checkpointing
+		// this prevents any concurrent transactions from happening during this time
+		if (!skip_wal_write_due_to_checkpoint && held_wal_lock.owns_lock()) {
+			held_wal_lock.unlock();
+		}
+
+		CleanupTransactions();
+
+		// A failed commit rolls back inline, queueing teardowns as RollbackTransaction does. Drain here too,
+		// so the call that fills the queue is the one that empties it.
+		DatabaseManager::Get(db.GetDatabase()).DrainPendingTeardowns();
+
+		// now perform a checkpoint if (1) we are able to checkpoint, and (2) the WAL has reached sufficient size to
+		// checkpoint
+		if (checkpoint_decision.can_checkpoint) {
+			if (!lock || lock->GetType() != StorageLockType::EXCLUSIVE) {
+				throw InternalException("Checkpointing requires an exclusive lock to be held");
+			}
+			// we can unlock the transaction lock while checkpointing
+			// checkpoint the database to disk
+			CheckpointOptions options;
+			options.action = CheckpointAction::ALWAYS_CHECKPOINT;
+			options.type = checkpoint_decision.type;
+			options.wal_lock = held_wal_lock.owns_lock() ? &held_wal_lock : nullptr;
+			auto &storage_manager = db.GetStorageManager();
+			try {
+				storage_manager.CreateCheckpoint(context, options);
+			} catch (std::exception &ex) {
+				if (wal_written) {
+					context.transaction.SetAutocheckpointError(BuildAutocheckpointError(db, ex));
+				} else {
+					error.Merge(ErrorData(ex));
+				}
+			}
+		}
+
+		return error;
+	} catch (std::exception &ex) {
+		error.Merge(ErrorData(ex));
+		if (wal_commit_succeeded) {
+			error = ErrorData(error.Type(), "Transaction COMMIT succeeded and is durable, but finalization failed. " +
+			                                    error.Message());
+		}
+		if (!transaction_removed) {
+			// Keep unsafe transactions alive until the invalidated database is destroyed.
+			transaction.InvalidateCommit(error);
+		} else {
+			ValidChecker::Invalidate(db.GetDatabase(), error.RawMessage());
+		}
+		return error;
+	}
 }
 
 void DuckTransactionManager::RollbackTransaction(Transaction &transaction_p) {
 	auto &transaction = transaction_p.Cast<DuckTransaction>();
-
-	DUCKDB_LOG(db.GetDatabase(), TransactionLogType, db, "Rollback", transaction.GetTransactionId());
-
 	ErrorData error;
-	{
+	unique_lock<mutex> t_lock;
+	bool transaction_removed = false;
+	try {
 		// Obtain the transaction lock and roll back.
-		lock_guard<mutex> t_lock(transaction_lock);
+		t_lock = unique_lock<mutex>(transaction_lock);
+		if (!CheckTransactionState(db, transaction, error)) {
+			error.Throw();
+		}
+		DUCKDB_LOG(db.GetDatabase(), TransactionLogType, db, "Rollback", transaction.GetTransactionId());
 		error = transaction.Rollback();
+		if (error.HasError()) {
+			error.Throw();
+		}
 
 		// Remove the transaction from the list of active transactions and gather cleanup information.
-		QueueCleanup(RemoveTransaction(transaction, CreateCleanupInfo()));
-	}
+		auto cleanup_info = RemoveTransaction(transaction, CreateCleanupInfo());
+		transaction_removed = true;
+		QueueCleanup(std::move(cleanup_info));
+		t_lock.unlock();
 
-	CleanupTransactions();
+		CleanupTransactions();
 
-	// Run external-resource teardowns the rollback queued (see RollbackState): they execute SQL, so
-	// they can only run here, after the transaction lock is released.
-	DatabaseManager::Get(db.GetDatabase()).DrainPendingTeardowns();
-
-	if (error.HasError()) {
-		throw FatalException("Failed to rollback transaction. Cannot continue operation.\nError: %s", error.Message());
+		// Run external-resource teardowns outside the transaction lock.
+		DatabaseManager::Get(db.GetDatabase()).DrainPendingTeardowns();
+	} catch (std::exception &ex) {
+		ErrorData failure(ex);
+		if (!transaction_removed) {
+			transaction.InvalidateCommit(failure);
+		} else {
+			ValidChecker::Invalidate(db.GetDatabase(), failure.RawMessage());
+		}
+		throw FatalException("Failed to rollback transaction. Cannot continue operation.\nError: %s",
+		                     failure.Message());
 	}
 }
 

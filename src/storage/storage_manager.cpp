@@ -600,7 +600,7 @@ void SingleFileStorageManager::LoadDatabase(QueryContext context) {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-enum class WALCommitState { IN_PROGRESS, FLUSHED, TRUNCATED };
+enum class WALCommitState { IN_PROGRESS, FLUSHED, TRUNCATED, FAILED };
 
 struct OptimisticallyWrittenRowGroupData {
 	OptimisticallyWrittenRowGroupData(idx_t start, idx_t count, unique_ptr<PersistentCollectionData> row_group_data_p)
@@ -643,7 +643,8 @@ SingleFileStorageCommitState::SingleFileStorageCommitState(StorageManager &stora
 }
 
 SingleFileStorageCommitState::~SingleFileStorageCommitState() {
-	if (state != WALCommitState::IN_PROGRESS) {
+	if (state != WALCommitState::IN_PROGRESS || ValidChecker::IsInvalidated(wal.GetDatabase()) ||
+	    ValidChecker::IsInvalidated(wal.GetDatabase().GetDatabase())) {
 		return;
 	}
 	try {
@@ -664,6 +665,8 @@ void SingleFileStorageCommitState::RevertCommit() {
 	if (state != WALCommitState::IN_PROGRESS) {
 		return;
 	}
+	// Do not retry an I/O operation whose outcome is uncertain.
+	state = WALCommitState::FAILED;
 	if (wal.GetTotalWritten() > initial_written) {
 		// remove any entries written into the WAL by truncating it
 		wal.Truncate(initial_wal_size);
@@ -675,7 +678,8 @@ void SingleFileStorageCommitState::FlushCommit() {
 	if (state != WALCommitState::IN_PROGRESS) {
 		return;
 	}
-	// Move the blocks in this COMMIT into the WAL and mark them as "in use".
+	// A failed sync can still leave a durable commit record.
+	state = WALCommitState::FAILED;
 	wal.Flush();
 	state = WALCommitState::FLUSHED;
 }

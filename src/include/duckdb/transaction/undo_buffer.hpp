@@ -50,6 +50,8 @@ public:
 
 	//! Write a specified entry to the undo buffer
 	UndoBufferReference CreateEntry(UndoFlags type, idx_t len);
+	//! Activate a reserved entry while its buffer remains pinned.
+	static void SetEntryType(UndoBufferReference &entry, UndoFlags type) noexcept;
 
 	bool ChangesMade();
 	UndoBufferProperties GetProperties();
