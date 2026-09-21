@@ -628,7 +628,6 @@ public:
 	bool HasRowGroupData() override;
 
 private:
-	StorageManager &storage;
 	idx_t initial_wal_size = 0;
 	idx_t initial_written = 0;
 	WriteAheadLog &wal;
@@ -637,7 +636,7 @@ private:
 };
 
 SingleFileStorageCommitState::SingleFileStorageCommitState(StorageManager &storage, WriteAheadLog &wal)
-    : storage(storage), wal(wal), state(WALCommitState::IN_PROGRESS) {
+    : wal(wal), state(WALCommitState::IN_PROGRESS) {
 	auto initial_size = storage.GetWALSize();
 	initial_written = wal.GetTotalWritten();
 	initial_wal_size = initial_size;
@@ -668,16 +667,6 @@ void SingleFileStorageCommitState::RevertCommit() {
 	if (wal.GetTotalWritten() > initial_written) {
 		// remove any entries written into the WAL by truncating it
 		wal.Truncate(initial_wal_size);
-	}
-	auto &block_manager = storage.GetBlockManager();
-	for (auto &entry : optimistically_written_data) {
-		for (auto &rg_entry : entry.second) {
-			if (rg_entry.second.row_group_data) {
-				for (auto &block_id : rg_entry.second.row_group_data->GetBlockIds()) {
-					block_manager.MarkBlockAsModified(block_id);
-				}
-			}
-		}
 	}
 	state = WALCommitState::TRUNCATED;
 }

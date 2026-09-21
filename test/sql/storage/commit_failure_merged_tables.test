@@ -1,0 +1,93 @@
+# name: test/sql/storage/commit_failure_merged_tables.test
+# description: A failure after merging multiple tables preserves committed data and restores their indexes
+# group: [storage]
+
+require noforcestorage
+
+require skip_reload
+
+load {TEST_DIR}/commit_failure_merged_tables.db
+
+statement ok
+SET threads = 1;
+
+statement ok
+SET enable_optimistic_write = true;
+
+statement ok
+SET write_buffer_row_group_count = 1;
+
+statement ok
+SET wal_autocheckpoint = '1TB';
+
+foreach table_name t1 t2
+
+statement ok
+CREATE TABLE {table_name}(i INTEGER PRIMARY KEY, payload VARCHAR);
+
+statement ok
+INSERT INTO {table_name} VALUES (-1, 'committed');
+
+endloop
+
+statement ok
+CHECKPOINT;
+
+statement ok
+BEGIN;
+
+foreach table_name t1 t2
+
+statement ok
+INSERT INTO {table_name} SELECT i, md5(i::VARCHAR) FROM range(200000) AS r(i);
+
+endloop
+
+query I
+SELECT used_blocks > 5 FROM pragma_database_size();
+----
+true
+
+# This hook runs after every table has been merged and its append undo has been committed.
+statement ok
+SET debug_force_commit_failure = true;
+
+statement error
+COMMIT;
+----
+Forced commit failure
+
+statement ok
+SET debug_force_commit_failure = false;
+
+foreach table_name t1 t2
+
+query II
+SELECT count(*), sum(i) FROM {table_name};
+----
+1	-1
+
+query T
+SELECT payload FROM {table_name} WHERE i = -1;
+----
+committed
+
+# Reusing an aborted key must succeed after both revert-commit and rollback have run.
+statement ok
+INSERT INTO {table_name} VALUES (0, 'reused');
+
+query T
+SELECT payload FROM {table_name} WHERE i = 0;
+----
+reused
+
+endloop
+
+statement ok
+SET debug_verify_blocks = true;
+
+statement ok
+PRAGMA force_checkpoint;
+
+statement ok
+CHECKPOINT;

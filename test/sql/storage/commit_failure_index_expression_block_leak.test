@@ -1,0 +1,60 @@
+# name: test/sql/storage/commit_failure_index_expression_block_leak.test
+# description: An index expression throwing during commit reclaims local optimistic blocks
+# group: [storage]
+
+require noforcestorage
+
+require skip_reload
+
+load {TEST_DIR}/commit_failure_index_expression_block_leak.db
+
+statement ok
+SET threads = 1;
+
+statement ok
+SET enable_optimistic_write = true;
+
+statement ok
+SET write_buffer_row_group_count = 1;
+
+statement ok
+CREATE TABLE t(k VARCHAR, payload VARCHAR);
+
+statement ok
+CHECKPOINT;
+
+statement ok
+BEGIN;
+
+statement ok
+INSERT INTO t
+SELECT CASE WHEN i = 199999 THEN 'not-an-integer' ELSE i::VARCHAR END,
+       md5(i::VARCHAR) || md5((i * 7)::VARCHAR) || md5((i * 13)::VARCHAR)
+FROM range(200000) AS r(i);
+
+query I
+SELECT used_blocks > 5 FROM pragma_database_size();
+----
+true
+
+statement ok
+CREATE INDEX idx ON t ((CAST(k AS INTEGER)));
+
+# Earlier chunks can enter the index before the last chunk throws a conversion error.
+statement error
+COMMIT;
+----
+Could not convert string 'not-an-integer'
+
+query II
+SELECT (SELECT count(*) FROM t), (SELECT count(*) FROM duckdb_indexes() WHERE table_name = 't');
+----
+0	0
+
+statement ok
+CHECKPOINT;
+
+query I
+SELECT used_blocks <= 5 FROM pragma_database_size();
+----
+true

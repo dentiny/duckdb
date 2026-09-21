@@ -1,0 +1,73 @@
+# name: test/sql/storage/commit_failure_existing_index_block_leak.test
+# description: A concurrent unique-key conflict restores an existing index and releases optimistic blocks
+# group: [storage]
+
+require noforcestorage
+
+require skip_reload
+
+load {TEST_DIR}/commit_failure_existing_index_block_leak.db
+
+statement ok con1
+SET threads = 1;
+
+statement ok con1
+SET enable_optimistic_write = true;
+
+statement ok con1
+SET write_buffer_row_group_count = 1;
+
+statement ok con1
+CREATE TABLE t(i INTEGER PRIMARY KEY, payload VARCHAR);
+
+statement ok con1
+INSERT INTO t VALUES (-1, 'committed');
+
+statement ok con1
+CHECKPOINT;
+
+statement ok con1
+BEGIN;
+
+statement ok con1
+INSERT INTO t
+SELECT i, md5(i::VARCHAR) || md5((i * 7)::VARCHAR) || md5((i * 13)::VARCHAR)
+FROM range(200000) AS r(i);
+
+query I con1
+SELECT used_blocks > 8 FROM pragma_database_size();
+----
+true
+
+# The conflict appears only after con1 has finished its statement-time constraint checks.
+statement ok con2
+INSERT INTO t VALUES (199999, 'winner');
+
+statement error con1
+COMMIT;
+----
+PRIMARY KEY or UNIQUE constraint violation
+
+query IT con1
+SELECT i, payload FROM t ORDER BY i;
+----
+-1	committed
+199999	winner
+
+# Earlier chunks entered the persistent index before the conflicting final key was encountered.
+statement ok con1
+INSERT INTO t VALUES (0, 'reused');
+
+query T con1
+SELECT payload FROM t WHERE i = 0;
+----
+reused
+
+statement ok con1
+CHECKPOINT;
+
+# The surviving three rows and their index require only a few blocks.
+query I con1
+SELECT used_blocks <= 8 FROM pragma_database_size();
+----
+true

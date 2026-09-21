@@ -1,0 +1,70 @@
+# name: test/sql/storage/commit_failure_fallback_index.test
+# description: A fallback append failing in an index does not release optimistic blocks twice
+# group: [storage]
+
+require noforcestorage
+
+require skip_reload
+
+load {TEST_DIR}/commit_failure_fallback_index.db
+
+statement ok
+SET threads = 1;
+
+statement ok
+SET enable_optimistic_write = true;
+
+statement ok
+SET write_buffer_row_group_count = 1;
+
+statement ok
+CREATE TABLE t(i INTEGER, k INTEGER, payload VARCHAR);
+
+statement ok
+CHECKPOINT;
+
+statement ok
+BEGIN;
+
+statement ok
+INSERT INTO t
+SELECT i, i % 100000, md5(i::VARCHAR) || md5((i * 7)::VARCHAR) || md5((i * 13)::VARCHAR)
+FROM range(200000) AS r(i);
+
+query I
+SELECT used_blocks > 5 FROM pragma_database_size();
+----
+true
+
+# A local delete forces Flush to release optimistic blocks and re-append the surviving rows.
+statement ok
+DELETE FROM t WHERE i = 199999;
+
+statement ok
+CREATE UNIQUE INDEX idx ON t(k);
+
+statement error
+COMMIT;
+----
+PRIMARY KEY or UNIQUE constraint violation
+
+query II
+SELECT (SELECT count(*) FROM t), (SELECT count(*) FROM duckdb_indexes() WHERE table_name = 't');
+----
+0	0
+
+statement ok
+CHECKPOINT;
+
+query I
+SELECT used_blocks <= 5 FROM pragma_database_size();
+----
+true
+
+statement ok
+INSERT INTO t VALUES (1, 1, 'still usable');
+
+query I
+SELECT count(*) FROM t;
+----
+1
