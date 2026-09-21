@@ -1,0 +1,66 @@
+# name: test/sql/storage/commit_failure_pending_tables_block_leak.test
+# description: A failed commit reclaims preflushed blocks of tables not reached by the flush loop
+# group: [storage]
+
+require noforcestorage
+
+require skip_reload
+
+load {TEST_DIR}/commit_failure_pending_tables_block_leak.db
+
+statement ok
+SET threads = 1;
+
+statement ok
+SET enable_optimistic_write = true;
+
+statement ok
+SET write_buffer_row_group_count = 1;
+
+statement ok
+CREATE TABLE t1(s VARCHAR);
+
+statement ok
+CREATE TABLE t2(s VARCHAR);
+
+statement ok
+CHECKPOINT;
+
+statement ok
+BEGIN;
+
+foreach table_name t1 t2
+
+statement ok
+INSERT INTO {table_name}
+SELECT md5((i % 100000)::VARCHAR) FROM range(200000) AS r(i);
+
+statement ok
+CREATE UNIQUE INDEX idx_{table_name} ON {table_name}(s);
+
+endloop
+
+query I
+SELECT used_blocks > 5 FROM pragma_database_size();
+----
+true
+
+# Both tables fail independently, so one remains unprocessed regardless of map iteration order.
+statement error
+COMMIT;
+----
+PRIMARY KEY or UNIQUE constraint violation
+
+query III
+SELECT (SELECT count(*) FROM t1), (SELECT count(*) FROM t2),
+       (SELECT count(*) FROM duckdb_indexes() WHERE table_name IN ('t1', 't2'));
+----
+0	0	0
+
+statement ok
+CHECKPOINT;
+
+query I
+SELECT used_blocks <= 5 FROM pragma_database_size();
+----
+true

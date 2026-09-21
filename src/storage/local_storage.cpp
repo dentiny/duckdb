@@ -266,6 +266,12 @@ OptimisticDataWriter &LocalTableStorage::GetOptimisticWriter() {
 }
 
 void LocalTableStorage::Rollback() {
+	if (block_rollback_state == BlockRollbackState::COMPLETE) {
+		return;
+	}
+	if (block_rollback_state == BlockRollbackState::IN_PROGRESS) {
+		throw FatalException("Cannot retry incomplete local block rollback");
+	}
 	optimistic_writer.Rollback();
 
 	CommitDropState drop_state(&row_groups->collection->GetBlockManager());
@@ -275,9 +281,12 @@ void LocalTableStorage::Rollback() {
 		}
 		collection->collection->CommitDropTable(drop_state);
 	}
-	optimistic_collections.clear();
 	row_groups->collection->CommitDropTable(drop_state);
+	// A failed release must not be retried or mistaken for a completed rollback.
+	block_rollback_state = BlockRollbackState::IN_PROGRESS;
+	optimistic_collections.clear();
 	drop_state.FinalizeCommit();
+	block_rollback_state = BlockRollbackState::COMPLETE;
 }
 
 //===--------------------------------------------------------------------===//
@@ -631,15 +640,12 @@ void LocalStorage::FlushBulkAppendBlocksAndSync(AttachedDatabase &db) {
 }
 
 void LocalStorage::Commit(optional_ptr<StorageCommitState> commit_state) {
-	// commit local storage
-	// iterate over all entries in the table storage map and commit them
-	// after this, the local storage is no longer required and can be cleared
-	auto table_storage = table_manager.MoveEntries();
-	for (auto &entry : table_storage) {
-		auto table = entry.first;
-		auto storage = entry.second.get();
+	// Retain failed and unprocessed entries for transaction rollback.
+	for (auto &storage : table_manager.GetEntries()) {
+		auto &table = storage->table_ref.get();
 		Flush(table, *storage, commit_state);
-		entry.second.reset();
+		table_manager.MoveEntry(table);
+		storage.reset();
 	}
 }
 
