@@ -41,23 +41,29 @@ UndoBufferReference UndoBuffer::CreateEntry(UndoFlags type, idx_t len) {
 template <class T>
 void UndoBuffer::IterateEntries(UndoBuffer::IteratorState &state, T &&callback) {
 	// iterate in insertion order: start with the tail
-	state.current = allocator.tail.get();
 	state.started = true;
-	while (state.current) {
-		state.handle = allocator.buffer_manager.Pin(state.current->block);
-		state.start = state.handle.GetDataMutable();
-		state.end = state.start + state.current->position;
-		while (state.start < state.end) {
-			auto len_position = state.start + sizeof(UndoFlags);
+	auto current = allocator.tail.get();
+	while (current) {
+		auto handle = allocator.buffer_manager.Pin(current->block);
+		data_ptr_t start = handle.GetDataMutable();
+		data_ptr_t end = start + current->position;
+		idx_t current_position = 0;
+		while (start < end) {
+			auto len_position = start + sizeof(UndoFlags);
 			auto payload_position = len_position + sizeof(uint32_t);
-			auto type = Load<UndoFlags>(state.start);
+			auto type = Load<UndoFlags>(start);
 			auto len = Load<uint32_t>(len_position);
+			auto entry_size = sizeof(UndoFlags) + sizeof(uint32_t) + len;
 
 			callback(type, payload_position);
-			state.start = payload_position + len;
+			current_position += entry_size;
+			start += entry_size;
+			state.current = current;
+			state.current_position = current_position;
 		}
-		state.current = state.current->prev;
+		current = current->prev;
 	}
+	state.completed = true;
 }
 
 template <class T>
@@ -65,21 +71,18 @@ void UndoBuffer::ReverseIterateEntries(UndoBuffer::IteratorState &end_state, T &
 	if (!end_state.started) {
 		return;
 	}
-
-	idx_t end_position = 0;
-	if (end_state.current) {
-		auto block_start = end_state.handle.GetDataMutable();
-		D_ASSERT(end_state.start >= block_start);
-		end_position = NumericCast<idx_t>(end_state.start - block_start);
-		D_ASSERT(end_position <= end_state.current->position);
+	if (!end_state.completed && !end_state.current) {
+		return;
 	}
 
+	idx_t end_position = end_state.completed ? 0 : end_state.current_position;
 	// Start at the newest committed entry and iterate back to the oldest one.
-	auto current = end_state.current ? end_state.current : allocator.head.get();
+	auto current = end_state.completed ? allocator.head.get() : end_state.current;
 	while (current) {
 		auto handle = allocator.buffer_manager.Pin(current->block);
 		data_ptr_t start = handle.GetDataMutable();
-		data_ptr_t end = start + (current == end_state.current ? end_position : current->position);
+		data_ptr_t end =
+		    start + (current == end_state.current && !end_state.completed ? end_position : current->position);
 		vector<pair<UndoFlags, data_ptr_t>> nodes;
 		while (start < end) {
 			auto type = Load<UndoFlags>(start);
@@ -100,6 +103,7 @@ template <class T>
 void UndoBuffer::ReverseIterateEntries(T &&callback) {
 	UndoBuffer::IteratorState state;
 	state.started = true;
+	state.completed = true;
 	ReverseIterateEntries(state, std::forward<T>(callback));
 }
 

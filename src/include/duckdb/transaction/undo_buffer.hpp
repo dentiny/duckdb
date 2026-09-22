@@ -38,11 +38,10 @@ struct UndoBufferProperties {
 class UndoBuffer {
 public:
 	struct IteratorState {
-		BufferHandle handle;
-		optional_ptr<UndoBufferEntry> current;
-		data_ptr_t start;
-		data_ptr_t end;
+		optional_ptr<UndoBufferEntry> current = nullptr;
+		idx_t current_position = 0;
 		bool started = false;
+		bool completed = false;
 	};
 
 public:
