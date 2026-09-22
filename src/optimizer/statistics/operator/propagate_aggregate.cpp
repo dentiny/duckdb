@@ -31,16 +31,21 @@ namespace duckdb {
 
 namespace {
 
-struct MinMaxColumnInfo {
-	ColumnBinding binding;
-	LogicalType input_type;
-	LogicalType result_type;
-};
-
 struct ValueComparator {
 	virtual ~ValueComparator() = default;
 	virtual bool Compare(Value &lhs, Value &rhs) const = 0;
 	virtual Value GetVal(BaseStatistics &stats) const = 0;
+};
+
+enum class PrecomputedAggregateType : uint8_t { COUNT_STAR, COUNT, MIN_MAX };
+
+struct PrecomputedAggregate {
+	PrecomputedAggregateType type;
+	ColumnBinding binding;
+	LogicalType input_type;
+	LogicalType result_type;
+	StorageIndex storage_index;
+	unique_ptr<ValueComparator> comparator;
 };
 
 template <typename StatsType>
@@ -81,7 +86,7 @@ unique_ptr<ValueComparator> GetComparator(const Identifier &fun_name, const Logi
 	return nullptr;
 }
 
-bool IsSafeMinMaxCast(const LogicalType &source, const LogicalType &target) {
+bool IsSafeCast(const LogicalType &source, const LogicalType &target) {
 	if (source == target) {
 		return true;
 	}
@@ -92,7 +97,7 @@ bool IsSafeMinMaxCast(const LogicalType &source, const LogicalType &target) {
 	return LogicalType::DefaultTryGetMaxLogicalTypeUnchecked(source, target, max_type) && max_type == target;
 }
 
-bool TryGetMinMaxColumnInfo(const Expression &expr, MinMaxColumnInfo &info) {
+bool TryGetAggColumnInfo(const Expression &expr, PrecomputedAggregate &info) {
 	if (expr.GetExpressionType() == ExpressionType::BOUND_COLUMN_REF) {
 		const auto &col_ref = expr.Cast<BoundColumnRefExpression>();
 		info.binding = col_ref.Binding();
@@ -109,12 +114,26 @@ bool TryGetMinMaxColumnInfo(const Expression &expr, MinMaxColumnInfo &info) {
 		return false;
 	}
 	const auto &col_ref = cast_child.Cast<BoundColumnRefExpression>();
-	if (!IsSafeMinMaxCast(col_ref.GetReturnType(), BoundCastExpression::TargetType(cast))) {
+	if (!IsSafeCast(col_ref.GetReturnType(), BoundCastExpression::TargetType(cast))) {
 		return false;
 	}
 	info.binding = col_ref.Binding();
 	info.input_type = col_ref.GetReturnType();
 	info.result_type = BoundCastExpression::TargetType(cast);
+	return true;
+}
+
+bool WalkAggColumnThroughProjection(const LogicalProjection &proj, PrecomputedAggregate &info) {
+	auto &expr = proj.GetExpression(info.binding);
+	PrecomputedAggregate projection_info;
+	if (!TryGetAggColumnInfo(expr, projection_info)) {
+		return false;
+	}
+	if (!IsSafeCast(projection_info.result_type, info.input_type)) {
+		return false;
+	}
+	info.binding = projection_info.binding;
+	info.input_type = projection_info.input_type;
 	return true;
 }
 
@@ -171,6 +190,37 @@ bool GroupingSetCanIntroduceNull(const LogicalAggregate &aggr, idx_t group_idx) 
 	return false;
 }
 
+bool TryGetNonNullCount(const vector<PartitionStatistics> &partition_stats, const StorageIndex &storage_index,
+                        idx_t &count) {
+	count = 0;
+	for (const auto &stats : partition_stats) {
+		if (stats.count_type == CountType::COUNT_APPROXIMATE) {
+			return false;
+		}
+		auto row_group = stats.partition_row_group;
+		if (!row_group || row_group->HasPendingWrites()) {
+			return false;
+		}
+		auto null_count = row_group->GetColumnNullCount(storage_index);
+		if (!null_count.IsValid() || null_count.GetIndex() > stats.count) {
+			return false;
+		}
+		count += stats.count - null_count.GetIndex();
+	}
+	return true;
+}
+
+bool TryGetRowCount(const vector<PartitionStatistics> &partition_stats, idx_t &count) {
+	count = 0;
+	for (const auto &stats : partition_stats) {
+		if (stats.count_type == CountType::COUNT_APPROXIMATE) {
+			return false;
+		}
+		count += stats.count;
+	}
+	return true;
+}
+
 } // namespace
 
 void StatisticsPropagator::TryExecuteAggregates(LogicalAggregate &aggr, unique_ptr<LogicalOperator> &node_ptr) {
@@ -178,13 +228,9 @@ void StatisticsPropagator::TryExecuteAggregates(LogicalAggregate &aggr, unique_p
 		// not possible with groups
 		return;
 	}
-	// check if all aggregates are COUNT(*), MIN or MAX
-	vector<idx_t> count_star_idxs;
-	vector<MinMaxColumnInfo> min_max_columns;
-	vector<unique_ptr<ValueComparator>> comparators;
+	vector<PrecomputedAggregate> aggregates;
 
-	for (idx_t i = 0; i < aggr.expressions.size(); i++) {
-		auto &aggr_ref = aggr.expressions[i];
+	for (auto &aggr_ref : aggr.expressions) {
 		if (aggr_ref->GetExpressionClass() != ExpressionClass::BOUND_AGGREGATE) {
 			// not an aggregate
 			return;
@@ -199,44 +245,44 @@ void StatisticsPropagator::TryExecuteAggregates(LogicalAggregate &aggr, unique_p
 			return;
 		}
 		auto &fun_name = aggr_expr.Function().GetName();
+		PrecomputedAggregate info;
 		if (fun_name == "min" || fun_name == "max") {
 			if (aggr_expr.GetChildren().size() != 1) {
 				return;
 			}
-			MinMaxColumnInfo column_info;
-			if (!TryGetMinMaxColumnInfo(*aggr_expr.GetChildren()[0], column_info)) {
+			info.type = PrecomputedAggregateType::MIN_MAX;
+			if (!TryGetAggColumnInfo(*aggr_expr.GetChildren()[0], info)) {
 				return;
 			}
-			min_max_columns.push_back(column_info);
-			auto comparator = GetComparator(fun_name, column_info.input_type);
-			if (!comparator) {
+			info.comparator = GetComparator(fun_name, info.input_type);
+			if (!info.comparator) {
 				// Type has no min max statistics
 				return;
 			}
-			comparators.push_back(std::move(comparator));
 		} else if (fun_name == "count_star") {
-			count_star_idxs.push_back(i);
+			info.type = PrecomputedAggregateType::COUNT_STAR;
+		} else if (fun_name == "count") {
+			if (aggr_expr.GetChildren().size() != 1 || aggr_expr.IsDistinct()) {
+				return;
+			}
+			info.type = PrecomputedAggregateType::COUNT;
+			if (!TryGetAggColumnInfo(*aggr_expr.GetChildren()[0], info)) {
+				return;
+			}
 		} else {
-			// aggregate is not count star, min or max - bail
 			return;
 		}
+		aggregates.push_back(std::move(info));
 	}
 
 	// skip any projections
 	reference<LogicalOperator> child_ref = *aggr.children[0];
 	while (child_ref.get().type == LogicalOperatorType::LOGICAL_PROJECTION) {
-		for (auto &column_info : min_max_columns) {
-			auto &proj = child_ref.get().Cast<LogicalProjection>();
-			auto &expr = proj.GetExpression(column_info.binding);
-			MinMaxColumnInfo projection_info;
-			if (!TryGetMinMaxColumnInfo(expr, projection_info)) {
+		auto &proj = child_ref.get().Cast<LogicalProjection>();
+		for (auto &info : aggregates) {
+			if (info.type != PrecomputedAggregateType::COUNT_STAR && !WalkAggColumnThroughProjection(proj, info)) {
 				return;
 			}
-			if (!IsSafeMinMaxCast(projection_info.result_type, column_info.input_type)) {
-				return;
-			}
-			column_info.binding = projection_info.binding;
-			column_info.input_type = projection_info.input_type;
 		}
 		child_ref = *child_ref.get().children[0];
 	}
@@ -263,13 +309,12 @@ void StatisticsPropagator::TryExecuteAggregates(LogicalAggregate &aggr, unique_p
 		return;
 	}
 
-	vector<StorageIndex> min_max_storage_indexes(min_max_columns.size());
-	for (idx_t i = 0; i < min_max_columns.size(); i++) {
-		auto &binding = min_max_columns[i].binding;
-		auto &column_index = get.GetColumnIndex(binding);
-		if (!get.TryGetStorageIndex(column_index, min_max_storage_indexes[i])) {
-			//! Can't get a storage index for this column, so it doesn't have stats we can use
-			//! This happens when we're dealing with a generated column for example
+	for (auto &info : aggregates) {
+		if (info.type == PrecomputedAggregateType::COUNT_STAR) {
+			continue;
+		}
+		auto &column_index = get.GetColumnIndex(info.binding);
+		if (!get.TryGetStorageIndex(column_index, info.storage_index)) {
 			return;
 		}
 	}
@@ -349,47 +394,36 @@ void StatisticsPropagator::TryExecuteAggregates(LogicalAggregate &aggr, unique_p
 		return;
 	}
 
-	if (!min_max_columns.empty()) {
-		// Execute min/max aggregates on partition statistics
-		for (idx_t agg_idx = 0; agg_idx < min_max_storage_indexes.size(); agg_idx++) {
-			const auto &storage_index = min_max_storage_indexes[agg_idx];
-			const auto &result_type = min_max_columns[agg_idx].result_type;
-			auto &comparator = comparators[agg_idx];
-
-			Value agg_result;
-			if (!TryGetValueFromStats(partition_stats[0], storage_index, *comparator, result_type, agg_result)) {
+	for (const auto &info : aggregates) {
+		Value result;
+		if (info.type == PrecomputedAggregateType::MIN_MAX) {
+			if (!TryGetValueFromStats(partition_stats[0], info.storage_index, *info.comparator, info.result_type,
+			                          result)) {
 				return;
 			}
 			for (idx_t partition_idx = 1; partition_idx < partition_stats.size(); partition_idx++) {
 				Value rhs;
-				if (!TryGetValueFromStats(partition_stats[partition_idx], storage_index, *comparator, result_type,
-				                          rhs)) {
+				if (!TryGetValueFromStats(partition_stats[partition_idx], info.storage_index, *info.comparator,
+				                          info.result_type, rhs)) {
 					return;
 				}
-				if (!comparator->Compare(agg_result, rhs)) {
-					agg_result = rhs;
+				if (!info.comparator->Compare(result, rhs)) {
+					result = rhs;
 				}
 			}
-			types.push_back(agg_result.type());
-			auto expr = make_uniq<BoundConstantExpression>(agg_result);
-			agg_results.push_back(std::move(expr));
-		}
-	}
-	if (!count_star_idxs.empty()) {
-		// Execute count_star aggregates on partition statistics
-		idx_t count = 0;
-		for (const auto &stats : partition_stats) {
-			if (stats.count_type == CountType::COUNT_APPROXIMATE) {
-				// we cannot get an exact count
+		} else {
+			idx_t count;
+			if (info.type == PrecomputedAggregateType::COUNT_STAR) {
+				if (!TryGetRowCount(partition_stats, count)) {
+					return;
+				}
+			} else if (!TryGetNonNullCount(partition_stats, info.storage_index, count)) {
 				return;
 			}
-			count += stats.count;
+			result = Value::BIGINT(NumericCast<int64_t>(count));
 		}
-		for (const auto count_star_idx : count_star_idxs) {
-			auto count_result = make_uniq<BoundConstantExpression>(Value::BIGINT(NumericCast<int64_t>(count)));
-			agg_results.emplace(agg_results.begin() + NumericCast<int64_t>(count_star_idx), std::move(count_result));
-			types.insert(types.begin() + NumericCast<int64_t>(count_star_idx), LogicalType::BIGINT);
-		}
+		types.push_back(result.type());
+		agg_results.push_back(make_uniq<BoundConstantExpression>(result));
 	}
 
 	if (need_to_scan) {
