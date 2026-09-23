@@ -1,0 +1,35 @@
+# name: test/sql/storage/checkpoint/test_checkpoint_truncate_reopen.test
+# description: Test that checkpoint truncation correctly updates persisted block count and free list across restart
+# group: [checkpoint]
+
+load {TEST_DIR}/test_truncate_reopen.db
+
+statement ok
+CREATE TABLE a AS SELECT uuid()::VARCHAR AS v FROM range(2000);
+
+statement ok
+CHECKPOINT;
+
+statement ok
+CREATE TABLE b AS SELECT uuid()::VARCHAR AS v FROM range(800000);
+
+statement ok
+CHECKPOINT;
+
+statement ok
+DROP TABLE b;
+
+statement ok
+CHECKPOINT;
+
+query II
+SELECT total_blocks, free_blocks FROM pragma_database_size();
+----
+2	0
+
+restart
+
+query II
+SELECT total_blocks, free_blocks FROM pragma_database_size();
+----
+2	0

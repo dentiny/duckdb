@@ -195,6 +195,18 @@ private:
 	bool AddFreeBlock(unique_lock<mutex> &lock, block_id_t block_id);
 
 private:
+	//! Calculates trailing contiguous free blocks to truncate after checkpoint, removes them from `all_free_blocks`,
+	//! and returns the new `max_block`
+	block_id_t CalculateTruncation(set<block_id_t> &all_free_blocks);
+	//! Serializes the free list and multi-use blocks into the reserved metadata blocks and returns the meta block
+	//! pointer
+	idx_t SerializeFreeList(vector<MetadataHandle> free_list_blocks, const set<block_id_t> &all_free_blocks,
+	                        const unordered_map<block_id_t, uint32_t> &written_multi_use_blocks);
+	//! Serializes and writes `DatabaseHeader` to the inactive header slot, toggles the active header, and syncs to disk
+	void WriteActiveHeader(QueryContext context, DatabaseHeader &header);
+	//! Moves `checkpoint_freed_blocks` into `free_list` (or `free_blocks_in_use` if still held) and trims free blocks
+	void PostCheckpointCleanup(const unordered_set<block_id_t> &checkpoint_freed_blocks);
+
 	AttachedDatabase &db;
 	//! The active DatabaseHeader, either 0 (h1) or 1 (h2)
 	uint8_t active_header;
