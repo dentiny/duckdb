@@ -157,12 +157,14 @@ struct ReadAheadBuffer {
 
 class ThriftFileTransport : public duckdb_apache::thrift::transport::TVirtualTransport<ThriftFileTransport> {
 public:
-	static constexpr uint64_t PREFETCH_FALLBACK_BUFFERSIZE = 1000000;
+	static constexpr uint64_t DEMAND_BUFFER_SIZE = 1000000;
 
-	ThriftFileTransport(QueryContext context_p, CachingFileHandle &file_handle_p, bool prefetch_mode_p,
-	                    uint64_t accepted_column_gap = ReadHeadComparator::DEFAULT_ACCEPTED_COLUMN_GAP)
+	ThriftFileTransport(QueryContext context_p, CachingFileHandle &file_handle_p, bool cache_reads_p,
+	                    uint64_t accepted_column_gap = ReadHeadComparator::DEFAULT_ACCEPTED_COLUMN_GAP,
+	                    bool buffer_reads_p = false)
 	    : context(context_p), file_handle(file_handle_p), location(0), size(file_handle.GetFileSize()),
-	      ra_buffer(ReadAheadBuffer(file_handle, accepted_column_gap)), prefetch_mode(prefetch_mode_p) {
+	      ra_buffer(ReadAheadBuffer(file_handle, accepted_column_gap)), cache_reads(cache_reads_p),
+	      buffer_reads(buffer_reads_p) {
 	}
 
 	void SetAcceptedColumnGap(uint64_t accepted_column_gap) {
@@ -175,6 +177,9 @@ public:
 	}
 
 	uint32_t read(uint8_t *buf, uint32_t len) {
+		if (len == 0) {
+			return 0;
+		}
 		auto prefetch_buffer = ra_buffer.GetReadHead(location);
 		if (prefetch_buffer != nullptr && location - prefetch_buffer->location + len <= prefetch_buffer->size) {
 			D_ASSERT(location - prefetch_buffer->location + len <= prefetch_buffer->size);
@@ -183,22 +188,23 @@ public:
 				prefetch_buffer->Fetch(file_handle);
 			}
 			memcpy(buf, prefetch_buffer->buffer_ptr + location - prefetch_buffer->location, len);
-		} else if (prefetch_mode && len < PREFETCH_FALLBACK_BUFFERSIZE && len > 0) {
-			auto file_size = file_handle.GetFileSize();
-			if (location >= file_size) {
-				file_handle.GetFileHandle()->Read(context, buf, len, location);
-				location += len;
-				return len;
+		} else if (cache_reads && location < size && len <= size - location) {
+			// Batch small demand reads when caching is disabled or unavailable for this file.
+			if (buffer_reads && len < DEMAND_BUFFER_SIZE && !file_handle.CanCacheRead()) {
+				if (!demand_buffer || location < demand_buffer->location ||
+				    location - demand_buffer->location + len > demand_buffer->size) {
+					// Release the previous range before allocating its replacement to keep memory bounded.
+					demand_buffer.reset();
+					demand_buffer =
+					    make_uniq<ReadHead>(location, MinValue<uint64_t>(DEMAND_BUFFER_SIZE, size - location));
+					demand_buffer->Fetch(file_handle);
+				}
+				memcpy(buf, demand_buffer->buffer_ptr + location - demand_buffer->location, len);
+			} else {
+				// Let the cache buffer reads when available; large reads need no extra read-ahead.
+				auto handles = file_handle.Read(len, location);
+				handles.CopyTo(buf, len);
 			}
-			Prefetch(location, MinValue<uint64_t>(PREFETCH_FALLBACK_BUFFERSIZE, file_size - location));
-			auto prefetch_buffer_fallback = ra_buffer.GetReadHead(location);
-			if (!prefetch_buffer_fallback ||
-			    location - prefetch_buffer_fallback->location + len > prefetch_buffer_fallback->size) {
-				file_handle.GetFileHandle()->Read(context, buf, len, location);
-				location += len;
-				return len;
-			}
-			memcpy(buf, prefetch_buffer_fallback->buffer_ptr + location - prefetch_buffer_fallback->location, len);
 		} else {
 			// No prefetch, do a regular (non-caching) read
 			file_handle.GetFileHandle()->Read(context, buf, len, location);
@@ -233,6 +239,7 @@ public:
 	void ClearPrefetch() {
 		ra_buffer.read_heads.clear();
 		ra_buffer.merge_set.clear();
+		demand_buffer.reset();
 	}
 
 	void Skip(idx_t skip_count) {
@@ -240,7 +247,7 @@ public:
 	}
 
 	bool HasPrefetch() const {
-		return !ra_buffer.read_heads.empty() || !ra_buffer.merge_set.empty();
+		return demand_buffer || !ra_buffer.read_heads.empty() || !ra_buffer.merge_set.empty();
 	}
 
 	void SetLocation(idx_t location_p) {
@@ -277,9 +284,10 @@ private:
 	// Multi-buffer prefetch
 	ReadAheadBuffer ra_buffer;
 
-	// Whether the prefetch mode is enabled. In this mode the DirectIO flag of the handle will be set and the parquet
-	// reader will manage the read buffering.
-	bool prefetch_mode;
+	bool cache_reads;
+	bool buffer_reads;
+	//! A single bounded read-ahead range for demand reads when caching is disabled or unavailable for this file.
+	unique_ptr<ReadHead> demand_buffer;
 };
 
 } // namespace duckdb
