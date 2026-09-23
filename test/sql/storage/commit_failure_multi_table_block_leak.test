@@ -1,0 +1,80 @@
+# name: test/sql/storage/commit_failure_multi_table_block_leak.test
+# description: A multi-table transaction failing at commit reverts the already-merged table and reclaims the failed table's flushed blocks
+# group: [storage]
+
+require noforcestorage
+
+require skip_reload
+
+load {TEST_DIR}/commit_failure_multi_table_block_leak.db
+
+statement ok
+CREATE TABLE good_t(s VARCHAR);
+
+statement ok
+CREATE TABLE bad_t(s VARCHAR);
+
+# both tables receive more than one row group, so both take the bulk-append path at commit:
+# one table flushes and merges successfully, the other flushes its blocks and then fails to
+# build the unique index (only 100000 distinct values)
+statement ok
+BEGIN;
+
+statement ok
+INSERT INTO good_t SELECT md5(range::VARCHAR) FROM range(200000);
+
+statement ok
+INSERT INTO bad_t SELECT md5((range % 100000)::VARCHAR)||md5(((range%100000)*7)::VARCHAR)||md5(((range%100000)*13)::VARCHAR) FROM range(200000);
+
+statement ok
+CREATE UNIQUE INDEX idx ON bad_t(s);
+
+statement error
+COMMIT;
+----
+<REGEX>:.*PRIMARY KEY or UNIQUE constraint violation.*
+
+# both tables are rolled back
+query I
+SELECT count(*) FROM good_t;
+----
+0
+
+query I
+SELECT count(*) FROM bad_t;
+----
+0
+
+# the index is gone
+query I
+SELECT count(*) FROM duckdb_indexes() WHERE table_name='bad_t';
+----
+0
+
+# and no blocks leaked: the failed table is rolled back by Flush itself, tables that were not
+# flushed yet are rolled back by LocalStorage::Commit, and tables that were already merged are
+# reverted through the undo buffer (RevertAppendInternal reclaims their blocks)
+query I
+SELECT used_blocks <= 5 AS no_leaked_blocks FROM pragma_database_size();
+----
+true
+
+# both tables are still usable and the freed blocks are reused
+statement ok
+INSERT INTO good_t SELECT md5(range::VARCHAR) FROM range(200000);
+
+statement ok
+INSERT INTO bad_t SELECT md5(range::VARCHAR) FROM range(200000);
+
+query II
+SELECT (SELECT count(*) FROM good_t), (SELECT count(*) FROM bad_t);
+----
+200000	200000
+
+statement ok
+CHECKPOINT;
+
+query I
+SELECT used_blocks <= 100 AS blocks_reused FROM pragma_database_size();
+----
+true
