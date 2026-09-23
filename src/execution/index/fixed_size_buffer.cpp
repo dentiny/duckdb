@@ -37,7 +37,7 @@ constexpr uint8_t FixedSizeBuffer::SHIFT[];
 
 FixedSizeBuffer::FixedSizeBuffer(BlockManager &block_manager, MemoryTag memory_tag)
     : block_manager(block_manager), readers(0), segment_count(0), allocation_size(0), dirty(false), vacuum(false),
-      loaded(false), block_pointer(), block_handle(nullptr) {
+      loaded(false), block_pointer(), in_memory_ptr(nullptr), block_handle(nullptr) {
 	auto &buffer_manager = block_manager.buffer_manager;
 	buffer_handle = buffer_manager.Allocate(memory_tag, &block_manager, false);
 	block_handle = buffer_handle.GetBlockHandle();
@@ -45,21 +45,24 @@ FixedSizeBuffer::FixedSizeBuffer(BlockManager &block_manager, MemoryTag memory_t
 	// Zero-initialize the buffer as it might get serialized to storage.
 	auto block_size = block_manager.GetBlockSize();
 	memset(buffer_handle.GetDataMutable(), 0, block_size);
+	in_memory_ptr = buffer_handle.GetDataMutable();
 }
 
 FixedSizeBuffer::FixedSizeBuffer(BlockManager &block_manager, const idx_t segment_count, const idx_t allocation_size,
                                  shared_ptr<BlockHandle> block_handle_p)
     : block_manager(block_manager), readers(0), segment_count(segment_count), allocation_size(allocation_size),
-      dirty(false), vacuum(false), loaded(false), block_pointer(), block_handle(std::move(block_handle_p)) {
+      dirty(false), vacuum(false), loaded(false), block_pointer(), in_memory_ptr(nullptr),
+      block_handle(std::move(block_handle_p)) {
 	D_ASSERT(block_handle);
 	buffer_handle = block_manager.buffer_manager.Pin(block_handle);
 	D_ASSERT(buffer_handle.IsValid());
+	in_memory_ptr = buffer_handle.GetDataMutable();
 }
 
 FixedSizeBuffer::FixedSizeBuffer(BlockManager &block_manager, const idx_t segment_count, const idx_t allocation_size,
                                  const BlockPointer &block_pointer)
     : block_manager(block_manager), readers(0), segment_count(segment_count), allocation_size(allocation_size),
-      dirty(false), vacuum(false), loaded(false), block_pointer(block_pointer) {
+      dirty(false), vacuum(false), loaded(false), block_pointer(block_pointer), in_memory_ptr(nullptr) {
 	D_ASSERT(block_pointer.IsValid());
 	block_handle = block_manager.RegisterBlock(block_pointer.block_id);
 	D_ASSERT(block_handle->BlockId() < MAXIMUM_BLOCK);
@@ -72,6 +75,7 @@ FixedSizeBuffer::~FixedSizeBuffer() {
 	if (InMemory()) {
 		// we can have multiple readers on a pinned block, and unpinning the buffer handle
 		// decrements the reader count on the underlying block handle (Destroy() unpins)
+		in_memory_ptr = nullptr;
 		buffer_handle.Destroy();
 	}
 	if (OnDisk()) {
@@ -134,6 +138,7 @@ void FixedSizeBuffer::Serialize(PartialBlockManager &partial_block_manager, cons
 
 	// We are done with this buffer.
 	// To use the fixed-size buffer again, we need to re-load it from disk.
+	in_memory_ptr = nullptr;
 	buffer_handle.Destroy();
 
 	// Register the partial block and the block handle.
@@ -163,6 +168,7 @@ void FixedSizeBuffer::LoadFromDisk() {
 
 	buffer_handle = std::move(new_buffer_handle);
 	block_handle = std::move(new_block_handle);
+	in_memory_ptr = buffer_handle.GetDataMutable();
 }
 
 uint32_t FixedSizeBuffer::GetOffset(const idx_t bitmask_count, const idx_t available_segments) {
@@ -240,6 +246,13 @@ void FixedSizeBuffer::SetAllocationSize(const idx_t available_segments, const id
 }
 
 SegmentHandle::SegmentHandle(FixedSizeBuffer &buffer_p, const idx_t offset) : buffer_ptr(buffer_p) {
+	auto in_memory_ptr = buffer_ptr->in_memory_ptr.load();
+	if (in_memory_ptr) {
+		ptr = in_memory_ptr + offset;
+		buffer_ptr->readers++;
+		return;
+	}
+
 	lock_guard<mutex> l(buffer_ptr->lock);
 
 	if (!buffer_ptr->InMemory() && !buffer_ptr->loaded) {

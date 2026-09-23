@@ -68,7 +68,7 @@ private:
 
 	//! Returns true, if the buffer is in-memory
 	bool InMemory() const {
-		return buffer_handle.IsValid();
+		return in_memory_ptr.load() != nullptr;
 	}
 
 	//! Returns true, if the block is on-disk
@@ -110,6 +110,8 @@ private:
 	BlockPointer block_pointer;
 	//! The buffer handle of the in-memory buffer
 	BufferHandle buffer_handle;
+	//! Cached pointer for lock-free access to an in-memory buffer
+	atomic<data_ptr_t> in_memory_ptr;
 	//! The block handle of the on-disk buffer
 	shared_ptr<BlockHandle> block_handle;
 	//! The lock for this fixed size buffer handle
