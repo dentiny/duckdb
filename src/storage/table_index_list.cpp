@@ -119,6 +119,7 @@ ErrorData TableIndexList::Append(optional_ptr<TableIndexList> delete_indexes, Da
 
 	annotated_lock_guard lock(index_entries_lock);
 	vector<shared_ptr<IndexEntry>> already_appended;
+	already_appended.reserve(index_entries.size());
 
 	ErrorData error;
 	for (const auto &entry : index_entries) {
@@ -133,6 +134,9 @@ ErrorData TableIndexList::Append(optional_ptr<TableIndexList> delete_indexes, Da
 		already_appended.push_back(entry);
 	}
 
+	if (error.HasError() && error.Type() == ExceptionType::FATAL) {
+		return error;
+	}
 	if (error.HasError()) {
 		for (auto &entry : already_appended) {
 			entry->RevertAppend(chunk, row_ids);

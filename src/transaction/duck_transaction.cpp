@@ -131,12 +131,28 @@ void DuckTransaction::PushDelete(DuckTableEntry &table_entry, RowVersionManager 
 	}
 }
 
-void DuckTransaction::PushAppend(DuckTableEntry &table_entry, idx_t start_row, idx_t row_count) {
-	auto undo_entry = undo_buffer.CreateEntry(UndoFlags::INSERT_TUPLE, sizeof(AppendInfo));
+UndoBufferReference DuckTransaction::PrepareAppend(DuckTableEntry &table_entry, idx_t start_row, idx_t row_count) {
+	// Keep the entry pinned and inactive until the append has completed.
+	auto undo_entry = undo_buffer.CreateEntry(UndoFlags::EMPTY_ENTRY, sizeof(AppendInfo));
 	auto append_info = reinterpret_cast<AppendInfo *>(undo_entry.GetDataMutable());
 	append_info->table = &table_entry;
 	append_info->start_row = start_row;
 	append_info->count = row_count;
+	return undo_entry;
+}
+
+void DuckTransaction::FinishAppend(UndoBufferReference &entry) noexcept {
+	UndoBuffer::SetEntryType(entry, UndoFlags::INSERT_TUPLE);
+}
+
+void DuckTransaction::InvalidateCommit(const ErrorData &error) {
+	MarkRollbackUnsafe();
+	auto &db = manager.GetDB();
+	if (db.IsInitialDatabase() || db.IsSystem() || db.IsTemporary()) {
+		ValidChecker::Invalidate(db.GetDatabase(), error.Message());
+	} else {
+		ValidChecker::Invalidate(db, error.Message());
+	}
 }
 
 UndoBufferReference DuckTransaction::CreateUpdateInfo(DuckTableEntry &table_entry, idx_t type_size, idx_t entries,
@@ -220,9 +236,12 @@ ErrorData DuckTransaction::PreFlushOptimisticBlocks(AttachedDatabase &db) noexce
 	try {
 		storage->FlushBulkAppendBlocksAndSync(db);
 	} catch (std::exception &ex) {
-		// fail the commit: the flush machinery cannot safely be re-run after an error, and a failed
-		// fsync must not be retried (the retry can succeed without the data being durable)
 		error = ErrorData(ex);
+		// A failed flush can leave allocations outside the local row groups.
+		InvalidateCommit(error);
+	} catch (...) {
+		error = ErrorData(FatalException("Unknown error while flushing optimistic blocks"));
+		InvalidateCommit(error);
 	}
 	return error;
 }
@@ -252,14 +271,23 @@ ErrorData DuckTransaction::WriteToWAL(ClientContext &context, AttachedDatabase &
 	} catch (std::exception &ex) {
 		// Call RevertCommit() outside this try-catch as it itself may throw
 		error_data = ErrorData(ex);
+	} catch (...) {
+		error_data = ErrorData(FatalException("Unknown error while writing transaction to WAL"));
 	}
 
-	if (commit_state && error_data.HasError()) {
-		try {
-			commit_state->RevertCommit();
-			commit_state.reset();
-		} catch (std::exception &) {
-			// Ignore this error. If we fail to RevertCommit(), just return the original exception
+	if (error_data.HasError()) {
+		if (!CanRollback() || error_data.Type() == ExceptionType::FATAL) {
+			InvalidateCommit(error_data);
+		} else if (commit_state) {
+			try {
+				commit_state->RevertCommit();
+				commit_state.reset();
+			} catch (std::exception &ex) {
+				error_data.Merge(ErrorData(ex));
+				InvalidateCommit(error_data);
+			} catch (...) {
+				InvalidateCommit(error_data);
+			}
 		}
 	}
 
@@ -284,59 +312,74 @@ ErrorData DuckTransaction::Commit(AttachedDatabase &db, CommitInfo &commit_info,
 	commit_info.drop_state = &drop_state;
 
 	ErrorData error_data;
+	bool finalizing = false;
+	bool wal_durable = false;
 	try {
 		storage->Commit(commit_state.get());
 		undo_buffer.Commit(iterator_state, commit_info);
 		if (!db.IsSystem() && !db.IsTemporary() && Settings::Get<DebugForceCommitFailureSetting>(db.GetDatabase())) {
 			throw InvalidInputException("Forced commit failure (debug_force_commit_failure)");
 		}
+		// A failed WAL sync has an uncertain outcome; finalization can have irreversible side effects.
+		finalizing = true;
 		if (commit_state) {
-			// if we have written to the WAL - flush after the commit has been successful
 			commit_state->FlushCommit();
+			wal_durable = true;
 		}
 		drop_state.FinalizeCommit();
+		storage->FinalizeCommit();
 		return ErrorData();
 	} catch (std::exception &ex) {
-		// Record the error and run RevertCommit() outside this try-catch: RevertCommit() iterates the
-		// undo buffer and may itself throw (e.g. Pin() failing under memory pressure), which would
-		// escape this noexcept function and trigger std::terminate.
 		error_data = ErrorData(ex);
+	} catch (...) {
+		error_data = ErrorData(FatalException("Unknown error while committing transaction"));
+	}
+
+	if (finalizing || !CanRollback() || error_data.Type() == ExceptionType::FATAL) {
+		if (wal_durable) {
+			error_data =
+			    ErrorData(error_data.Type(), "Transaction COMMIT succeeded and is durable, but cleanup failed. " +
+			                                     error_data.RawMessage());
+		}
+		InvalidateCommit(error_data);
+		return error_data;
 	}
 
 	try {
+		if (commit_state) {
+			commit_state->RevertCommit();
+		}
 		undo_buffer.RevertCommit(iterator_state, GetTransactionId());
 		if (!db.IsSystem() && !db.IsTemporary() &&
 		    Settings::Get<DebugForceCommitRevertFailureSetting>(db.GetDatabase())) {
 			throw IOException("Forced RevertCommit failure (debug_force_commit_revert_failure)");
 		}
-		if (commit_state) {
-			// if we have written to the WAL - truncate the WAL on failure
-			commit_state->RevertCommit();
-		}
 	} catch (std::exception &ex) {
-		// If we fail to revert the commit, the database is left in an undefined state - invalidate it.
-		// Record both the original commit error and the revert error so the root cause stays visible.
-		ValidChecker::Invalidate(db.GetDatabase(),
-		                         "Failed to revert transaction commit, database is in an undefined state. "
-		                         "Original commit error: " +
-		                             error_data.RawMessage() + ". RevertCommit error: " + ErrorData(ex).RawMessage());
+		error_data.Merge(ErrorData(ex));
+		InvalidateCommit(error_data);
 	} catch (...) {
-		// last line of defense: this is a noexcept function, nothing may escape
-		ValidChecker::Invalidate(db.GetDatabase(),
-		                         "Failed to revert transaction commit (unknown error), database is in an "
-		                         "undefined state. Original commit error: " +
-		                             error_data.RawMessage());
+		InvalidateCommit(error_data);
 	}
 	return error_data;
 }
 
 ErrorData DuckTransaction::Rollback() {
+	if (!CanRollback()) {
+		return ErrorData(FatalException("Cannot roll back a transaction with an unsafe commit outcome"));
+	}
 	try {
-		storage->Rollback();
+		storage->PrepareRollback();
 		undo_buffer.Rollback();
+		storage->RollbackBlocks();
 		return ErrorData();
 	} catch (std::exception &ex) {
-		return ErrorData(ex);
+		ErrorData error(ex);
+		InvalidateCommit(error);
+		return error;
+	} catch (...) {
+		ErrorData error(FatalException("Unknown error while rolling back transaction"));
+		InvalidateCommit(error);
+		return error;
 	}
 }
 

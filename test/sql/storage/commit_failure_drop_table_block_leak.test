@@ -1,0 +1,58 @@
+# name: test/sql/storage/commit_failure_drop_table_block_leak.test
+# description: A commit failing after a concurrent DROP reclaims optimistically written blocks
+# group: [storage]
+
+require noforcestorage
+
+require skip_reload
+
+load {TEST_DIR}/commit_failure_drop_table_block_leak.db
+
+statement ok con1
+SET threads = 1;
+
+statement ok con1
+SET enable_optimistic_write = true;
+
+statement ok con1
+SET write_buffer_row_group_count = 1;
+
+statement ok con1
+CREATE TABLE t(payload VARCHAR);
+
+statement ok con1
+CHECKPOINT;
+
+statement ok con1
+BEGIN;
+
+statement ok con1
+INSERT INTO t
+SELECT md5(i::VARCHAR) || md5((i * 7)::VARCHAR) || md5((i * 13)::VARCHAR)
+FROM range(200000) AS r(i);
+
+query I con1
+SELECT used_blocks > 5 FROM pragma_database_size();
+----
+true
+
+statement ok con2
+DROP TABLE t;
+
+statement error con1
+COMMIT;
+----
+<REGEX>:.*dropped by a different transaction.*
+
+query I con1
+SELECT count(*) FROM duckdb_tables() WHERE table_name = 't';
+----
+0
+
+statement ok con1
+CHECKPOINT;
+
+query I con1
+SELECT used_blocks <= 5 FROM pragma_database_size();
+----
+true

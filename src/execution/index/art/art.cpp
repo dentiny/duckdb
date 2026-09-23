@@ -562,57 +562,65 @@ ErrorData ART::Insert(IndexLock &l, DataChunk &chunk, Vector &row_ids, IndexAppe
 ErrorData ART::InsertKeys(ArenaAllocator &arena, unsafe_vector<ARTKey> &keys, unsafe_vector<ARTKey> &row_id_keys,
                           idx_t row_count, const DeleteIndexInfo &delete_info, IndexAppendMode append_mode,
                           optional_ptr<DataChunk> chunk) {
-	auto conflict_type = ARTConflictType::NO_CONFLICT;
-	optional_idx conflict_idx;
-	auto was_empty = !tree.HasMetadata();
+	try {
+		auto conflict_type = ARTConflictType::NO_CONFLICT;
+		optional_idx conflict_idx;
+		auto was_empty = !tree.HasMetadata();
 
-	// Insert the entries into the index.
-	for (idx_t i = 0; i < row_count; i++) {
-		if (keys[i].Empty()) {
-			continue;
-		}
-		conflict_type = ARTOperator::Insert(arena, *this, tree, keys[i], 0, row_id_keys[i], GateStatus::GATE_NOT_SET,
-		                                    delete_info, append_mode);
-		if (conflict_type != ARTConflictType::NO_CONFLICT) {
-			conflict_idx = i;
-			break;
-		}
-	}
-
-	// Remove any previously inserted entries.
-	if (conflict_type != ARTConflictType::NO_CONFLICT) {
-		D_ASSERT(conflict_idx.IsValid());
-		for (idx_t i = 0; i < conflict_idx.GetIndex(); i++) {
+		// Insert the entries into the index.
+		for (idx_t i = 0; i < row_count; i++) {
 			if (keys[i].Empty()) {
 				continue;
 			}
-			D_ASSERT(tree.GetGateStatus() == GateStatus::GATE_NOT_SET);
-			ARTOperator::Delete(*this, tree, keys[i], row_id_keys[i]);
+			conflict_type = ARTOperator::Insert(arena, *this, tree, keys[i], 0, row_id_keys[i],
+			                                    GateStatus::GATE_NOT_SET, delete_info, append_mode);
+			if (conflict_type != ARTConflictType::NO_CONFLICT) {
+				conflict_idx = i;
+				break;
+			}
 		}
-	}
 
-	if (was_empty) {
-		// All nodes are in-memory.
-		VerifyAllocationsInternal();
-	}
+		// Remove any previously inserted entries.
+		if (conflict_type != ARTConflictType::NO_CONFLICT) {
+			D_ASSERT(conflict_idx.IsValid());
+			for (idx_t i = 0; i < conflict_idx.GetIndex(); i++) {
+				if (keys[i].Empty()) {
+					continue;
+				}
+				D_ASSERT(tree.GetGateStatus() == GateStatus::GATE_NOT_SET);
+				ARTOperator::Delete(*this, tree, keys[i], row_id_keys[i]);
+			}
+		}
 
-	if (conflict_type == ARTConflictType::CONSTRAINT) {
-		// chunk is only null when called from MergeCheckpointDeltas.
-		auto msg = chunk ? AppendRowError(*chunk, conflict_idx.GetIndex()) : string("???");
-		return ErrorData(ConstraintException("PRIMARY KEY or UNIQUE constraint violation: duplicate key \"%s\"", msg));
-	}
+		if (was_empty) {
+			// All nodes are in-memory.
+			VerifyAllocationsInternal();
+		}
+
+		if (conflict_type == ARTConflictType::CONSTRAINT) {
+			// chunk is only null when called from MergeCheckpointDeltas.
+			auto msg = chunk ? AppendRowError(*chunk, conflict_idx.GetIndex()) : string("???");
+			return ErrorData(
+			    ConstraintException("PRIMARY KEY or UNIQUE constraint violation: duplicate key \"%s\"", msg));
+		}
 
 #ifdef DEBUG
-	for (idx_t i = 0; i < row_count; i++) {
-		if (keys[i].Empty()) {
-			continue;
+		for (idx_t i = 0; i < row_count; i++) {
+			if (keys[i].Empty()) {
+				continue;
+			}
+			auto leaf = ARTOperator::Lookup(*this, tree, keys[i], 0);
+			D_ASSERT(leaf);
+			D_ASSERT(ARTOperator::LookupInLeaf(*this, leaf.Get(), row_id_keys[i]));
 		}
-		auto leaf = ARTOperator::Lookup(*this, tree, keys[i], 0);
-		D_ASSERT(leaf);
-		D_ASSERT(ARTOperator::LookupInLeaf(*this, leaf.Get(), row_id_keys[i]));
-	}
 #endif
-	return ErrorData();
+		return ErrorData();
+	} catch (std::exception &ex) {
+		throw FatalException("Failed to modify ART index; index state may be inconsistent: %s",
+		                     ErrorData(ex).Message());
+	} catch (...) {
+		throw FatalException("Failed to modify ART index; index state may be inconsistent");
+	}
 }
 
 ErrorData ART::Append(IndexLock &l, DataChunk &chunk, Vector &row_ids) {

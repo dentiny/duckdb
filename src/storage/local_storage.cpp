@@ -204,18 +204,21 @@ void LocalTableStorage::AppendToTable(DuckTransaction &transaction, TableAppendS
 	table.FinalizeAppend(transaction, append_state);
 }
 
-void LocalTableStorage::AppendToIndexes(DuckTransaction &transaction, TableAppendState &append_state) {
+ErrorData LocalTableStorage::AppendToIndexes(DuckTransaction &transaction, TableAppendState &append_state) {
 	// In this function, we might scan all table columns,
 	// as we might also append to the table itself (append_to_table).
 	auto &table = table_ref.get();
 	if (!table.HasIndexes()) {
 		// no indexes to append to
-		return;
+		return ErrorData();
 	}
 	auto data_table_info = table.GetDataTableInfo();
 	auto &index_list = data_table_info->GetIndexes();
 	auto &collection = *row_groups->collection;
 	auto error = AppendToIndexes(transaction, collection, index_list, table.GetTypes(), append_state.current_row);
+	if (error.HasError() && error.Type() == ExceptionType::FATAL) {
+		return error;
+	}
 	if (error.HasError()) {
 		// Revert all appended row IDs.
 		row_t current_row = append_state.row_start;
@@ -229,8 +232,7 @@ void LocalTableStorage::AppendToIndexes(DuckTransaction &transaction, TableAppen
 			try {
 				index_list.RevertAppend(chunk, current_row);
 			} catch (std::exception &ex) { // LCOV_EXCL_START
-				error = ErrorData(ex);
-				break;
+				throw FatalException("Failed to revert index append: %s", ErrorData(ex).Message());
 			} // LCOV_EXCL_STOP
 
 			current_row += UnsafeNumericCast<row_t>(chunk.size());
@@ -240,8 +242,8 @@ void LocalTableStorage::AppendToIndexes(DuckTransaction &transaction, TableAppen
 		// Verify that our index memory is stable.
 		table.VerifyIndexBuffers();
 #endif
-		error.Throw();
 	}
+	return error;
 }
 
 PhysicalIndex LocalTableStorage::CreateOptimisticCollection(unique_ptr<OptimisticWriteCollection> collection) {
@@ -265,19 +267,29 @@ OptimisticDataWriter &LocalTableStorage::GetOptimisticWriter() {
 	return optimistic_writer;
 }
 
-void LocalTableStorage::Rollback() {
-	optimistic_writer.Rollback();
-
-	CommitDropState drop_state(&row_groups->collection->GetBlockManager());
-	for (auto &collection : optimistic_collections) {
-		if (!collection) {
-			continue;
-		}
-		collection->collection->CommitDropTable(drop_state);
+void LocalTableStorage::MoveRollbackBlocks(vector<unique_ptr<CommitDropState>> &rollback_blocks) {
+	if (!owns_blocks) {
+		return;
 	}
-	optimistic_collections.clear();
-	row_groups->collection->CommitDropTable(drop_state);
-	drop_state.FinalizeCommit();
+	optimistic_writer.Rollback();
+	auto drop_state = make_uniq<CommitDropState>(&row_groups->collection->GetBlockManager());
+	for (auto &collection : optimistic_collections) {
+		if (collection) {
+			collection->collection->CommitDropTable(*drop_state);
+		}
+	}
+	row_groups->collection->CommitDropTable(*drop_state);
+	// Register every reference before transferring responsibility for releasing it.
+	rollback_blocks.push_back(std::move(drop_state));
+	owns_blocks = false;
+}
+
+void LocalTableStorage::Rollback() {
+	vector<unique_ptr<CommitDropState>> rollback_blocks;
+	MoveRollbackBlocks(rollback_blocks);
+	for (auto &blocks : rollback_blocks) {
+		blocks->FinalizeCommit();
+	}
 }
 
 //===--------------------------------------------------------------------===//
@@ -353,6 +365,9 @@ void LocalTableManager::InsertEntry(DataTable &table, shared_ptr<LocalTableStora
 //===--------------------------------------------------------------------===//
 LocalStorage::LocalStorage(ClientContext &context, DuckTransaction &transaction)
     : context(context), transaction(transaction) {
+}
+
+LocalStorage::~LocalStorage() {
 }
 
 LocalStorage::CommitState::CommitState() {
@@ -562,52 +577,62 @@ void LocalStorage::Update(DataTable &table, DuckTableEntry &table_entry, Vector 
 }
 
 void LocalStorage::Flush(DataTable &table, LocalTableStorage &storage, optional_ptr<StorageCommitState> commit_state) {
-	if (storage.is_dropped) {
-		storage.Rollback();
-		return;
-	}
-	if (storage.GetCollection().GetTotalRows() <= storage.deleted_rows) {
-		// all rows that we added were deleted
-		// rollback any partial blocks that are still outstanding
-		storage.Rollback();
+	if (storage.is_dropped || storage.GetCollection().GetTotalRows() <= storage.deleted_rows) {
+		try {
+			storage.Rollback();
+		} catch (...) {
+			transaction.MarkRollbackUnsafe();
+			throw;
+		}
 		return;
 	}
 
 	auto append_count = storage.GetCollection().GetTotalRows() - storage.deleted_rows;
-
 	TableAppendState append_state;
 	table.AppendLock(transaction, append_state);
-	if (storage.IsBulkAppend() ||
-	    (append_state.row_start == 0 && storage.deleted_rows == 0 && !storage.WritesToDisk())) {
-		// bulk append (at least one full row group, no deletes): move over the storage directly.
-		// Appends to an empty table are also merged directly if the table cannot be written to
-		// disk (temporary / in-memory / read-only, e.g. WAL replay of a read-only attach) -
-		// there are no optimistically written blocks to manage, and merging avoids re-appending
-		// row by row.
-		// first flush any outstanding blocks
-		storage.FlushBlocks();
-		// Append to the indexes.
-		storage.AppendToIndexes(transaction, append_state);
-		// finally move over the row groups
-		table.MergeStorage(storage.GetCollection(), commit_state);
-	} else {
-		// check if we have written data
-		// if we have, we cannot merge to disk after all
-		// so we need to revert the data we have already written
-		// this happens when rows were deleted after a bulk append, or when the optimistic writer
-		// flushed a partial row group that does not qualify as a bulk append
-		storage.Rollback();
-		// append to the indexes
-		storage.AppendToIndexes(transaction, append_state);
-		// after that is successful - append to the table
-		storage.AppendToTable(transaction, append_state);
-	}
-	// table_entry is set through the append path (InitializeAppend/Append/LocalMerge/Alter)
 	D_ASSERT(storage.table_entry);
-	transaction.PushAppend(*storage.table_entry, NumericCast<idx_t>(append_state.row_start), append_count);
+	auto undo_entry =
+	    transaction.PrepareAppend(*storage.table_entry, NumericCast<idx_t>(append_state.row_start), append_count);
+	bool merge =
+	    storage.IsBulkAppend() || (append_state.row_start == 0 && storage.deleted_rows == 0 && !storage.WritesToDisk());
+	ErrorData error;
+	try {
+		if (merge) {
+			storage.FlushBlocks();
+		} else {
+			// Deleted rows or a partial row group require re-appending instead of merging.
+			storage.Rollback();
+		}
+	} catch (...) {
+		transaction.MarkRollbackUnsafe();
+		throw;
+	}
+	if (merge) {
+		storage.MoveRollbackBlocks(rollback_blocks);
+	}
+	try {
+		error = storage.AppendToIndexes(transaction, append_state);
+		if (!error.HasError()) {
+			if (merge) {
+				table.MergeStorage(storage.GetCollection(), commit_state);
+			} else {
+				storage.AppendToTable(transaction, append_state);
+			}
+			DuckTransaction::FinishAppend(undo_entry);
+		}
+	} catch (...) {
+		// A partial index append or merge is not guaranteed to be reversible.
+		transaction.MarkRollbackUnsafe();
+		throw;
+	}
+	if (error.HasError()) {
+		if (error.Type() == ExceptionType::FATAL) {
+			transaction.MarkRollbackUnsafe();
+		}
+		error.Throw();
+	}
 
 #ifdef DEBUG
-	// Verify that our index memory is stable.
 	table.VerifyIndexBuffers();
 #endif
 }
@@ -631,30 +656,32 @@ void LocalStorage::FlushBulkAppendBlocksAndSync(AttachedDatabase &db) {
 }
 
 void LocalStorage::Commit(optional_ptr<StorageCommitState> commit_state) {
-	// commit local storage
-	// iterate over all entries in the table storage map and commit them
-	// after this, the local storage is no longer required and can be cleared
-	auto table_storage = table_manager.MoveEntries();
-	for (auto &entry : table_storage) {
-		auto table = entry.first;
-		auto storage = entry.second.get();
+	for (auto &storage : table_manager.GetEntries()) {
+		auto &table = storage->table_ref.get();
 		Flush(table, *storage, commit_state);
-		entry.second.reset();
+		table_manager.MoveEntry(table);
+		storage.reset();
 	}
 }
 
-void LocalStorage::Rollback() {
-	// rollback local storage
-	// after this, the local storage is no longer required and can be cleared
-	auto table_storage = table_manager.MoveEntries();
-	for (auto &entry : table_storage) {
-		auto storage = entry.second.get();
-		if (!storage) {
-			continue;
-		}
-		storage->Rollback();
-		entry.second.reset();
+void LocalStorage::PrepareRollback() {
+	for (auto &storage : table_manager.GetEntries()) {
+		storage->MoveRollbackBlocks(rollback_blocks);
 	}
+	// Catalog undo may destroy the tables referenced by local storage.
+	table_manager.MoveEntries();
+}
+
+void LocalStorage::RollbackBlocks() {
+	for (auto &blocks : rollback_blocks) {
+		blocks->FinalizeCommit();
+	}
+	rollback_blocks.clear();
+}
+
+void LocalStorage::FinalizeCommit() {
+	D_ASSERT(table_manager.IsEmpty());
+	rollback_blocks.clear();
 }
 
 idx_t LocalStorage::AddedRows(DataTable &table) {

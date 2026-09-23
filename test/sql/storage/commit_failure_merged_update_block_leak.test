@@ -1,0 +1,71 @@
+# name: test/sql/storage/commit_failure_merged_update_block_leak.test
+# description: Failed commits reclaim merged optimistic blocks whose updates prevent WAL block-pointer logging
+# group: [storage]
+
+require noforcestorage
+
+require skip_reload
+
+load {TEST_DIR}/commit_failure_merged_update_block_leak.db
+
+statement ok
+SET threads = 1;
+
+statement ok
+SET enable_optimistic_write = true;
+
+statement ok
+SET write_buffer_row_group_count = 1;
+
+statement ok
+SET wal_autocheckpoint = '1TB';
+
+statement ok
+CREATE TABLE t(i INTEGER, payload VARCHAR);
+
+statement ok
+CHECKPOINT;
+
+statement ok
+BEGIN;
+
+statement ok
+INSERT INTO t
+SELECT i, md5(i::VARCHAR) || md5((i * 7)::VARCHAR) || md5((i * 13)::VARCHAR)
+FROM range(200000) AS r(i);
+
+query I
+SELECT used_blocks > 5 FROM pragma_database_size();
+----
+true
+
+# Update a row in the already-flushed first row group without introducing local deletes.
+statement ok
+UPDATE t SET payload = 'updated' WHERE i = 0;
+
+statement ok
+SET debug_force_commit_failure = true;
+
+statement error
+COMMIT;
+----
+Forced commit failure
+
+statement ok
+SET debug_force_commit_failure = false;
+
+query I
+SELECT count(*) FROM t;
+----
+0
+
+statement ok
+PRAGMA force_checkpoint;
+
+statement ok
+CHECKPOINT;
+
+query I
+SELECT used_blocks <= 5 FROM pragma_database_size();
+----
+true

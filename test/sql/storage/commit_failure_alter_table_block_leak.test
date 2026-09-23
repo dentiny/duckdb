@@ -1,0 +1,61 @@
+# name: test/sql/storage/commit_failure_alter_table_block_leak.test
+# description: A commit failing after a concurrent ALTER reclaims optimistically written blocks
+# group: [storage]
+
+require noforcestorage
+
+require skip_reload
+
+load {TEST_DIR}/commit_failure_alter_table_block_leak.db
+
+statement ok con1
+SET threads = 1;
+
+statement ok con1
+SET enable_optimistic_write = true;
+
+statement ok con1
+SET write_buffer_row_group_count = 1;
+
+statement ok con1
+CREATE TABLE t(s VARCHAR);
+
+statement ok con1
+CHECKPOINT;
+
+statement ok con1
+BEGIN;
+
+statement ok con1
+INSERT INTO t
+SELECT md5(i::VARCHAR) || md5((i * 7)::VARCHAR) || md5((i * 13)::VARCHAR)
+FROM range(200000) AS r(i);
+
+# Ensure the pending append has allocated disk blocks before the conflict.
+query I con1
+SELECT used_blocks > 5 FROM pragma_database_size();
+----
+true
+
+statement ok con2
+ALTER TABLE t ADD COLUMN extra INTEGER;
+
+# AppendLock rejects the old table before its local storage is merged.
+statement error con1
+COMMIT;
+----
+<REGEX>:.*altered by a different transaction.*
+
+query I con1
+SELECT count(*) FROM t;
+----
+0
+
+statement ok con1
+CHECKPOINT;
+
+# Only metadata blocks should remain in use for the empty table.
+query I con1
+SELECT used_blocks <= 5 FROM pragma_database_size();
+----
+true

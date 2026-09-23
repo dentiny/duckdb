@@ -38,6 +38,13 @@ UndoBufferReference UndoBuffer::CreateEntry(UndoFlags type, idx_t len) {
 	return handle;
 }
 
+void UndoBuffer::SetEntryType(UndoBufferReference &entry, UndoFlags type) noexcept {
+	auto header = entry.GetDataMutable() - UNDO_ENTRY_HEADER_SIZE;
+	D_ASSERT(Load<UndoFlags>(header) == UndoFlags::EMPTY_ENTRY);
+	D_ASSERT(type != UndoFlags::EMPTY_ENTRY);
+	Store<UndoFlags>(type, header);
+}
+
 template <class T>
 void UndoBuffer::IterateEntries(UndoBuffer::IteratorState &state, T &&callback) {
 	// iterate in insertion order: start with the tail
