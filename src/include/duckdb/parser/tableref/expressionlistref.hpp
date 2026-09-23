@@ -10,6 +10,7 @@
 
 #include "duckdb/parser/tableref.hpp"
 #include "duckdb/parser/parsed_expression.hpp"
+#include "duckdb/parser/column_definition.hpp"
 #include "duckdb/common/types.hpp"
 #include "duckdb/common/vector.hpp"
 
@@ -31,6 +32,8 @@ public:
 	vector<LogicalType> expected_types;
 	//! Expected table names.
 	vector<Identifier> expected_names;
+	//! Expected table columns, when binding an INSERT.
+	vector<ColumnDefinition> expected_columns;
 
 public:
 	string ToString() const override;

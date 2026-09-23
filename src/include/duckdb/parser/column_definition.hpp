@@ -34,6 +34,11 @@ public:
 	bool HasDefaultValue() const;
 	void SetDefaultValue(unique_ptr<ParsedExpression> default_value);
 
+	//! defaults for fields added to nested column types
+	const ParsedExpression &NestedDefaults() const;
+	bool HasNestedDefaults() const;
+	void SetNestedDefaults(unique_ptr<ParsedExpression> nested_defaults);
+
 	//! type
 	DUCKDB_API const LogicalType &Type() const;
 	LogicalType &TypeMutable();
@@ -107,6 +112,8 @@ private:
 	//! The default value of the column (for non-generated columns)
 	//! The generated column expression (for generated columns)
 	unique_ptr<ParsedExpression> expression;
+	//! Defaults for fields added to nested column types
+	unique_ptr<ParsedExpression> nested_defaults;
 	//! Comment on this column
 	Value comment;
 	//! Tags on this column

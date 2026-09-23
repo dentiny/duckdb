@@ -75,6 +75,8 @@ void Binder::ExpandDefaultInValuesList(InsertQueryNode &node, TableCatalogEntry 
 	auto &expr_list = values_list->Cast<ExpressionListRef>();
 	expr_list.expected_types.resize(expected_columns);
 	expr_list.expected_names.resize(expected_columns);
+	expr_list.expected_columns.clear();
+	expr_list.expected_columns.reserve(expected_columns);
 
 	D_ASSERT(!expr_list.values.empty());
 	CheckInsertColumnCountMismatch(expected_columns, expr_list.values[0].size(), !node.columns.empty(), table.name);
@@ -88,6 +90,7 @@ void Binder::ExpandDefaultInValuesList(InsertQueryNode &node, TableCatalogEntry 
 		auto &column = table.GetColumn(table_col_idx);
 		expr_list.expected_types[col_idx] = table.GetExpectedTypeForInsert(column);
 		expr_list.expected_names[col_idx] = column.Name();
+		expr_list.expected_columns.push_back(column.Copy());
 
 		// now replace any DEFAULT values with the corresponding default expression
 		for (idx_t list_idx = 0; list_idx < expr_list.values.size(); list_idx++) {
@@ -113,7 +116,7 @@ unique_ptr<LogicalOperator> Binder::ResolveInputProjection(LogicalInsert &insert
 		}
 		auto &original_type = source_types[mapped_index];
 		auto source_binding = source_bindings[mapped_index];
-		auto expression = table.GetDefaultExpressionForColumn(context, original_type, col.Type(), source_binding,
+		auto expression = table.GetDefaultExpressionForColumn(context, original_type, col, source_binding,
 		                                                      *insert.bound_defaults[storage_idx]);
 		if (!expression->HasQueryLocation() && root->type == LogicalOperatorType::LOGICAL_PROJECTION) {
 			expression->SetQueryLocation(root->expressions[mapped_index]->GetQueryLocation());

@@ -1,0 +1,28 @@
+# name: test/sql/alter/struct/add_col_struct_storage.test
+# description: Test persistence of defaults on fields added to structs
+# group: [struct]
+
+load {TEST_DIR}/add_col_struct_storage.db
+
+statement ok
+CREATE TABLE test(s STRUCT(a INTEGER, b INTEGER))
+
+statement ok
+INSERT INTO test VALUES ({'a': 0, 'b': 0})
+
+statement ok
+ALTER TABLE test ADD COLUMN s.c INTEGER DEFAULT 9
+
+statement ok
+CHECKPOINT
+
+restart
+
+statement ok
+INSERT INTO test VALUES ({'a': 1, 'b': 2})
+
+query II
+SELECT s.a, s.c FROM test ORDER BY s.a
+----
+0	9
+1	9

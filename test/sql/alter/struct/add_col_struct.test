@@ -77,3 +77,83 @@ statement error
 ALTER TABLE test ADD COLUMN s.x.a INTEGER
 ----
 does not exist
+
+# defaults on added fields apply to rows inserted after the alter
+statement ok
+CREATE TABLE test_added_field_default(s STRUCT(a INTEGER, b INTEGER))
+
+statement ok
+INSERT INTO test_added_field_default VALUES ({'a': 0, 'b': 0})
+
+statement ok
+ALTER TABLE test_added_field_default ADD COLUMN s.c INTEGER DEFAULT 9
+
+statement ok
+INSERT INTO test_added_field_default VALUES ({'a': 1, 'b': 2})
+
+statement ok
+INSERT INTO test_added_field_default VALUES ({'a': 2, 'b': 3, 'c': 7})
+
+statement ok
+INSERT INTO test_added_field_default VALUES ({'a': 3, 'b': 4, 'c': NULL})
+
+statement ok
+INSERT INTO test_added_field_default VALUES ({'a': 4})
+
+query III
+SELECT s.a, s.b, s.c FROM test_added_field_default ORDER BY s.a
+----
+0	0	9
+1	2	9
+2	3	7
+3	4	NULL
+4	NULL	9
+
+statement ok
+ALTER TABLE test_added_field_default ADD COLUMN s.d INTEGER DEFAULT 10
+
+statement ok
+INSERT INTO test_added_field_default VALUES ({'a': 5, 'b': 6, 'c': 8})
+
+query IIII
+SELECT s.a, s.b, s.c, s.d FROM test_added_field_default ORDER BY s.a
+----
+0	0	9	10
+1	2	9	10
+2	3	7	10
+3	4	NULL	10
+4	NULL	9	10
+5	6	8	10
+
+statement ok
+INSERT INTO test_added_field_default VALUES
+	({'a': 6, 'b': 7}),
+	({'a': 7, 'b': 8, 'c': 11, 'd': 12})
+
+query IIII
+SELECT s.a, s.b, s.c, s.d FROM test_added_field_default WHERE s.a >= 6 ORDER BY s.a
+----
+6	7	9	10
+7	8	11	12
+
+statement ok
+ALTER TABLE test_added_field_default RENAME s.c TO e
+
+statement ok
+INSERT INTO test_added_field_default VALUES ({'a': 8, 'b': 9})
+
+query III
+SELECT s.a, s.e, s.d FROM test_added_field_default WHERE s.a = 8
+----
+8	9	10
+
+statement ok
+ALTER TABLE test_added_field_default DROP COLUMN s.e
+
+statement ok
+INSERT INTO test_added_field_default VALUES ({'a': 9, 'b': 10})
+
+query III
+SELECT s.a, s.b, s.d FROM test_added_field_default WHERE s.a = 9
+----
+9	10	10

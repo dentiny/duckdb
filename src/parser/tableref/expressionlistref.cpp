@@ -57,6 +57,9 @@ unique_ptr<TableRef> ExpressionListRef::Copy() {
 	}
 	result->expected_names = expected_names;
 	result->expected_types = expected_types;
+	for (auto &column : expected_columns) {
+		result->expected_columns.push_back(column.Copy());
+	}
 	CopyProperties(*result);
 	return std::move(result);
 }

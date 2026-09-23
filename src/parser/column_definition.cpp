@@ -21,6 +21,7 @@ ColumnDefinition ColumnDefinition::Copy() const {
 	copy.oid = oid;
 	copy.storage_oid = storage_oid;
 	copy.expression = expression ? expression->Copy() : nullptr;
+	copy.nested_defaults = nested_defaults ? nested_defaults->Copy() : nullptr;
 	copy.compression_type = compression_type;
 	copy.category = category;
 	copy.comment = comment;
@@ -50,6 +51,19 @@ void ColumnDefinition::SetDefaultValue(unique_ptr<ParsedExpression> default_valu
 		throw InternalException("Calling SetDefaultValue() on a generated column");
 	}
 	this->expression = std::move(default_value);
+}
+
+const ParsedExpression &ColumnDefinition::NestedDefaults() const {
+	D_ASSERT(HasNestedDefaults());
+	return *nested_defaults;
+}
+
+bool ColumnDefinition::HasNestedDefaults() const {
+	return nested_defaults != nullptr;
+}
+
+void ColumnDefinition::SetNestedDefaults(unique_ptr<ParsedExpression> new_nested_defaults) {
+	nested_defaults = std::move(new_nested_defaults);
 }
 
 const LogicalType &ColumnDefinition::Type() const {
