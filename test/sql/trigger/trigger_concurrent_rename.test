@@ -136,3 +136,41 @@ SELECT count(*) FROM audit;
 
 statement ok
 DROP TRIGGER tr ON t;
+
+# ---------------------------------------------------------------------------
+# Scenario E: CREATE TRIGGER and RENAME in the same transaction.
+# The trigger is created before the rename, so it initially references k.
+# When the column is renamed to j, the trigger is automatically updated.
+# At commit time, the uncommitted alter belongs to this transaction and must
+# not trigger a false write-write conflict in Case (B).
+# ---------------------------------------------------------------------------
+statement ok
+BEGIN;
+
+statement ok
+CREATE TRIGGER tr AFTER UPDATE OF k ON t INSERT INTO audit VALUES (1);
+
+statement ok
+ALTER TABLE t RENAME COLUMN k TO j;
+
+statement ok
+COMMIT;
+
+query TT
+SELECT trigger_name, columns FROM duckdb_triggers() WHERE trigger_name = 'tr';
+----
+tr	[j]
+
+statement ok
+DELETE FROM audit;
+
+statement ok
+UPDATE t SET j = 4;
+
+query I
+SELECT count(*) FROM audit;
+----
+1
+
+statement ok
+DROP TRIGGER tr ON t;
