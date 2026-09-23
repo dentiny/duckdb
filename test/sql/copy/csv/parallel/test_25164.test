@@ -1,0 +1,51 @@
+# name: test/sql/copy/csv/parallel/test_25164.test
+# description: Test parallel CSV scanning with repeated carriage returns
+# group: [parallel]
+
+statement ok
+PRAGMA verify_parallelism
+
+# Place the first row's repeated carriage returns across a 4096-byte buffer boundary.
+statement ok
+COPY (
+	SELECT *
+	FROM (VALUES
+		(0::BIGINT, repeat('x', 4084)),
+		(1, 'y'),
+		(2, 'z')
+	) rows(id, val)
+) TO '{TEST_DIR}/issue_25164.csv' (FORMAT CSV, HEADER, NEW_LINE e'\r\r\n')
+
+query II
+SELECT count(*), count(DISTINCT id)
+FROM read_csv(
+	'{TEST_DIR}/issue_25164.csv',
+	auto_detect = false,
+	header = true,
+	delim = ',',
+	columns = {'id': 'BIGINT', 'val': 'VARCHAR'},
+	strict_mode = false,
+	ignore_errors = true,
+	max_line_size = 4096,
+	buffer_size = 4096,
+	parallel = true
+)
+----
+3	3
+
+query II
+SELECT count(*), count(DISTINCT id)
+FROM read_csv(
+	'{TEST_DIR}/issue_25164.csv',
+	auto_detect = false,
+	header = true,
+	delim = ',',
+	columns = {'id': 'BIGINT', 'val': 'VARCHAR'},
+	strict_mode = false,
+	ignore_errors = true,
+	max_line_size = 4096,
+	buffer_size = 4096,
+	parallel = false
+)
+----
+3	3
