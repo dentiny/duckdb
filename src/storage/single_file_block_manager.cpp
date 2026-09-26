@@ -1325,72 +1325,52 @@ bool SingleFileBlockManager::AddFreeBlock(unique_lock<mutex> &lock, block_id_t b
 	lock.lock();
 	return false;
 }
-void SingleFileBlockManager::WriteHeader(QueryContext context, DatabaseHeader header) {
-	auto free_list_blocks = GetFreeListBlocks();
+block_id_t SingleFileBlockManager::CalculateTruncation(set<block_id_t> &all_free_blocks) {
+	idx_t blocks_to_truncate = 0;
+	// reverse iterate over the free-list candidate blocks
+	for (auto entry = all_free_blocks.rbegin(); entry != all_free_blocks.rend(); entry++) {
+		auto block_id = *entry;
+		if (block_id + 1 != max_block - NumericCast<block_id_t>(blocks_to_truncate)) {
+			break;
+		}
+		if (newly_used_blocks.find(block_id) != newly_used_blocks.end()) {
+			break;
+		}
+		if (BlockIsRegistered(block_id)) {
+			break;
+		}
+		blocks_to_truncate++;
+	}
+	auto post_truncate_max = max_block - NumericCast<block_id_t>(blocks_to_truncate);
+	all_free_blocks.erase(all_free_blocks.lower_bound(post_truncate_max), all_free_blocks.end());
+	return post_truncate_max;
+}
 
-	// now handle the free list
+idx_t SingleFileBlockManager::SerializeFreeList(vector<MetadataHandle> free_list_blocks,
+                                                const set<block_id_t> &all_free_blocks,
+                                                const unordered_map<block_id_t, uint32_t> &written_multi_use_blocks) {
+	if (free_list_blocks.empty()) {
+		return DConstants::INVALID_INDEX;
+	}
 	auto &metadata_manager = GetMetadataManager();
-	// add all modified blocks to the free list: they can now be written to again
-	metadata_manager.MarkBlocksAsModified();
+	FreeListBlockWriter writer(metadata_manager, std::move(free_list_blocks));
 
-	unique_lock<mutex> lock(single_file_block_lock);
-	// set the iteration count
-	header.iteration = ++iteration_count;
-
-	set<block_id_t> all_free_blocks = free_list;
-	auto checkpoint_freed_blocks = modified_blocks;
-	for (auto &block : checkpoint_freed_blocks) {
-		all_free_blocks.insert(block);
+	auto ptr = writer.GetMetaBlockPointer();
+	writer.Write<uint64_t>(all_free_blocks.size());
+	for (auto &block_id : all_free_blocks) {
+		writer.Write<block_id_t>(block_id);
 	}
-	auto written_multi_use_blocks = multi_use_blocks;
-	// newly used blocks are still free blocks for this checkpoint - so add them to the free list that we write
-	for (auto &newly_used_block : newly_used_blocks) {
-		all_free_blocks.insert(newly_used_block);
-		written_multi_use_blocks.erase(newly_used_block);
+	writer.Write<uint64_t>(written_multi_use_blocks.size());
+	for (auto &entry : written_multi_use_blocks) {
+		writer.Write<block_id_t>(entry.first);
+		writer.Write<uint32_t>(entry.second);
 	}
+	metadata_manager.Write(writer);
+	writer.Flush();
+	return ptr.block_pointer;
+}
 
-	if (!free_list_blocks.empty()) {
-		// there are blocks to write, either in the free_list or in the modified_blocks
-		// we write these blocks specifically to the free_list_blocks
-		// a normal MetadataWriter will fetch blocks to use from the free_list
-		// but since we are WRITING the free_list, this behavior is sub-optimal
-		FreeListBlockWriter writer(metadata_manager, std::move(free_list_blocks));
-
-		auto ptr = writer.GetMetaBlockPointer();
-		header.free_list = ptr.block_pointer;
-
-		writer.Write<uint64_t>(all_free_blocks.size());
-		for (auto &block_id : all_free_blocks) {
-			writer.Write<block_id_t>(block_id);
-		}
-		writer.Write<uint64_t>(written_multi_use_blocks.size());
-		for (auto &entry : written_multi_use_blocks) {
-			writer.Write<block_id_t>(entry.first);
-			writer.Write<uint32_t>(entry.second);
-		}
-		GetMetadataManager().Write(writer);
-		writer.Flush();
-	} else {
-		// no blocks in the free list
-		header.free_list = DConstants::INVALID_INDEX;
-	}
-	lock.unlock();
-	metadata_manager.Flush(context);
-
-	lock.lock();
-	header.block_count = NumericCast<idx_t>(max_block);
-	lock.unlock();
-
-	header.storage_compatibility = options.storage_version;
-
-	auto debug_checkpoint_abort = Settings::Get<DebugCheckpointAbortSetting>(db.GetDatabase());
-	if (debug_checkpoint_abort == CheckpointAbort::DEBUG_ABORT_AFTER_FREE_LIST_WRITE) {
-		throw FatalException("Checkpoint aborted after free list write because of PRAGMA checkpoint_abort flag");
-	}
-
-	// We need to fsync BEFORE we write the header to ensure that all the previous blocks are written as well
-	handle->Sync();
-
+void SingleFileBlockManager::WriteActiveHeader(QueryContext context, DatabaseHeader &header) {
 	header_buffer.Clear();
 	// if we are upgrading the database from version 64 -> version 65, we need to re-write the main header
 	if (options.version_number == StorageVersion::V0_10_2 && options.storage_version >= StorageVersion::V1_2_0) {
@@ -1416,6 +1396,9 @@ void SingleFileBlockManager::WriteHeader(QueryContext context, DatabaseHeader he
 	active_header = 1 - active_header;
 	//! Ensure the header write ends up on disk
 	handle->Sync();
+}
+
+void SingleFileBlockManager::PostCheckpointCleanup(const unordered_set<block_id_t> &checkpoint_freed_blocks) {
 	set<block_id_t> fully_freed_blocks;
 	{
 		unique_lock<mutex> release_lock(single_file_block_lock);
@@ -1428,6 +1411,57 @@ void SingleFileBlockManager::WriteHeader(QueryContext context, DatabaseHeader he
 	}
 	// Release the free fully freed blocks to the filesystem.
 	TrimFreeBlocks(fully_freed_blocks);
+}
+
+void SingleFileBlockManager::WriteHeader(QueryContext context, DatabaseHeader header) {
+	auto free_list_blocks = GetFreeListBlocks();
+
+	// add all modified blocks to the free list: they can now be written to again
+	auto &metadata_manager = GetMetadataManager();
+	metadata_manager.MarkBlocksAsModified();
+
+	block_id_t post_truncate_max = 0;
+	unordered_set<block_id_t> checkpoint_freed_blocks;
+	{
+		unique_lock<mutex> lock(single_file_block_lock);
+		header.iteration = ++iteration_count;
+
+		set<block_id_t> all_free_blocks = free_list;
+		checkpoint_freed_blocks = modified_blocks;
+		for (auto &block : checkpoint_freed_blocks) {
+			all_free_blocks.insert(block);
+		}
+		auto written_multi_use_blocks = multi_use_blocks;
+		// newly used blocks are still free blocks for this checkpoint - so add them to the free list that we write
+		for (auto &newly_used_block : newly_used_blocks) {
+			all_free_blocks.insert(newly_used_block);
+			written_multi_use_blocks.erase(newly_used_block);
+		}
+
+		// calculate trailing free blocks that will be truncated after checkpoint
+		post_truncate_max = CalculateTruncation(all_free_blocks);
+
+		// write the free list to disk
+		header.free_list = SerializeFreeList(std::move(free_list_blocks), all_free_blocks, written_multi_use_blocks);
+	}
+	metadata_manager.Flush(context);
+
+	header.block_count = NumericCast<idx_t>(post_truncate_max);
+	header.storage_compatibility = options.storage_version;
+
+	auto debug_checkpoint_abort = Settings::Get<DebugCheckpointAbortSetting>(db.GetDatabase());
+	if (debug_checkpoint_abort == CheckpointAbort::DEBUG_ABORT_AFTER_FREE_LIST_WRITE) {
+		throw FatalException("Checkpoint aborted after free list write because of PRAGMA checkpoint_abort flag");
+	}
+
+	// We need to fsync BEFORE we write the header to ensure that all the previous blocks are written as well
+	handle->Sync();
+
+	// serialize header, write to disk, and toggle active header
+	WriteActiveHeader(context, header);
+
+	// clean up `modified_blocks` and trim free blocks
+	PostCheckpointCleanup(checkpoint_freed_blocks);
 }
 
 void SingleFileBlockManager::FileSync() {
