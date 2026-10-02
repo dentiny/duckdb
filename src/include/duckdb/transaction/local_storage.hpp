@@ -116,7 +116,10 @@ public:
 	OptimisticWriteCollection &GetPrimaryCollection();
 
 private:
+	enum class BlockRollbackState { NOT_STARTED, IN_PROGRESS, COMPLETE };
+
 	mutex collections_lock;
+	BlockRollbackState block_rollback_state = BlockRollbackState::NOT_STARTED;
 };
 
 class LocalTableManager {
