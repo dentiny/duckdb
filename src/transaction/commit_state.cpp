@@ -337,7 +337,8 @@ void CommitState::CommitEntry(UndoFlags type, data_ptr_t data, CommitInfo &info)
 				// Case (B): an uncommitted alter is in flight; this trigger would commit first,
 				// leaving the catalog in an inconsistent state once the alter commits.
 				auto head_entry = table_set.GetHeadEntry(trig.base_table->Table());
-				if (head_entry && table_set.HasConflict(commit_txn, head_entry->timestamp) &&
+				if (head_entry && head_entry->timestamp != transaction.GetTransactionId() &&
+				    table_set.HasConflict(commit_txn, head_entry->timestamp) &&
 				    head_entry->type == CatalogType::TABLE_ENTRY && !head_entry->deleted) {
 					throw TransactionException("Catalog write-write conflict on create with \"%s\": "
 					                           "table \"%s\" is being altered by a concurrent transaction",
