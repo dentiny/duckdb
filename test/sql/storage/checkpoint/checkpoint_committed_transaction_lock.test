@@ -1,0 +1,38 @@
+# name: test/sql/storage/checkpoint/checkpoint_committed_transaction_lock.test
+# description: Test that committed write transactions do not hold checkpoint locks
+# group: [checkpoint]
+
+load {TEST_DIR}/test_cp_lock.db
+
+statement ok
+CREATE TABLE t(i INTEGER);
+
+statement ok
+INSERT INTO t VALUES (1);
+
+statement ok con_reader
+BEGIN TRANSACTION;
+
+query I con_reader
+SELECT * FROM t;
+----
+1
+
+statement ok con_writer
+UPDATE t SET i = 2;
+
+statement ok con_cp
+CHECKPOINT;
+
+query I con_reader
+SELECT * FROM t;
+----
+1
+
+statement ok con_reader
+COMMIT;
+
+query I con_cp
+SELECT * FROM t;
+----
+2
