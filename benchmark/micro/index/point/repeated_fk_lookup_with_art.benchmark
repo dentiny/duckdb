@@ -1,0 +1,24 @@
+# name: benchmark/micro/index/point/repeated_fk_lookup_with_art.benchmark
+# description: Repeated foreign-key checks against an in-memory primary-key ART
+# group: [point]
+
+name Repeated FK Lookup (ART)
+group art
+
+load
+CREATE TABLE integers (id BIGINT PRIMARY KEY);
+INSERT INTO integers
+SELECT id
+FROM (SELECT i * 1000003 % 1000000 AS id FROM range(1000000) t(i))
+ORDER BY id % 7919;
+CREATE TABLE probes AS
+SELECT i * 999983 % 1000000 AS id FROM range(1000000) t(i);
+CREATE TABLE children (id BIGINT REFERENCES integers(id));
+BEGIN TRANSACTION;
+
+run
+INSERT INTO children SELECT id FROM probes;
+
+cleanup
+ROLLBACK;
+BEGIN TRANSACTION;
