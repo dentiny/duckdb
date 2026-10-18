@@ -1,0 +1,22 @@
+# name: test/sql/optimizer/test_storage_index_struct_filter.test
+# description: Test that multiple filters on different struct fields are not conflated by StorageIndex
+# group: [optimizer]
+
+load {TEST_DIR}/storage_index_struct_filter.db
+
+statement ok
+CREATE TABLE t(s STRUCT(a INT, b INT));
+
+statement ok
+INSERT INTO t SELECT {'a': 5, 'b': (i % 100)::INT} FROM range(0, 122880) t(i);
+
+statement ok
+INSERT INTO t SELECT {'a': 6, 'b': (i % 100)::INT} FROM range(122880, 245760) t(i);
+
+statement ok
+CHECKPOINT;
+
+query III
+SELECT count(*), min(s.a), max(s.b) FROM t WHERE s.a = 5 AND s.b = 7;
+----
+1229	5	7
