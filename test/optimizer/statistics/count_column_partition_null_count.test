@@ -1,0 +1,59 @@
+# name: test/optimizer/statistics/count_column_partition_null_count.test
+# description: count(col) on a nullable column folds via per-row-group null_count metadata
+# group: [statistics]
+
+require parquet
+
+statement ok
+COPY (
+  SELECT CASE WHEN i < 50000 THEN NULL ELSE i::INTEGER END AS x
+  FROM range(0, 100000) tbl(i)
+) TO '{TEST_DIR}/count_null_stats.parquet' (FORMAT PARQUET, ROW_GROUP_SIZE 10000);
+
+# The whole aggregate should be replaced with a constant; no parquet scan in the physical plan.
+statement ok
+PRAGMA explain_output = 'PHYSICAL_ONLY';
+
+query II
+EXPLAIN SELECT count(x) FROM '{TEST_DIR}/count_null_stats.parquet';
+----
+physical_plan	<!REGEX>:.*PARQUET_SCAN.*
+
+query II
+SELECT count(*), count(x) FROM '{TEST_DIR}/count_null_stats.parquet';
+----
+100000	50000
+
+# A top-level nested column expands to multiple Parquet leaf columns. The NULL count for x must use x's leaf index.
+statement ok
+COPY (
+  SELECT struct_pack(a := i::INTEGER, b := i::INTEGER) AS nested,
+         CASE WHEN i % 2 = 0 THEN NULL ELSE i::INTEGER END AS x
+  FROM range(0, 100000) tbl(i)
+) TO '{TEST_DIR}/count_null_stats_after_nested.parquet' (FORMAT PARQUET, ROW_GROUP_SIZE 10000);
+
+query II
+EXPLAIN SELECT count(x) FROM '{TEST_DIR}/count_null_stats_after_nested.parquet';
+----
+physical_plan	<!REGEX>:.*PARQUET_SCAN.*
+
+query IIII
+SELECT max(x), count(*), count(x), min(x) FROM '{TEST_DIR}/count_null_stats_after_nested.parquet';
+----
+99999	100000	50000	1
+
+statement ok
+COPY (SELECT NULL::INTEGER AS x FROM range(10000))
+TO '{TEST_DIR}/count_file_row_number.parquet' (FORMAT PARQUET);
+
+query II
+EXPLAIN SELECT count(file_row_number)
+FROM read_parquet('{TEST_DIR}/count_file_row_number.parquet', file_row_number = true);
+----
+physical_plan	<!REGEX>:.*PARQUET_SCAN.*
+
+query I
+SELECT count(file_row_number)
+FROM read_parquet('{TEST_DIR}/count_file_row_number.parquet', file_row_number = true);
+----
+10000
