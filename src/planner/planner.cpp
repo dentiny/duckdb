@@ -193,6 +193,7 @@ void Planner::CreatePlan(SQLStatement &statement) {
 	auto parameter_count = statement.named_param_map.size();
 
 	BoundParameterMap bound_parameters(parameter_data);
+	bound_parameters.keep_parameters = keep_parameters;
 
 	// first bind the tables and columns to the catalog
 	bool parameters_resolved = true;

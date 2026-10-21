@@ -3,15 +3,81 @@
 #include "duckdb/parser/statement/execute_statement.hpp"
 #include "duckdb/planner/planner.hpp"
 #include "duckdb/planner/operator/logical_execute.hpp"
+#include "duckdb/planner/operator/logical_prepare.hpp"
 #include "duckdb/planner/expression_binder/constant_binder.hpp"
 #include "duckdb/main/client_data.hpp"
 #include "duckdb/execution/expression_executor.hpp"
+#include "duckdb/execution/physical_plan_generator.hpp"
+#include "duckdb/common/error_data.hpp"
 #include "duckdb/planner/expression/bound_constant_expression.hpp"
 #include "duckdb/parser/expression/constant_expression.hpp"
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/main/client_context_state.hpp"
 
 namespace duckdb {
+
+static bool IsLiteralType(const LogicalType &type) {
+	return type.id() == LogicalTypeId::INTEGER_LITERAL || type.id() == LogicalTypeId::STRING_LITERAL;
+}
+
+//! Statements that are always rebound, or whose plan depends on the parameter values, can never be cached
+static bool CanCacheRebind(const PreparedStatementData &prepared) {
+	if (!prepared.can_cache_rebind || prepared.properties.always_require_rebind) {
+		return false;
+	}
+	for (auto &entry : prepared.value_map) {
+		if (entry.second->return_type.id() == LogicalTypeId::INVALID) {
+			return false;
+		}
+	}
+	return true;
+}
+
+//! NULL values would let the binder infer the parameter type and skip bind-time checks on the value
+static bool HasNullValue(const identifier_map_t<BoundParameterData> &bind_values) {
+	for (auto &entry : bind_values) {
+		if (entry.second.GetValue().type().id() == LogicalTypeId::SQLNULL) {
+			return true;
+		}
+	}
+	return false;
+}
+
+//! The plan may be reused if every parameter has exactly the type of the supplied value (see RequireRebind)
+static bool ParameterTypesMatch(const PreparedStatementData &prepared,
+                                const identifier_map_t<BoundParameterData> &bind_values) {
+	for (auto &entry : prepared.value_map) {
+		auto value = bind_values.find(entry.first);
+		if (value == bind_values.end() || entry.second->return_type != value->second.GetValue().type()) {
+			return false;
+		}
+	}
+	return true;
+}
+
+shared_ptr<PreparedStatementData>
+Binder::PrepareForValueTypes(const Identifier &name, const PreparedStatementData &original,
+                             const identifier_map_t<BoundParameterData> &bind_values) {
+	Planner planner(context);
+	for (auto &value : bind_values) {
+		// literals have no fixed type: infer the parameter type from its context instead
+		if (!IsLiteralType(value.second.return_type)) {
+			planner.parameter_data.emplace(value.first, value.second);
+		}
+	}
+	planner.keep_parameters = true;
+	auto typed = planner.PrepareSQLStatement(original.unbound_statement->Copy());
+	planner.plan = make_uniq<LogicalPrepare>(name, typed, std::move(planner.plan));
+	planner.Optimize();
+	PhysicalPlanGenerator physical_planner(context);
+	physical_planner.Plan(std::move(planner.plan));
+	// inferred or invalidated parameter types mean that the plan depends on the parameter values
+	if (!typed->physical_plan || !ParameterTypesMatch(*typed, bind_values)) {
+		return nullptr;
+	}
+	global_binder_state->bound_tables = planner.binder->global_binder_state->bound_tables;
+	return typed;
+}
 
 BoundStatement Binder::Bind(ExecuteStatement &stmt) {
 	auto parameter_count = stmt.named_param_map.size();
@@ -82,12 +148,41 @@ BoundStatement Binder::Bind(ExecuteStatement &stmt) {
 	}
 	if (rebind == RebindQueryInfo::ATTEMPT_TO_REBIND) {
 		// catalog was modified or statement does not have clear types: rebind the statement before running the execute
-		Planner prepared_planner(context);
-		prepared_planner.parameter_data = bind_values;
-		prepared = prepared_planner.PrepareSQLStatement(entry->second->unbound_statement->Copy());
-		rebound_plan = std::move(prepared_planner.plan);
-		D_ASSERT(prepared->properties.bound_all_parameters);
-		global_binder_state->bound_tables = prepared_planner.binder->global_binder_state->bound_tables;
+		auto original = entry->second;
+		bool cached = false;
+		bool type_bind_failed = false;
+		if (CanCacheRebind(*original) && !HasNullValue(bind_values)) {
+			try {
+				auto typed = PrepareForValueTypes(stmt.name, *original, bind_values);
+				if (typed) {
+					cached = true;
+					prepared = typed;
+					entry->second = typed;
+				} else {
+					// keep the original plan for EXECUTEs that match its types, but don't try again
+					original->can_cache_rebind = false;
+				}
+			} catch (std::exception &ex) {
+				ErrorData error(ex);
+				if (error.Type() == ExceptionType::INTERRUPT || error.Type() == ExceptionType::INTERNAL ||
+				    Exception::InvalidatesDatabase(error.Type())) {
+					throw;
+				}
+				type_bind_failed = true;
+			}
+		}
+		if (!cached) {
+			Planner prepared_planner(context);
+			prepared_planner.parameter_data = bind_values;
+			prepared = prepared_planner.PrepareSQLStatement(original->unbound_statement->Copy());
+			rebound_plan = std::move(prepared_planner.plan);
+			D_ASSERT(prepared->properties.bound_all_parameters);
+			global_binder_state->bound_tables = prepared_planner.binder->global_binder_state->bound_tables;
+			if (type_bind_failed) {
+				// binding succeeds with the values but not with their types, e.g. a function that requires a constant
+				original->can_cache_rebind = false;
+			}
+		}
 	}
 	// copy the properties of the prepared statement into the planner
 	auto &properties = GetStatementProperties();
