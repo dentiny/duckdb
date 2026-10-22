@@ -923,8 +923,12 @@ idx_t RadixPartitionedHashTable::MaxThreads(GlobalSinkState &sink_p) const {
 		return 0;
 	}
 
+	// scanning a small result in parallel costs more in task setup than it saves
+	const auto count_threads =
+	    MaxValue<idx_t>((sink.count_before_combining + STANDARD_VECTOR_SIZE - 1) / STANDARD_VECTOR_SIZE, 1);
 	const auto max_threads =
-	    MinValue<idx_t>(TaskScheduler::GetScheduler(sink.context).NumberOfThreads(), sink.partitions.size());
+	    MinValue<idx_t>(MinValue<idx_t>(TaskScheduler::GetScheduler(sink.context).NumberOfThreads(), count_threads),
+	                    sink.partitions.size());
 	sink.temporary_memory_state->SetRemainingSizeAndUpdateReservation(
 	    sink.context, sink.stored_allocators_size + max_threads * sink.max_partition_size);
 
