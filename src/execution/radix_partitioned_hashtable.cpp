@@ -917,18 +917,32 @@ void RadixPartitionedHashTable::Finalize(ClientContext &context, GlobalSinkState
 //===--------------------------------------------------------------------===//
 // Source
 //===--------------------------------------------------------------------===//
+//! Whether no aggregate state holds data outside of its fixed-size row, e.g., the values of a median or list
+static bool HasFixedSizeStates(const RadixHTGlobalSinkState &sink) {
+	if (sink.stored_allocators_size != 0 || sink.radix_ht.GetLayout().HasDestructor()) {
+		return false;
+	}
+	for (auto &partition : sink.partitions) {
+		if (partition->exported_data && partition->exported_data->Count() != 0) {
+			return false;
+		}
+	}
+	return true;
+}
+
 idx_t RadixPartitionedHashTable::MaxThreads(GlobalSinkState &sink_p) const {
 	auto &sink = sink_p.Cast<RadixHTGlobalSinkState>();
 	if (sink.partitions.empty()) {
 		return 0;
 	}
 
-	// scanning a small result in parallel costs more in task setup than it saves
-	const auto count_threads =
-	    MaxValue<idx_t>((sink.count_before_combining + STANDARD_VECTOR_SIZE - 1) / STANDARD_VECTOR_SIZE, 1);
-	const auto max_threads =
-	    MinValue<idx_t>(MinValue<idx_t>(TaskScheduler::GetScheduler(sink.context).NumberOfThreads(), count_threads),
-	                    sink.partitions.size());
+	auto max_threads =
+	    MinValue<idx_t>(TaskScheduler::GetScheduler(sink.context).NumberOfThreads(), sink.partitions.size());
+	if (HasFixedSizeStates(sink)) {
+		// the work scales with the row count, so a small result is not worth scanning in parallel
+		const auto count_threads = (sink.count_before_combining + STANDARD_VECTOR_SIZE - 1) / STANDARD_VECTOR_SIZE;
+		max_threads = MinValue<idx_t>(max_threads, MaxValue<idx_t>(count_threads, 1));
+	}
 	sink.temporary_memory_state->SetRemainingSizeAndUpdateReservation(
 	    sink.context, sink.stored_allocators_size + max_threads * sink.max_partition_size);
 
