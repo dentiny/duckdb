@@ -7,11 +7,62 @@
 
 namespace duckdb {
 
+struct UTF8Character {
+	explicit UTF8Character(uint8_t value) {
+		data[0] = UnsafeNumericCast<char>(0xC0 | (value >> 6));
+		data[1] = UnsafeNumericCast<char>(0x80 | (value & 0x3F));
+	}
+
+	idx_t size() const {
+		return 2;
+	}
+
+	idx_t width() const {
+		return 1;
+	}
+
+	template <class ITERATOR>
+	void operator()(ITERATOR &&iterator) const {
+		*iterator++ = data[0];
+		*iterator++ = data[1];
+	}
+
+	char data[2];
+};
+
+class UTF8PrintfArgFormatter : public duckdb_fmt::printf_arg_formatter<duckdb_fmt::buffer_range<char>> {
+public:
+	using Base = duckdb_fmt::printf_arg_formatter<duckdb_fmt::buffer_range<char>>;
+	using iterator = typename Base::iterator;
+	using Context = duckdb_fmt::basic_printf_context<iterator, char>;
+	using Base::operator();
+
+	UTF8PrintfArgFormatter(iterator iterator, duckdb_fmt::basic_format_specs<char> &specs, Context &context)
+	    : Base(iterator, specs, context) {
+	}
+
+	iterator operator()(char value) {
+		auto codepoint = static_cast<uint8_t>(value);
+		if (codepoint < 0x80) {
+			return Base::operator()(value);
+		}
+		auto &format_specs = *this->specs();
+		format_specs.sign = duckdb_fmt::sign::none;
+		format_specs.alt = false;
+		format_specs.align = duckdb_fmt::align::right;
+		this->writer().write_padded(format_specs, UTF8Character(codepoint));
+		return this->out();
+	}
+};
+
 struct FMTPrintf {
 	template <class CTX>
 	static string OP(const char *format_str, vector<duckdb_fmt::basic_format_arg<CTX>> &format_args) {
-		return duckdb_fmt::vsprintf(
-		    format_str, duckdb_fmt::basic_format_args<CTX>(format_args.data(), static_cast<int>(format_args.size())));
+		duckdb_fmt::basic_memory_buffer<char> buffer;
+		duckdb_fmt::vprintf<UTF8PrintfArgFormatter>(
+		    buffer, duckdb_fmt::string_view(format_str),
+		    duckdb_fmt::basic_format_args<CTX>(format_args.data(), static_cast<int>(format_args.size())));
+		return duckdb_fmt::to_string(buffer);
 	}
 };
 

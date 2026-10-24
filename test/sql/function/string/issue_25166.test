@@ -1,0 +1,18 @@
+# name: test/sql/function/string/issue_25166.test
+# description: Issue #25166: printf %c must return valid UTF-8
+# group: [string]
+
+query TTTTTT
+SELECT hex(printf('%c', 255)),
+       hex(lower(printf('%c', 255))),
+       hex(upper(printf('%c', 255))),
+       hex(rtrim(printf('%c', 255))),
+       hex(trim(printf('%c', 255))),
+       hex(strip_accents(printf('%c', 255)));
+----
+C3BF	C3BF	C5B8	C3BF	C3BF	79
+
+query TT
+SELECT hex(printf('%c', 128)), hex(printf('%c%c', 195, 191));
+----
+C280	C383C2BF
