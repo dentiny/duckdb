@@ -13,7 +13,7 @@ BindResult ExpressionBinder::BindExpression(ParameterExpression &expr, idx_t dep
 	auto parameters = binder.GetParameters();
 	auto parameter_id = expr.Identifier();
 
-	if (parameters) {
+	if (parameters && !parameters->keep_parameters) {
 		// Check if a parameter value has already been supplied (named params take precedence)
 		auto &parameter_data = parameters->GetParameterData();
 		auto param_data_it = parameter_data.find(parameter_id);

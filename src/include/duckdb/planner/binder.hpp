@@ -58,6 +58,8 @@ class LogicalGet;
 class LogicalUpdate;
 class CopyQueryNode;
 class LogicalVacuum;
+class PreparedStatementData;
+struct BoundParameterData;
 
 class ColumnList;
 class ExternalDependency;
@@ -715,6 +717,11 @@ private:
 	shared_ptr<Binder> CreateBinderWithSearchPath(const Identifier &catalog_name, const Identifier &schema_name);
 
 	bool DebugAggregateStateExportVerify(BoundSelectNode &statement, unique_ptr<LogicalOperator> &root);
+
+	//! Prepares the statement for the types of the supplied values; returns nullptr if the plan depends on the values
+	shared_ptr<PreparedStatementData> PrepareForValueTypes(const Identifier &name,
+	                                                       const PreparedStatementData &original,
+	                                                       const identifier_map_t<BoundParameterData> &bind_values);
 
 private:
 	Binder(ClientContext &context, shared_ptr<Binder> parent, BinderType binder_type);

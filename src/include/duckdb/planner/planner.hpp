@@ -30,6 +30,8 @@ public:
 	vector<Identifier> names;
 	vector<LogicalType> types;
 	identifier_map_t<BoundParameterData> parameter_data;
+	//! Only use the types of parameter_data, binding the parameters as parameter expressions
+	bool keep_parameters = false;
 
 	shared_ptr<Binder> binder;
 	ClientContext &context;

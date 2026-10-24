@@ -44,6 +44,8 @@ public:
 
 	//! The map of parameter index to the actual value entry
 	bound_parameter_map_t value_map;
+	//! Whether a rebind may replace this statement with a plan for the supplied parameter types
+	bool can_cache_rebind = true;
 
 public:
 	void CheckParameterCount(idx_t parameter_count);
