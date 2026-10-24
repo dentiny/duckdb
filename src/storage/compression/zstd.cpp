@@ -86,6 +86,8 @@ struct ZSTDStorage {
 	static void StringScan(ColumnSegment &segment, ColumnScanState &state, idx_t scan_count, Vector &result);
 	static void StringFetchRow(ColumnSegment &segment, ColumnFetchState &state, row_t row_id, Vector &result,
 	                           idx_t result_idx);
+	static void StringFetchRows(ColumnSegment &segment, ColumnFetchState &state, const row_t *row_ids,
+	                            const idx_t *result_idxs, idx_t count, Vector &result);
 	static void StringSkip(ColumnSegment &segment, ColumnScanState &state, idx_t skip_count) {
 		// NO OP
 	}
@@ -809,6 +811,12 @@ public:
 		if (UseVectorStateCache(vector_idx, internal_offset)) {
 			return *current_vector;
 		}
+		if (current_vector && current_vector->metadata.vector_idx == vector_idx &&
+		    current_vector->scanned_count < internal_offset) {
+			// the streaming decompression can only move forward: skip ahead within the current vector
+			Skip(*current_vector, internal_offset - current_vector->scanned_count);
+			return *current_vector;
+		}
 		auto metadata = GetVectorMetadata(vector_idx);
 		BufferHandle data_handle;
 		auto reader = layout.data;
@@ -1074,6 +1082,14 @@ void ZSTDStorage::StringFetchRow(ColumnSegment &segment, ColumnFetchState &state
 	scan_state.ScanPartial(UnsafeNumericCast<idx_t>(row_id), result, result_idx, 1);
 }
 
+void ZSTDStorage::StringFetchRows(ColumnSegment &segment, ColumnFetchState &state, const row_t *row_ids,
+                                  const idx_t *result_idxs, idx_t count, Vector &result) {
+	ZSTDScanState scan_state(state.context, segment);
+	for (idx_t i = 0; i < count; i++) {
+		scan_state.ScanPartial(UnsafeNumericCast<idx_t>(row_ids[i]), result, result_idxs[i], 1);
+	}
+}
+
 //===--------------------------------------------------------------------===//
 // Serialization & Cleanup
 //===--------------------------------------------------------------------===//
@@ -1120,6 +1136,7 @@ CompressionFunction ZSTDFun::GetFunction(PhysicalType data_type) {
 	    ZSTDStorage::StringFinalAnalyze, ZSTDStorage::InitCompression, ZSTDStorage::Compress,
 	    ZSTDStorage::FinalizeCompress, ZSTDStorage::StringInitScan, ZSTDStorage::StringScan,
 	    ZSTDStorage::StringScanPartial, ZSTDStorage::StringFetchRow, ZSTDStorage::StringSkip);
+	zstd.fetch_rows = ZSTDStorage::StringFetchRows;
 	zstd.init_segment = ZSTDStorage::StringInitSegment;
 	zstd.serialize_state = ZSTDStorage::SerializeState;
 	zstd.deserialize_state = ZSTDStorage::DeserializeState;

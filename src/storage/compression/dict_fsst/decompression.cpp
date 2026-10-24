@@ -209,6 +209,46 @@ void CompressedStringScanState::Select(Vector &result, idx_t result_offset, idx_
 	}
 }
 
+void CompressedStringScanState::FetchRows(Vector &result, const row_t *row_ids, const idx_t *result_idxs,
+                                          idx_t count) {
+	vector<uint32_t> dict_offsets(dict_count);
+	uint32_t offset = 0;
+	for (uint32_t i = 0; i < dict_count; i++) {
+		dict_offsets[i] = offset;
+		offset += string_lengths[i];
+	}
+
+	static constexpr idx_t GROUP_SIZE = BitpackingPrimitives::BITPACKING_ALGORITHM_GROUP_SIZE;
+	sel_t group_indices[GROUP_SIZE];
+	idx_t loaded_group = DConstants::INVALID_INDEX;
+
+	auto result_data = FlatVector::GetDataMutable<string_t>(result);
+	auto &result_validity = FlatVector::ValidityMutable(result);
+	for (idx_t i = 0; i < count; i++) {
+		const auto row = UnsafeNumericCast<idx_t>(row_ids[i]);
+		idx_t string_number;
+		if (mode == DictFSSTMode::FSST_ONLY) {
+			//! (index 0 is reserved for NULL, which we don't have in this mode)
+			string_number = row + 1;
+		} else {
+			const auto group = row / GROUP_SIZE;
+			if (group != loaded_group) {
+				auto group_src = &dictionary_indices_ptr[(group * GROUP_SIZE * dictionary_indices_width) / 8];
+				BitpackingPrimitives::UnPackBuffer<sel_t>(data_ptr_cast(group_indices), group_src, GROUP_SIZE,
+				                                          dictionary_indices_width);
+				loaded_group = group;
+			}
+			string_number = group_indices[row % GROUP_SIZE];
+		}
+		if (string_number == 0) {
+			result_validity.SetInvalid(result_idxs[i]);
+			continue;
+		}
+		D_ASSERT(string_number < dict_count);
+		result_data[result_idxs[i]] = FetchStringFromDict(result, dict_offsets[string_number], string_number);
+	}
+}
+
 bool CompressedStringScanState::AllowDictionaryScan(idx_t scan_count) {
 	if (mode == DictFSSTMode::FSST_ONLY) {
 		return false;

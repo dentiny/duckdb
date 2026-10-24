@@ -63,6 +63,8 @@ struct DictFSSTCompressionStorage {
 	static void StringScan(ColumnSegment &segment, ColumnScanState &state, idx_t scan_count, Vector &result);
 	static void StringFetchRow(ColumnSegment &segment, ColumnFetchState &state, row_t row_id, Vector &result,
 	                           idx_t result_idx);
+	static void StringFetchRows(ColumnSegment &segment, ColumnFetchState &state, const row_t *row_ids,
+	                            const idx_t *result_idxs, idx_t count, Vector &result);
 };
 
 //===--------------------------------------------------------------------===//
@@ -154,6 +156,14 @@ void DictFSSTCompressionStorage::StringFetchRow(ColumnSegment &segment, ColumnFe
 	CompressedStringScanState scan_state(segment, state.GetOrInsertHandle(segment));
 	scan_state.Initialize(false);
 	scan_state.ScanToFlatVector(result, result_idx, NumericCast<idx_t>(row_id), 1);
+}
+
+void DictFSSTCompressionStorage::StringFetchRows(ColumnSegment &segment, ColumnFetchState &state,
+                                                 const row_t *row_ids, const idx_t *result_idxs, idx_t count,
+                                                 Vector &result) {
+	CompressedStringScanState scan_state(segment, state.GetOrInsertHandle(segment));
+	scan_state.Initialize(false);
+	scan_state.FetchRows(result, row_ids, result_idxs, count);
 }
 
 //===--------------------------------------------------------------------===//
@@ -279,6 +289,7 @@ CompressionFunction DictFSSTCompressionFun::GetFunction(PhysicalType data_type) 
 	    dict_fsst::DictFSSTCompressionStorage::StringFetchRow, UncompressedFunctions::EmptySkip,
 	    UncompressedStringStorage::StringInitSegment);
 	res.validity = CompressionValidity::NO_VALIDITY_REQUIRED;
+	res.fetch_rows = dict_fsst::DictFSSTCompressionStorage::StringFetchRows;
 	res.select = dict_fsst::DictFSSTSelect;
 	res.filter = dict_fsst::DictFSSTFilter;
 	res.get_segment_info = dict_fsst::DictFSSTGetSegmentInfo;
