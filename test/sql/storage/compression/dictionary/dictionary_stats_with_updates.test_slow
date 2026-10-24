@@ -1,0 +1,67 @@
+# name: test/sql/storage/compression/dictionary/dictionary_stats_with_updates.test_slow
+# description: a column that has committed updates prior to being checkpointed with dictionary compression
+# group: [dictionary]
+
+load {TEST_DIR}/dictionary_stats_with_updates.db readwrite v1.0.0
+
+# avoid the WAL auto-checkpointing the UPDATE below before we get a chance to switch to dictionary compression
+statement ok
+SET checkpoint_threshold='1GB';
+
+statement ok
+PRAGMA force_compression='uncompressed';
+
+statement ok
+CREATE TABLE updated_strings AS
+	SELECT i, 'value_' || (i % 7) AS s
+	FROM range(5000) tbl(i);
+
+statement ok
+CHECKPOINT;
+
+query I
+SELECT DISTINCT compression FROM pragma_storage_info('updated_strings') WHERE segment_type ILIKE 'VARCHAR';
+----
+Uncompressed
+
+# update a subset of rows to a value that sorts before all original values, so stale (pre-update) min stats
+# would be easy to detect. Kept short (<=12 bytes) to avoid string stats truncation.
+statement ok
+UPDATE updated_strings SET s = 'AA' || i WHERE i % 97 = 0;
+
+query I
+SELECT count(*) FROM updated_strings WHERE s LIKE 'AA%';
+----
+52
+
+statement ok
+PRAGMA force_compression='dictionary';
+
+statement ok
+CHECKPOINT;
+
+query I
+SELECT DISTINCT compression FROM pragma_storage_info('updated_strings') WHERE segment_type ILIKE 'VARCHAR';
+----
+Dictionary
+
+# min/max must reflect the updated values, not the stale pre-update segment stats
+query I
+SELECT MIN(s) FROM updated_strings;
+----
+AA0
+
+query I
+SELECT MIN(stats.min::VARCHAR) FROM pragma_storage_info('updated_strings') WHERE segment_type ILIKE 'VARCHAR';
+----
+AA0
+
+query I
+SELECT MAX(s) FROM updated_strings;
+----
+value_6
+
+query I
+SELECT MAX(stats.max::VARCHAR) FROM pragma_storage_info('updated_strings') WHERE segment_type ILIKE 'VARCHAR';
+----
+value_6
