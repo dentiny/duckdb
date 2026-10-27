@@ -175,6 +175,10 @@ typedef void (*compression_filter_t)(ColumnSegment &segment, ColumnScanState &st
 //! Function prototype used for reading a single value
 typedef void (*compression_fetch_row_t)(ColumnSegment &segment, ColumnFetchState &state, row_t row_id, Vector &result,
                                         idx_t result_idx);
+//! Function prototype used for reading multiple values at once; 'row_ids' are sorted ascending, and the value of
+//! 'row_ids[i]' is written to 'result' at 'result_idxs[i]'
+typedef void (*compression_fetch_rows_t)(ColumnSegment &segment, ColumnFetchState &state, const row_t *row_ids,
+                                         const idx_t *result_idxs, idx_t count, Vector &result);
 //! Function prototype used for skipping 'skip_count' values, non-trivial if random-access is not supported for the
 //! compressed data.
 typedef void (*compression_skip_t)(ColumnSegment &segment, ColumnScanState &state, idx_t skip_count);
@@ -277,6 +281,9 @@ public:
 	//! fetch an individual row from the compressed vector
 	//! used for index lookups
 	compression_fetch_row_t fetch_row;
+	//! fetch multiple rows from the same segment at once (optional)
+	//! used to amortize per-segment decoding work across the rows of an index lookup
+	compression_fetch_rows_t fetch_rows = nullptr;
 	//! Skip forward in the compressed segment
 	compression_skip_t skip;
 

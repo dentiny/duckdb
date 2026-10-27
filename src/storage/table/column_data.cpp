@@ -787,11 +787,32 @@ void ColumnData::FetchRowsAtSegmentLevel(TransactionData transaction, ColumnFetc
 		return;
 	}
 
+	// visit the rows in offset order, so that rows within the same segment can be fetched as a batch
+	bool sorted = true;
+	for (idx_t idx = 1; idx < fetch_count && sorted; idx++) {
+		sorted = offsets[sel.get_index(idx - 1)] <= offsets[sel.get_index(idx)];
+	}
+	unsafe_unique_array<idx_t> order;
+	if (!sorted) {
+		order = make_unsafe_uniq_array_uninitialized<idx_t>(fetch_count);
+		for (idx_t idx = 0; idx < fetch_count; idx++) {
+			order[idx] = idx;
+		}
+		std::sort(order.get(), order.get() + fetch_count,
+		          [&](idx_t a, idx_t b) { return offsets[sel.get_index(a)] < offsets[sel.get_index(b)]; });
+	}
+	auto position = [&](idx_t idx) {
+		return sorted ? idx : order[idx];
+	};
+
+	unsafe_unique_array<row_t> batch_row_ids;
+	unsafe_unique_array<idx_t> batch_result_idxs;
 	optional_ptr<SegmentNode<ColumnSegment>> current_segment;
 	idx_t segment_start = 0;
 	idx_t segment_end = 0;
-	for (idx_t idx = 0; idx < fetch_count; idx++) {
-		const idx_t offset = offsets[sel.get_index(idx)];
+	idx_t idx = 0;
+	while (idx < fetch_count) {
+		const idx_t offset = offsets[sel.get_index(position(idx))];
 		if (offset > count) {
 			throw InternalException("ColumnData::FetchRowsAtSegmentLevel - row_id %lld out of range for count %lld",
 			                        offset, count);
@@ -801,8 +822,30 @@ void ColumnData::FetchRowsAtSegmentLevel(TransactionData transaction, ColumnFetc
 			segment_start = current_segment->GetRowStart();
 			segment_end = segment_start + current_segment->GetNode().count;
 		}
-		const idx_t index_in_segment = offset - segment_start;
-		current_segment->GetNode().FetchRow(state, NumericCast<row_t>(index_in_segment), result, result_offset + idx);
+		auto &segment = current_segment->GetNode();
+		idx_t batch_end = idx + 1;
+		if (segment.SupportsFetchRows()) {
+			while (batch_end < fetch_count && offsets[sel.get_index(position(batch_end))] < segment_end) {
+				batch_end++;
+			}
+		}
+		const idx_t batch_count = batch_end - idx;
+		if (batch_count == 1) {
+			segment.FetchRow(state, NumericCast<row_t>(offset - segment_start), result, result_offset + position(idx));
+			idx++;
+			continue;
+		}
+		if (!batch_row_ids) {
+			batch_row_ids = make_unsafe_uniq_array_uninitialized<row_t>(fetch_count);
+			batch_result_idxs = make_unsafe_uniq_array_uninitialized<idx_t>(fetch_count);
+		}
+		for (idx_t i = 0; i < batch_count; i++) {
+			const auto pos = position(idx + i);
+			batch_row_ids[i] = NumericCast<row_t>(offsets[sel.get_index(pos)] - segment_start);
+			batch_result_idxs[i] = result_offset + pos;
+		}
+		segment.FetchRows(state, batch_row_ids.get(), batch_result_idxs.get(), batch_count, result);
+		idx = batch_end;
 	}
 	{
 		const lock_guard<mutex> update_guard(update_lock);

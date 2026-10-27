@@ -198,6 +198,22 @@ void ColumnSegment::FetchRow(ColumnFetchState &state, row_t row_id, Vector &resu
 	function.get().fetch_row(*this, state, row_id, result, result_idx);
 }
 
+bool ColumnSegment::SupportsFetchRows() const {
+	return function.get().fetch_rows != nullptr;
+}
+
+void ColumnSegment::FetchRows(ColumnFetchState &state, const row_t *row_ids, const idx_t *result_idxs, idx_t count,
+                              Vector &result) {
+	D_ASSERT(SupportsFetchRows());
+	for (idx_t i = 0; i < count; i++) {
+		if (row_ids[i] < 0 || NumericCast<idx_t>(row_ids[i]) >= this->count) {
+			throw InternalException("ColumnSegment::FetchRows - row_id out of range for segment");
+		}
+		D_ASSERT(i == 0 || row_ids[i - 1] <= row_ids[i]);
+	}
+	function.get().fetch_rows(*this, state, row_ids, result_idxs, count, result);
+}
+
 //===--------------------------------------------------------------------===//
 // Append
 //===--------------------------------------------------------------------===//
