@@ -1,0 +1,277 @@
+# name: test/sql/update/update_fetch_version_chain.test
+# description: Index lookups from different snapshots read the right version of rows with long update chains
+# group: [update]
+
+statement ok
+SET immediate_transaction_mode=true
+
+statement ok
+CREATE TABLE t (id INTEGER PRIMARY KEY, k INTEGER, s VARCHAR);
+
+statement ok
+INSERT INTO t SELECT i, i, 's' || i::VARCHAR FROM range(4096) tbl(i);
+
+# con1 sees the original data
+statement ok con1
+BEGIN
+
+statement ok
+UPDATE t SET k = k + 100, s = s || 'a' WHERE id IN (1, 2, 3)
+
+# con2 sees the first update
+statement ok con2
+BEGIN
+
+# row 5 is updated for the first time: older snapshots keep its base value
+statement ok
+UPDATE t SET k = k + 1000 WHERE id IN (2, 5)
+
+statement ok
+UPDATE t SET k = NULL, s = NULL WHERE id = 7
+
+# updates of other rows of the same vector make the chain long
+loop i 0 60
+
+statement ok
+UPDATE t SET k = k + 1 WHERE id = 1000 + {i}
+
+endloop
+
+# con3 sees everything so far, and makes uncommitted updates of its own
+statement ok con3
+BEGIN
+
+statement ok
+UPDATE t SET k = 70, s = 'seven' WHERE id = 7
+
+statement ok
+UPDATE t SET k = k + 10000 WHERE id = 1
+
+statement ok con3
+UPDATE t SET k = -3 WHERE id = 3
+
+statement ok con3
+UPDATE t SET k = -2000 WHERE id = 2000
+
+query III con1
+SELECT id, k, s FROM t WHERE id IN (1, 2, 3, 5, 7, 1005, 2000, 4000) ORDER BY id
+----
+1	1	s1
+2	2	s2
+3	3	s3
+5	5	s5
+7	7	s7
+1005	1005	s1005
+2000	2000	s2000
+4000	4000	s4000
+
+query III con2
+SELECT id, k, s FROM t WHERE id IN (1, 2, 3, 5, 7, 1005, 2000, 4000) ORDER BY id
+----
+1	101	s1a
+2	102	s2a
+3	103	s3a
+5	5	s5
+7	7	s7
+1005	1005	s1005
+2000	2000	s2000
+4000	4000	s4000
+
+query III con3
+SELECT id, k, s FROM t WHERE id IN (1, 2, 3, 5, 7, 1005, 2000, 4000) ORDER BY id
+----
+1	101	s1a
+2	1102	s2a
+3	-3	s3a
+5	1005	s5
+7	NULL	NULL
+1005	1006	s1005
+2000	-2000	s2000
+4000	4000	s4000
+
+query III
+SELECT id, k, s FROM t WHERE id IN (1, 2, 3, 5, 7, 1005, 2000, 4000) ORDER BY id
+----
+1	10101	s1a
+2	1102	s2a
+3	103	s3a
+5	1005	s5
+7	70	seven
+1005	1006	s1005
+2000	2000	s2000
+4000	4000	s4000
+
+# single-row lookups give the same versions as the scans
+query II con1
+SELECT k, s FROM t WHERE id = 2
+----
+2	s2
+
+query II con2
+SELECT k, s FROM t WHERE id = 5
+----
+5	s5
+
+query II con3
+SELECT k, s FROM t WHERE id = 7
+----
+NULL	NULL
+
+query II con3
+SELECT k, s FROM t WHERE id = 3
+----
+-3	s3a
+
+query II
+SELECT k, s FROM t WHERE id = 1
+----
+10101	s1a
+
+query I con1
+SELECT SUM(k) FROM t WHERE id + 0 IN (1, 2, 3, 5, 7, 1005, 2000, 4000)
+----
+7023
+
+query I con2
+SELECT SUM(k) FROM t WHERE id + 0 IN (1, 2, 3, 5, 7, 1005, 2000, 4000)
+----
+7323
+
+query I con3
+SELECT SUM(k) FROM t WHERE id + 0 IN (1, 2, 3, 5, 7, 1005, 2000, 4000)
+----
+5211
+
+statement ok con3
+COMMIT
+
+statement ok con2
+COMMIT
+
+query III con1
+SELECT id, k, s FROM t WHERE id IN (2, 3, 5, 2000) ORDER BY id
+----
+2	2	s2
+3	3	s3
+5	5	s5
+2000	2000	s2000
+
+statement ok con1
+COMMIT
+
+query III
+SELECT id, k, s FROM t WHERE id IN (1, 2, 3, 5, 7, 1005, 2000, 4000) ORDER BY id
+----
+1	10101	s1a
+2	1102	s2a
+3	-3	s3a
+5	1005	s5
+7	70	seven
+1005	1006	s1005
+2000	-2000	s2000
+4000	4000	s4000
+
+# conflicts are found behind newer update infos that do not hold the row
+statement ok
+CREATE TABLE c (id INTEGER PRIMARY KEY, k INTEGER);
+
+statement ok
+INSERT INTO c SELECT i, i FROM range(4096) tbl(i);
+
+statement ok con1
+BEGIN
+
+statement ok con1
+UPDATE c SET k = -10 WHERE id = 10
+
+statement ok con2
+BEGIN
+
+statement ok con2
+UPDATE c SET k = -50 WHERE id = 50
+
+statement ok
+UPDATE c SET k = 20000 WHERE id = 20
+
+statement ok
+UPDATE c SET k = 30000 WHERE id = 30
+
+# con3 starts after the updates of rows 20 and 30 committed, and sees them
+statement ok con3
+BEGIN
+
+statement ok con3
+UPDATE c SET k = 30001 WHERE id = 30
+
+statement error con3
+UPDATE c SET k = 0 WHERE id = 50
+----
+Conflict
+
+statement ok con3
+ROLLBACK
+
+# con1 finds its own update info behind the newer ones, and conflicts with rows updated after it started
+statement ok con1
+UPDATE c SET k = -40 WHERE id = 40
+
+statement ok con1
+UPDATE c SET k = -11 WHERE id = 10
+
+statement error con1
+UPDATE c SET k = 0 WHERE id = 20
+----
+Conflict
+
+statement ok con1
+ROLLBACK
+
+query II con2
+SELECT id, k FROM c WHERE id IN (10, 20, 30, 40, 50) ORDER BY id
+----
+10	10
+20	20
+30	30
+40	40
+50	-50
+
+statement ok con2
+UPDATE c SET k = -51 WHERE id = 50
+
+statement ok con2
+COMMIT
+
+query II
+SELECT id, k FROM c WHERE id IN (10, 20, 30, 40, 50) ORDER BY id
+----
+10	10
+20	20000
+30	30000
+40	40
+50	-51
+
+# a transaction that updates the same rows many times keeps a single update info
+statement ok
+BEGIN
+
+loop i 0 20
+
+statement ok
+UPDATE c SET k = k + 1 WHERE id IN (100, 200, 300)
+
+statement ok con1
+UPDATE c SET k = k + 1 WHERE id = 1000 + {i}
+
+endloop
+
+statement ok
+COMMIT
+
+query II
+SELECT id, k FROM c WHERE id IN (100, 200, 300, 1000, 1019) ORDER BY id
+----
+100	120
+200	220
+300	320
+1000	1001
+1019	1020
