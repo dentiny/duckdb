@@ -589,34 +589,55 @@ template <class T, class RESULT>
 static void FetchRowsInternal(const SnapshotView &view, UpdateInfo &root, const idx_t *offsets,
                               const SelectionVector &sel, idx_t fetch_offset, idx_t count, idx_t vector_offset,
                               RESULT &result, idx_t result_offset) {
-	vector<UndoBufferReference> invisible;
-	UpdateInfo::GetInvisibleUpdates(root, view, invisible);
+	struct PendingRow {
+		idx_t row_idx;
+		idx_t result_idx;
+		T value;
+	};
+	// every update in the chain is also present in the root: only rows in the root need the chain
+	vector<PendingRow> pending;
 	auto root_data = root.GetData<T>();
 	for (idx_t idx = 0; idx < count; idx++) {
 		const idx_t row_idx = offsets[sel.get_index(fetch_offset + idx)] - vector_offset;
-		const idx_t result_idx = result_offset + fetch_offset + idx;
 		idx_t update_idx;
-		if (!FindUpdatedTuple(root, row_idx, update_idx)) {
-			// every update in the chain is also present in the root
-			continue;
+		if (FindUpdatedTuple(root, row_idx, update_idx)) {
+			pending.push_back({row_idx, result_offset + fetch_offset + idx, root_data[update_idx]});
 		}
-		auto base_value = result.Get(result_idx);
-		auto value = root_data[update_idx];
-		// undo the invisible updates from newest to oldest
-		for (auto &pin : invisible) {
-			auto &info = UpdateInfo::Get(pin);
-			if (!FindUpdatedTuple(info, row_idx, update_idx)) {
-				continue;
-			}
-			auto value_mask = info.GetValueMask();
-			if (!value_mask.RowIsValid(update_idx)) {
-				value = base_value;
-			} else {
-				// values are only stored for the valid tuples
-				value = info.GetData<T>()[value_mask.CountValid(update_idx)];
-			}
+	}
+	// a row conflicts with every update of it that its transaction cannot see, so the update infos holding a row
+	// are ordered newest to oldest by commit: once one of them is visible, all older ones are visible as well
+	auto update_ptr = root.next;
+	while (!pending.empty() && update_ptr.IsSet()) {
+		auto pin = update_ptr.Pin();
+		auto &info = UpdateInfo::Get(pin);
+		update_ptr = info.next;
+		const bool visible = !info.AppliesToTransaction(view);
+		ValidityMask value_mask;
+		if (!visible) {
+			value_mask = info.GetValueMask();
 		}
-		result.Set(result_idx, value);
+		idx_t remaining = 0;
+		for (auto &row : pending) {
+			idx_t update_idx = 0;
+			if (FindUpdatedTuple(info, row.row_idx, update_idx)) {
+				if (visible) {
+					result.Set(row.result_idx, row.value);
+					continue;
+				}
+				// undo the invisible update
+				if (!value_mask.RowIsValid(update_idx)) {
+					row.value = result.Get(row.result_idx);
+				} else {
+					// values are only stored for the valid tuples
+					row.value = info.GetData<T>()[value_mask.CountValid(update_idx)];
+				}
+			}
+			pending[remaining++] = row;
+		}
+		pending.resize(remaining);
+	}
+	for (auto &row : pending) {
+		result.Set(row.result_idx, row.value);
 	}
 }
 
@@ -828,39 +849,45 @@ void UpdateSegment::CleanupUpdate(UpdateInfo &info) {
 //===--------------------------------------------------------------------===//
 // Check for conflicts in update
 //===--------------------------------------------------------------------===//
-static void CheckForConflicts(UndoBufferPointer next_ptr, TransactionData transaction, row_t *ids,
+static void CheckForConflicts(UpdateInfo &root_info, TransactionData transaction, row_t *ids,
                               const SelectionVector &sel, idx_t count, row_t offset, UndoBufferReference &node_ref) {
-	while (next_ptr.IsSet()) {
+	// every update in the chain is also present in the root: only rows in the root can conflict
+	vector<idx_t> pending;
+	for (idx_t i = 0; i < count; i++) {
+		const auto row_idx = UnsafeNumericCast<idx_t>(ids[sel.get_index(i)] - offset);
+		idx_t update_idx;
+		if (FindUpdatedTuple(root_info, row_idx, update_idx)) {
+			pending.push_back(row_idx);
+		}
+	}
+	// the chain is ordered by insertion: the update info of this transaction was inserted after it started, so it
+	// precedes every update info that was committed before the transaction started
+	bool own_info_possible = true;
+	auto next_ptr = root_info.next;
+	while (next_ptr.IsSet() && (own_info_possible || !pending.empty())) {
 		auto pin = next_ptr.Pin();
 		auto &info = UpdateInfo::Get(pin);
-		if (info.version_number == transaction.GetTransactionId()) {
-			// this UpdateInfo belongs to the current transaction, set it in the node
-			node_ref = std::move(pin);
-		} else if (info.version_number.load() >= transaction.view.visibility_bound) {
-			// potential conflict, check that tuple ids do not conflict
-			// as both ids and info->tuples are sorted, this is similar to a merge join
-			idx_t i = 0, j = 0;
-			auto tuples = info.GetTuples();
-			while (true) {
-				auto id = ids[sel.get_index(i)] - offset;
-				if (id == tuples[j]) {
-					throw TransactionException("Conflict on update!");
-				} else if (id < tuples[j]) {
-					// id < the current tuple in info, move to next id
-					i++;
-					if (i == count) {
-						break;
-					}
-				} else {
-					// id > the current tuple, move to next tuple in info
-					j++;
-					if (j == info.N) {
-						break;
-					}
-				}
+		next_ptr = info.next;
+		const bool own = info.version_number == transaction.GetTransactionId();
+		const bool invisible = !own && info.version_number.load() >= transaction.view.visibility_bound;
+		// the newest update info holding a row decides: the older ones were visible to the transaction that made it
+		idx_t remaining = 0;
+		for (auto row_idx : pending) {
+			idx_t update_idx;
+			if (!FindUpdatedTuple(info, row_idx, update_idx)) {
+				pending[remaining++] = row_idx;
+			} else if (invisible) {
+				throw TransactionException("Conflict on update!");
 			}
 		}
-		next_ptr = info.next;
+		pending.resize(remaining);
+		if (own) {
+			// this UpdateInfo belongs to the current transaction, set it in the node
+			node_ref = std::move(pin);
+			own_info_possible = false;
+		} else if (!invisible) {
+			own_info_possible = false;
+		}
 	}
 }
 
@@ -1559,8 +1586,7 @@ void UpdateSegment::Update(TransactionData transaction, DuckTableEntry &table_en
 	if (transaction.transaction) {
 		// check if there are any conflicts and search for the update info that belongs to this transaction
 		UndoBufferReference node_ref;
-		CheckForConflicts(root_info.next, transaction, ids, sel, count, UnsafeNumericCast<row_t>(vector_offset),
-		                  node_ref);
+		CheckForConflicts(root_info, transaction, ids, sel, count, UnsafeNumericCast<row_t>(vector_offset), node_ref);
 		optional_ptr<UpdateInfo> node;
 		if (node_ref.IsSet()) {
 			node = &UpdateInfo::Get(node_ref);
