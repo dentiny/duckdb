@@ -51,6 +51,13 @@ public:
 	DUCKDB_API void Truncate(idx_t size);
 
 	DUCKDB_API idx_t GetTotalWritten() const;
+
+private:
+	void AddWritten(idx_t write_size);
+
+private:
+	//! Size of the file on disk, only tracked when appending (every write then lands at the end of the file)
+	optional_idx file_size;
 };
 
 } // namespace duckdb

@@ -16,10 +16,23 @@ BufferedFileWriter::BufferedFileWriter(FileSystem &fs, const string &path_p, con
     : fs(fs), path(path_p), data(make_unsafe_uniq_array_uninitialized<data_t>(FILE_BUFFER_SIZE)), offset(0),
       total_written(0), context(context_p) {
 	handle = fs.OpenFile(path, open_flags | FileLockType::WRITE_LOCK);
+	if (open_flags.OpenForAppending()) {
+		file_size = NumericCast<idx_t>(fs.GetFileSize(*handle));
+	}
 }
 
 idx_t BufferedFileWriter::GetFileSize() {
+	if (file_size.IsValid()) {
+		return file_size.GetIndex() + offset;
+	}
 	return NumericCast<idx_t>(fs.GetFileSize(*handle)) + offset;
+}
+
+void BufferedFileWriter::AddWritten(idx_t write_size) {
+	total_written += write_size;
+	if (file_size.IsValid()) {
+		file_size = file_size.GetIndex() + write_size;
+	}
 }
 
 idx_t BufferedFileWriter::GetTotalWritten() const {
@@ -43,7 +56,7 @@ void BufferedFileWriter::WriteData(const_data_ptr_t buffer, idx_t write_size) {
 		idx_t remaining_to_write = write_size - to_copy;
 		handle->Write(context, const_cast<data_ptr_t>(buffer + to_copy), // NOLINT: wrong API in Write
 		              remaining_to_write);
-		total_written += remaining_to_write;
+		AddWritten(remaining_to_write);
 	} else {
 		// first copy anything we can from the buffer
 		const_data_ptr_t end_ptr = buffer + write_size;
@@ -65,7 +78,7 @@ void BufferedFileWriter::Flush() {
 		return;
 	}
 	handle->Write(context, data.get(), offset);
-	total_written += offset;
+	AddWritten(offset);
 	offset = 0;
 }
 
@@ -87,6 +100,9 @@ void BufferedFileWriter::Sync() {
 void BufferedFileWriter::Truncate(idx_t size) {
 	auto persistent = NumericCast<idx_t>(fs.GetFileSize(*handle));
 	D_ASSERT(size <= persistent + offset);
+	if (file_size.IsValid()) {
+		file_size = MinValue(persistent, size);
+	}
 	if (persistent <= size) {
 		// truncating into the pending write buffer.
 		offset = size - persistent;
