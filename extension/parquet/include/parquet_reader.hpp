@@ -496,7 +496,12 @@ private:
 	FilterPropagateResult CheckRowGroupFilterStatistics(ClientContext &context, ParquetReaderScanState &state,
 	                                                    ColumnReader &column_reader, const TableFilter &filter);
 	bool DynamicFiltersExcludeRowGroup(ClientContext &context, ParquetReaderScanState &state);
-	void PrepareRowGroupBuffer(ClientContext &context, ParquetReaderScanState &state, idx_t out_col_idx);
+	//! Whether the statistics or bloom filters rule out the row group; all statistics are checked before any bloom
+	//! filter is read
+	bool RowGroupFiltersExclude(ClientContext &context, ParquetReaderScanState &state);
+	bool BloomFilterExcludesRowGroup(ParquetReaderScanState &state, ColumnReader &column_reader,
+	                                 const TableFilter &filter, FilterPropagateResult prune_result);
+	void PrepareRowGroupBuffer(ParquetReaderScanState &state, idx_t out_col_idx);
 	//! Reads the page index of the row group and works out which rows may match the filters; a page index that
 	//! cannot be read or evaluated is ignored
 	void PreparePageIndex(ClientContext &context, ParquetReaderScanState &state);
