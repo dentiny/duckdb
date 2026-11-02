@@ -1,0 +1,72 @@
+# name: test/sql/copy/parquet/parquet_bloom_filter_row_group_early_exit.test
+# description: Bloom filters are not read for row groups that the statistics of another filter column rule out
+# group: [parquet]
+
+require parquet
+
+require noforcestorage
+
+statement ok
+SET enable_external_file_cache=false
+
+statement ok
+SET threads=1
+
+# k prunes all but one row group, b1 and b2 have bloom filters that their statistics cannot replace
+statement ok
+COPY (SELECT i AS k, ((i % 10) * 2)::INTEGER AS b1, ((i % 10) * 2)::INTEGER AS b2 FROM range(32768) t(i))
+TO '{TEST_DIR}/bloom_early_exit_k_first.parquet' (ROW_GROUP_SIZE 2048)
+
+# the pruning column comes after the bloom filter columns
+statement ok
+COPY (SELECT ((i % 10) * 2)::INTEGER AS b1, ((i % 10) * 2)::INTEGER AS b2, i AS k FROM range(32768) t(i))
+TO '{TEST_DIR}/bloom_early_exit_k_last.parquet' (ROW_GROUP_SIZE 2048)
+
+foreach file k_first k_last
+
+query II
+SELECT count(*), count(bloom_filter_offset) FROM parquet_metadata('{TEST_DIR}/bloom_early_exit_${file}.parquet')
+WHERE path_in_schema IN ('b1', 'b2')
+----
+32	32
+
+statement ok
+CREATE OR REPLACE TABLE bloom_filters AS
+SELECT bloom_filter_offset AS start, bloom_filter_offset + bloom_filter_length AS stop
+FROM parquet_metadata('{TEST_DIR}/bloom_early_exit_${file}.parquet')
+WHERE bloom_filter_offset IS NOT NULL
+
+statement ok
+CALL enable_logging('FileSystem')
+
+query III
+SELECT k, b1, b2 FROM '{TEST_DIR}/bloom_early_exit_${file}.parquet' WHERE k = 20005 AND b1 = 10 AND b2 = 10
+----
+20005	10	10
+
+statement ok
+CALL disable_logging()
+
+# only the bloom filters of the row group that contains k = 20005 are read
+query I
+SELECT count(*) FROM duckdb_logs_parsed('FileSystem') l, bloom_filters f
+WHERE l.path LIKE '%bloom_early_exit_${file}.parquet' AND l.op = 'READ'
+  AND l.pos::BIGINT >= f.start AND l.pos::BIGINT < f.stop
+----
+2
+
+statement ok
+CALL truncate_duckdb_logs()
+
+# the bloom filters still prune when the statistics cannot
+query I
+SELECT count(*) FROM '{TEST_DIR}/bloom_early_exit_${file}.parquet' WHERE k >= 10000 AND b1 = 7
+----
+0
+
+query I
+SELECT count(*) FROM '{TEST_DIR}/bloom_early_exit_${file}.parquet' WHERE k >= 10000 AND b1 = 4 AND b2 = 4
+----
+2277
+
+endloop

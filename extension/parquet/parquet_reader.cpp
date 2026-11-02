@@ -1917,70 +1917,77 @@ bool ParquetReader::DynamicFiltersExcludeRowGroup(ClientContext &context, Parque
 	return false;
 }
 
-void ParquetReader::PrepareRowGroupBuffer(ClientContext &context, ParquetReaderScanState &state, idx_t i) {
+static bool PruneResultExcludes(FilterPropagateResult prune_result) {
+	return prune_result == FilterPropagateResult::FILTER_ALWAYS_FALSE ||
+	       prune_result == FilterPropagateResult::FILTER_FALSE_OR_NULL;
+}
+
+bool ParquetReader::BloomFilterExcludesRowGroup(ParquetReaderScanState &state, ColumnReader &column_reader,
+                                                const TableFilter &filter, FilterPropagateResult prune_result) {
+	auto bloom_source = TryGetBloomFilterSource(column_reader);
+	if (!bloom_source) {
+		return false;
+	}
 	auto &group = GetGroup(state);
-	auto col_idx = MultiFileLocalIndex(i);
-	auto &column_reader = state.GetColumnReader(col_idx);
+	optional_ptr<ColumnReader> bloom_reader = bloom_source;
+	optional_ptr<const TableFilter> bloom_filter = &filter;
+	unique_ptr<TableFilter> leaf_filter;
+	auto check_bloom_filter = prune_result == FilterPropagateResult::NO_PRUNING_POSSIBLE;
+	if (bloom_source->Type().IsNested()) {
+		if (!TryGetBloomFilterLeaf(*bloom_source, filter, bloom_reader, leaf_filter)) {
+			bloom_reader = nullptr;
+		} else {
+			bloom_filter = leaf_filter.get();
+			check_bloom_filter = prune_result != FilterPropagateResult::FILTER_ALWAYS_FALSE;
+		}
+	}
+	auto hash_strategy =
+	    bloom_reader
+	        ? ParquetStatisticsUtils::GetBloomFilterHashStrategy(bloom_reader->Schema(), interval_bloom_filter_version)
+	        : nullopt;
+	return check_bloom_filter && bloom_reader && bloom_filter &&
+	       bloom_reader->Schema().schema_type == ParquetColumnSchemaType::COLUMN &&
+	       bloom_reader->ColumnIndex() < group.columns.size() && hash_strategy &&
+	       ParquetStatisticsUtils::BloomFilterExcludes(
+	           *bloom_filter, group.columns[bloom_reader->ColumnIndex()].meta_data, *state.thrift_file_proto, allocator,
+	           bloom_reader->Schema(), *hash_strategy);
+}
+
+bool ParquetReader::RowGroupFiltersExclude(ClientContext &context, ParquetReaderScanState &state) {
+	if (!filters) {
+		return false;
+	}
+	vector<FilterPropagateResult> prune_results;
+	prune_results.reserve(state.scan_filters.size());
+	for (auto &scan_filter : state.scan_filters) {
+		auto &column_reader = state.GetColumnReader(MultiFileLocalIndex(scan_filter.filter_idx));
+		auto prune_result = CheckRowGroupFilterStatistics(context, state, column_reader, scan_filter.filter);
+		if (PruneResultExcludes(prune_result)) {
+			return true;
+		}
+		prune_results.push_back(prune_result);
+	}
+	// bloom filters are read from the file, so they are only checked once no statistics rule the row group out
+	for (idx_t i = 0; i < state.scan_filters.size(); i++) {
+		auto &scan_filter = state.scan_filters[i];
+		auto &column_reader = state.GetColumnReader(MultiFileLocalIndex(scan_filter.filter_idx));
+		if (BloomFilterExcludesRowGroup(state, column_reader, scan_filter.filter, prune_results[i])) {
+			return true;
+		}
+	}
+	return false;
+}
+
+void ParquetReader::PrepareRowGroupBuffer(ParquetReaderScanState &state, idx_t i) {
+	auto &group = GetGroup(state);
+	auto &column_reader = state.GetColumnReader(MultiFileLocalIndex(i));
 
 	// keep track of column and row group ordinal if data is encrypted
 	if (metadata->crypto_metadata && metadata->crypto_metadata->encryption_algorithm.__isset.AES_GCM_CTR_V1) {
-		column_reader.InitializeCryptoMetadata(metadata->crypto_metadata->encryption_algorithm,
-		                                       GetGroup(state).ordinal);
+		column_reader.InitializeCryptoMetadata(metadata->crypto_metadata->encryption_algorithm, group.ordinal);
 	}
-
-	if (group.num_rows < 0) {
-		throw InvalidInputException("Failed to read file \"%s\": metadata is corrupt. Row group has invalid "
-		                            "number of rows (%lld)",
-		                            GetFileName(), group.num_rows);
-	}
-	auto row_group_num_rows = NumericCast<idx_t>(group.num_rows);
-
-	if (filters) {
-		// filters contain output chunk index, not file col idx!
-		auto filter_entry = filters->TryGetFilterByColumnIndex(col_idx);
-		if (filter_entry) {
-			auto &filter = *filter_entry;
-
-			auto prune_result = CheckRowGroupFilterStatistics(context, state, column_reader, filter);
-			// check the bloom filter if present
-			auto bloom_source = TryGetBloomFilterSource(column_reader);
-			if (bloom_source) {
-				optional_ptr<ColumnReader> bloom_reader = bloom_source;
-				optional_ptr<const TableFilter> bloom_filter = &filter;
-				unique_ptr<TableFilter> leaf_filter;
-				auto check_bloom_filter = prune_result == FilterPropagateResult::NO_PRUNING_POSSIBLE;
-				if (bloom_source->Type().IsNested()) {
-					if (!TryGetBloomFilterLeaf(*bloom_source, filter, bloom_reader, leaf_filter)) {
-						bloom_reader = nullptr;
-					} else {
-						bloom_filter = leaf_filter.get();
-						check_bloom_filter = prune_result != FilterPropagateResult::FILTER_ALWAYS_FALSE;
-					}
-				}
-				auto hash_strategy = bloom_reader ? ParquetStatisticsUtils::GetBloomFilterHashStrategy(
-				                                        bloom_reader->Schema(), interval_bloom_filter_version)
-				                                  : nullopt;
-				if (check_bloom_filter && bloom_reader && bloom_filter &&
-				    bloom_reader->Schema().schema_type == ParquetColumnSchemaType::COLUMN &&
-				    bloom_reader->ColumnIndex() < group.columns.size() && hash_strategy &&
-				    ParquetStatisticsUtils::BloomFilterExcludes(
-				        *bloom_filter, group.columns[bloom_reader->ColumnIndex()].meta_data, *state.thrift_file_proto,
-				        allocator, bloom_reader->Schema(), *hash_strategy)) {
-					prune_result = FilterPropagateResult::FILTER_ALWAYS_FALSE;
-				}
-			}
-
-			if (prune_result == FilterPropagateResult::FILTER_ALWAYS_FALSE ||
-			    prune_result == FilterPropagateResult::FILTER_FALSE_OR_NULL) {
-				// this effectively will skip this chunk - count the skipped rows towards the progress
-				rows_read += row_group_num_rows - state.offset_in_group;
-				state.offset_in_group = group.num_rows;
-				return;
-			}
-		}
-	}
-
-	column_reader.InitializeRead(state.group_index, row_group_num_rows, group.columns, *state.thrift_file_proto);
+	column_reader.InitializeRead(state.group_index, NumericCast<idx_t>(group.num_rows), group.columns,
+	                             *state.thrift_file_proto);
 }
 
 bool ParquetReader::TryAttachPageIndexBuffer(ThriftFileTransport &transport) const {
@@ -2593,12 +2600,22 @@ ParquetPrefetchStrategy ParquetReader::RegisterRowGroupReads(ClientContext &cont
 	state.group_offset = GetRowGroupOffset(*this, state.group_index);
 
 	auto &group = GetGroup(state);
+	if (group.num_rows < 0) {
+		throw InvalidInputException("Failed to read file \"%s\": metadata is corrupt. Row group has invalid "
+		                            "number of rows (%lld)",
+		                            GetFileName(), group.num_rows);
+	}
 	// several readers can read the same column chunk (e.g. two fields of one variant column), count each chunk once
 	unordered_set<idx_t> scanned_column_chunks;
-	for (idx_t i = 0; i < column_ids.size(); i++) {
-		auto col_idx = MultiFileLocalIndex(i);
-		PrepareRowGroupBuffer(context, state, col_idx);
-		state.GetColumnReader(i).GatherColumnChunks(scanned_column_chunks);
+	if (RowGroupFiltersExclude(context, state)) {
+		// skip the row group - count the skipped rows towards the progress
+		rows_read += NumericCast<idx_t>(group.num_rows);
+		state.offset_in_group = NumericCast<idx_t>(group.num_rows);
+	} else {
+		for (idx_t i = 0; i < column_ids.size(); i++) {
+			PrepareRowGroupBuffer(state, i);
+			state.GetColumnReader(i).GatherColumnChunks(scanned_column_chunks);
+		}
 	}
 	// the row group statistics could not rule the row group out - the page index may still rule out pages
 	PreparePageIndex(context, state);
