@@ -44,7 +44,7 @@ shared_ptr<BoundParameterData> BoundParameterMap::CreateOrGetData(const Identifi
 
 unique_ptr<BoundParameterExpression> BoundParameterMap::BindParameterExpression(ParameterExpression &expr) {
 	auto &identifier = expr.Identifier();
-	D_ASSERT(!parameter_data.count(identifier));
+	D_ASSERT(keep_parameters || !parameter_data.count(identifier));
 
 	// No value has been supplied yet,
 	// We return a shared pointer to an object that will get populated with a Value later

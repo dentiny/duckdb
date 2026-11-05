@@ -37,6 +37,8 @@ public:
 
 	//! Flag to indicate that we need to rebind this prepared statement before execution
 	bool rebind = false;
+	//! Bind supplied parameters as parameter expressions of their type, instead of as constants
+	bool keep_parameters = false;
 
 private:
 	shared_ptr<BoundParameterData> CreateOrGetData(const Identifier &identifier);

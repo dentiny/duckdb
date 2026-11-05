@@ -1,0 +1,356 @@
+# name: test/sql/prepared/prepare_cache_rebound_plan.test
+# description: A prepared statement that is rebound because of the parameter types caches the rebound plan
+# group: [prepared]
+
+statement ok
+PRAGMA threads=1;
+
+# parameter types unresolved at prepare time: the plan is created on the first EXECUTE and then reused
+statement ok
+PREPARE untyped AS SELECT typeof($1), $1 + 1;
+
+query I
+SELECT result_types IS NULL FROM duckdb_prepared_statements() WHERE name = 'untyped';
+----
+true
+
+query II
+EXECUTE untyped(1.5::DOUBLE);
+----
+DOUBLE	2.5
+
+query I
+SELECT result_types FROM duckdb_prepared_statements() WHERE name = 'untyped';
+----
+[VARCHAR, DOUBLE]
+
+query II
+EXECUTE untyped(2.5::DOUBLE);
+----
+DOUBLE	3.5
+
+# a different parameter type replans and replaces the cached plan
+query II
+EXECUTE untyped(2147483647::BIGINT);
+----
+BIGINT	2147483648
+
+query I
+SELECT result_types FROM duckdb_prepared_statements() WHERE name = 'untyped';
+----
+[VARCHAR, BIGINT]
+
+query II
+EXECUTE untyped(5::INTEGER);
+----
+INTEGER	6
+
+query II
+EXECUTE untyped(1.5::DOUBLE);
+----
+DOUBLE	2.5
+
+# parameters bound with a different type than the target columns
+statement ok
+CREATE TABLE t(i INTEGER, d DECIMAL(15,2), s VARCHAR);
+
+statement ok
+PREPARE ins AS INSERT INTO t VALUES ($1, $2, $3);
+
+statement ok
+EXECUTE ins(1::BIGINT, 1.25::DOUBLE, 'a');
+
+statement ok
+EXECUTE ins(2::BIGINT, 2.5::DOUBLE, 'b');
+
+statement error
+EXECUTE ins(3000000000::BIGINT, 3.5::DOUBLE, 'c');
+----
+<REGEX>:Conversion Error:.*out of range.*
+
+statement ok
+EXECUTE ins(3::BIGINT, 3.125::DOUBLE, 'c');
+
+statement ok
+EXECUTE ins(4::INTEGER, 4.75::DECIMAL(15,2), 'd');
+
+statement ok
+EXECUTE ins(5::BIGINT, 5.5::DOUBLE, NULL);
+
+statement ok
+EXECUTE ins(NULL, NULL, NULL);
+
+query III
+SELECT * FROM t ORDER BY i NULLS LAST;
+----
+1	1.25	a
+2	2.50	b
+3	3.13	c
+4	4.75	d
+5	5.50	NULL
+NULL	NULL	NULL
+
+# the cached plan of a statement must follow catalog changes
+statement ok
+CREATE TABLE u(i INTEGER);
+
+statement ok
+PREPARE ins_u AS INSERT INTO u VALUES ($1) RETURNING *;
+
+query I
+EXECUTE ins_u(1::BIGINT);
+----
+1
+
+query I
+EXECUTE ins_u(2::BIGINT);
+----
+2
+
+statement ok
+DROP TABLE u;
+
+statement ok
+CREATE TABLE u(i VARCHAR CHECK (length(i) < 3));
+
+query I
+EXECUTE ins_u(3::BIGINT);
+----
+3
+
+statement error
+EXECUTE ins_u(1000::BIGINT);
+----
+<REGEX>:Constraint Error:.*CHECK constraint.*
+
+query I
+EXECUTE ins_u(42::BIGINT);
+----
+42
+
+query II
+SELECT i, typeof(i) FROM u ORDER BY i;
+----
+3	VARCHAR
+42	VARCHAR
+
+# an error that also occurs when binding the values does not stop later EXECUTEs from caching
+statement ok
+CREATE MACRO plus_one(x) AS x + 1;
+
+statement ok
+PREPARE macro_call AS SELECT plus_one($1);
+
+statement ok
+DROP MACRO plus_one;
+
+statement error
+EXECUTE macro_call(1.5::DOUBLE);
+----
+<REGEX>:Catalog Error:.*plus_one.*
+
+statement ok
+CREATE MACRO plus_one(x) AS x + 1;
+
+query I
+EXECUTE macro_call(1.5::DOUBLE);
+----
+2.5
+
+query I
+SELECT result_types FROM duckdb_prepared_statements() WHERE name = 'macro_call';
+----
+[DOUBLE]
+
+# statements that read tables are never cached, so their results follow the data
+statement ok
+CREATE TABLE filter_t AS SELECT range::INTEGER AS i FROM range(100);
+
+statement ok
+PREPARE count_filter AS SELECT count(*), $1 FROM filter_t WHERE i = 200;
+
+query II
+EXECUTE count_filter(1::BIGINT);
+----
+0	1
+
+query I
+SELECT result_types IS NULL FROM duckdb_prepared_statements() WHERE name = 'count_filter';
+----
+true
+
+statement ok
+INSERT INTO filter_t VALUES (200);
+
+query II
+EXECUTE count_filter(2::BIGINT);
+----
+1	2
+
+# a parameter in a filter that is pushed into a scan depends on the parameter value
+statement ok
+PREPARE point AS SELECT count(*) FROM filter_t WHERE i = $1;
+
+query I
+EXECUTE point(5::BIGINT);
+----
+1
+
+query I
+EXECUTE point(500::BIGINT);
+----
+0
+
+query I
+EXECUTE point(200::INTEGER);
+----
+1
+
+query I
+EXECUTE point(7::BIGINT);
+----
+1
+
+# functions that bind differently for constant arguments keep binding the parameter values
+statement ok
+PREPARE sx AS SELECT struct_extract({'a': 1, 'b': 2}, $1);
+
+query I
+EXECUTE sx('a'::VARCHAR);
+----
+1
+
+query I
+EXECUTE sx('b'::VARCHAR);
+----
+2
+
+statement ok
+PREPARE dp AS SELECT date_part($1, TIMESTAMP '2024-03-05 06:07:08');
+
+query I
+EXECUTE dp('month'::VARCHAR);
+----
+3
+
+query I
+EXECUTE dp('hour'::VARCHAR);
+----
+6
+
+statement ok
+PREPARE re AS SELECT regexp_matches('abc', $1);
+
+query I
+EXECUTE re('^a'::VARCHAR);
+----
+true
+
+query I
+EXECUTE re('^b'::VARCHAR);
+----
+false
+
+statement ok
+PREPARE rng AS SELECT count(*) FROM range($1);
+
+query I
+EXECUTE rng(3::INTEGER);
+----
+3
+
+query I
+EXECUTE rng(5::INTEGER);
+----
+5
+
+query I
+EXECUTE rng(7::BIGINT);
+----
+7
+
+# LIMIT with a parameter
+statement ok
+PREPARE lim AS SELECT * FROM range(10) LIMIT $1;
+
+query I
+EXECUTE lim(2::BIGINT);
+----
+0
+1
+
+query I
+EXECUTE lim(3::BIGINT);
+----
+0
+1
+2
+
+query I
+EXECUTE lim(1::INTEGER);
+----
+0
+
+# a NULL parameter must not cache a plan with an inferred parameter type
+statement ok
+PREPARE off AS SELECT i FROM range(5) t(i) LIMIT 50% OFFSET ?
+
+query I
+EXECUTE off(NULL)
+----
+0
+1
+
+statement error
+EXECUTE off(9223372036854775807::BIGINT)
+----
+<REGEX>:Binder Error:.*Max value.*LIMIT/OFFSET.*
+
+query I
+EXECUTE off(1::BIGINT)
+----
+1
+2
+
+# string literals are cached when the parameter type is inferred as VARCHAR
+statement ok
+PREPARE lit AS SELECT $1::VARCHAR || 'x', $2 + 1
+
+query II
+EXECUTE lit('a', 1.5::DOUBLE)
+----
+ax	2.5
+
+query I
+SELECT result_types FROM duckdb_prepared_statements() WHERE name = 'lit'
+----
+[VARCHAR, DOUBLE]
+
+query II
+EXECUTE lit('b', 2.5::DOUBLE)
+----
+bx	3.5
+
+# string literals that are converted to the inferred type are not cached
+statement ok
+CREATE TABLE dates(d DATE, x DECIMAL(4,1))
+
+statement ok
+PREPARE ins_date AS INSERT INTO dates VALUES ($1, $2)
+
+statement ok
+EXECUTE ins_date('2020-01-01', 1.5::DOUBLE)
+
+statement ok
+EXECUTE ins_date('2021-02-03', 2.5::DOUBLE)
+
+statement error
+EXECUTE ins_date('not a date', 3.5::DOUBLE)
+----
+<REGEX>:Conversion Error:.*date.*
+
+query II
+SELECT * FROM dates ORDER BY d
+----
+2020-01-01	1.5
+2021-02-03	2.5
