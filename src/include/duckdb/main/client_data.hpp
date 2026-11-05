@@ -10,6 +10,7 @@
 
 #include "duckdb/common/case_insensitive_map.hpp"
 #include "duckdb/common/common.hpp"
+#include "duckdb/common/once_flag.hpp"
 
 namespace duckdb {
 
@@ -17,6 +18,7 @@ class AttachedDatabase;
 class BufferedFileWriter;
 class ClientContext;
 class CatalogSearchPath;
+class ExpressionRewriter;
 class FileOpener;
 class FileSystem;
 class QueryProfiler;
@@ -58,6 +60,10 @@ public:
 	//! The writer used to log queries, if logging is enabled.
 	//! DEPRECATED: Now, queries are written to the generic log.
 	unique_ptr<BufferedFileWriter> log_query_writer;
+
+	//! Owns the default expression rewrite rules, which are built on first use and shared by every rewriter
+	unique_ptr<ExpressionRewriter> default_rewrite_rules;
+	OnceFlag default_rewrite_rules_init;
 
 public:
 	DUCKDB_API static ClientData &Get(ClientContext &context);
