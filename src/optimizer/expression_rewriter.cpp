@@ -6,6 +6,7 @@
 #include "duckdb/planner/operator/logical_filter.hpp"
 #include "duckdb/function/scalar/generic_functions.hpp"
 #include "duckdb/function/scalar/generic_common.hpp"
+#include "duckdb/main/client_data.hpp"
 #include "duckdb/optimizer/rule/contains_to_in_clause.hpp"
 #include "duckdb/optimizer/rule/distinct_aggregate_optimizer.hpp"
 #include "duckdb/optimizer/rule/empty_needle_removal.hpp"
@@ -23,6 +24,16 @@ const vector<unique_ptr<Rule>> &ExpressionRewriter::GetRules() {
 	if (!rules.empty()) {
 		return rules;
 	}
+	auto &client_data = ClientData::Get(context);
+	client_data.default_rewrite_rules_init.Call([&]() {
+		auto owner = make_uniq<ExpressionRewriter>(context);
+		owner->AddDefaultRules();
+		client_data.default_rewrite_rules = std::move(owner);
+	});
+	return client_data.default_rewrite_rules->rules;
+}
+
+void ExpressionRewriter::AddDefaultRules() {
 	rules.push_back(make_uniq<ConstantOrderNormalizationRule>(*this));
 	rules.push_back(make_uniq<ConstantFoldingRule>(*this));
 	rules.push_back(make_uniq<StructExtractStructPackFoldingRule>(*this));
@@ -69,7 +80,6 @@ const vector<unique_ptr<Rule>> &ExpressionRewriter::GetRules() {
 		D_ASSERT(rule->root);
 	}
 #endif
-	return rules;
 }
 
 void ExpressionRewriter::AddRule(unique_ptr<Rule> rule) {
