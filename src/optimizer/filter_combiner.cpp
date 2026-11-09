@@ -679,8 +679,10 @@ FilterPushdownResult FilterCombiner::TryPushdownLikeFilter(TableFilterSet &table
 }
 
 static string ValidUTF8Prefix(string str) {
-	while (!str.empty() && Utf8Proc::Analyze(str.c_str(), str.size()) == UnicodeType::INVALID) {
-		str.pop_back();
+	size_t invalid_pos = 0;
+	// a bad continuation byte reports its own position, leaving a truncated sequence for the next iteration
+	while (Utf8Proc::Analyze(str.c_str(), str.size(), nullptr, &invalid_pos) == UnicodeType::INVALID) {
+		str.resize(invalid_pos);
 	}
 	return str;
 }
