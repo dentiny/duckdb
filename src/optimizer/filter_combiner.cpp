@@ -3,6 +3,7 @@
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include "duckdb/common/enums/expression_type.hpp"
 #include "duckdb/execution/expression_executor.hpp"
+#include "duckdb/function/scalar/regexp.hpp"
 #include "duckdb/function/scalar/string_common.hpp"
 #include "duckdb/optimizer/optimizer.hpp"
 #include "duckdb/planner/column_binding_map.hpp"
@@ -677,6 +678,49 @@ FilterPushdownResult FilterCombiner::TryPushdownLikeFilter(TableFilterSet &table
 	return FilterPushdownResult::PUSHED_DOWN_PARTIALLY;
 }
 
+static string ValidUTF8Prefix(string str) {
+	while (!str.empty() && Utf8Proc::Analyze(str.c_str(), str.size()) == UnicodeType::INVALID) {
+		str.pop_back();
+	}
+	return str;
+}
+
+//! Push the range of strings a full regex match can accept as optional filters - the match itself is not pushed
+static void PushdownRegexpRangeBounds(TableFilterSet &table_filters, Expression &expr) {
+	if (expr.GetExpressionClass() != ExpressionClass::BOUND_FUNCTION) {
+		return;
+	}
+	auto &func = expr.Cast<BoundFunctionExpression>();
+	if (func.Function().GetName() != "regexp_full_match" || !func.BindInfo() ||
+	    func.GetChildren()[0]->GetExpressionClass() != ExpressionClass::BOUND_COLUMN_REF) {
+		return;
+	}
+	auto &info = func.BindInfo()->Cast<RegexpMatchesBindData>();
+	if (!info.range_success) {
+		return;
+	}
+	auto &column = *func.GetChildren()[0];
+	auto proj_index = column.Cast<BoundColumnRefExpression>().Binding().column_index;
+	auto push_bound = [&](ExpressionType comparison_type, string bound) {
+		auto filter_expr = CreateComparisonExpression(column, comparison_type, Value(std::move(bound)));
+		table_filters.PushFilter(proj_index,
+		                         CreateOptionalExpressionFilter(std::move(filter_expr), column.GetReturnType()));
+	};
+	// the bounds may end in invalid UTF-8 - a valid prefix of a bound still bounds the matches
+	auto lower = ValidUTF8Prefix(info.range_min);
+	if (!lower.empty()) {
+		push_bound(ExpressionType::COMPARE_GREATERTHANOREQUALTO, std::move(lower));
+	}
+	auto upper = ValidUTF8Prefix(info.range_max);
+	if (upper.size() == info.range_max.size()) {
+		if (!upper.empty()) {
+			push_bound(ExpressionType::COMPARE_LESSTHANOREQUALTO, std::move(upper));
+		}
+	} else if (!upper.empty() && Utf8Proc::FindNextLegalUTF8(upper)) {
+		push_bound(ExpressionType::COMPARE_LESSTHAN, std::move(upper));
+	}
+}
+
 static bool TryPushdownDenseInFilter(TableFilterSet &table_filters, const BoundColumnRefExpression &column,
                                      vector<Value> &values) {
 	if (values.empty() || !FilterCombiner::IsDenseRange(values)) {
@@ -1092,6 +1136,8 @@ FilterPushdownResult FilterCombiner::TryPushdownExpression(TableFilterSet &table
 	if (pushdown_result != FilterPushdownResult::NO_PUSHDOWN) {
 		return pushdown_result;
 	}
+	// the regex itself remains NO_PUSHDOWN so that it can still be pushed into the scan as a generic expression
+	PushdownRegexpRangeBounds(table_filters, expr);
 	pushdown_result = TryPushdownInFilter(table_filters, column_ids, expr);
 	if (pushdown_result != FilterPushdownResult::NO_PUSHDOWN) {
 		return pushdown_result;
