@@ -1,0 +1,60 @@
+# name: test/sql/storage/compression/dict_fsst/dict_fsst_encoder_reuse.test
+# description: Segments reuse the previous segment's FSST encoder, also when the string distribution changes
+# group: [dict_fsst]
+
+load {TEST_DIR}/dict_fsst_encoder_reuse.db
+
+statement ok
+SET force_compression='uncompressed';
+
+# the distribution changes every 100k rows, a few segments each: unique urls, unique json, repeated strings with NULLs
+statement ok
+CREATE TABLE uncompressed_data AS
+SELECT i, CASE
+	WHEN (i // 100000) % 3 = 0 THEN 'https://shop.example' || (i // 300000) || '.com/products/' || md5(i::VARCHAR)[:16]
+	WHEN (i // 100000) % 3 = 1 THEN '{"user_id":' || (i * 7919 % 1000003) || ',"event":"' || (['click','view','purchase'])[1 + i % 3] || '"}'
+	WHEN i % 997 = 0 THEN NULL
+	ELSE repeat(chr(65 + (i % 26)::INTEGER), 4 + i % 12) || (i % 3000)
+END AS s
+FROM range(600000) t(i);
+
+statement ok
+CHECKPOINT;
+
+query II nosort expected_result
+SELECT i, s FROM uncompressed_data ORDER BY i;
+----
+
+statement ok
+SET force_compression='dict_fsst';
+
+statement ok
+CREATE TABLE compressed_data AS SELECT * FROM uncompressed_data;
+
+statement ok
+CHECKPOINT;
+
+query I
+SELECT DISTINCT compression FROM pragma_storage_info('compressed_data') WHERE segment_type = 'VARCHAR';
+----
+DICT_FSST
+
+query I
+SELECT count(*) > 20 FROM pragma_storage_info('compressed_data') WHERE segment_type = 'VARCHAR';
+----
+true
+
+query II nosort expected_result
+SELECT i, s FROM compressed_data ORDER BY i;
+----
+
+restart
+
+query II nosort expected_result
+SELECT i, s FROM compressed_data ORDER BY i;
+----
+
+query I
+SELECT count(*) FROM compressed_data c JOIN uncompressed_data u USING (i) WHERE c.s IS DISTINCT FROM u.s;
+----
+0
