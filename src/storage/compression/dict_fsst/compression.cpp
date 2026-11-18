@@ -683,10 +683,10 @@ DictionaryAppendState DictFSSTCompressionState::TryEncode() {
 	// Compress the dictionary, straight to the segment
 	idx_t new_size = 0;
 	auto compress_dictionary = [&]() {
-		auto count = duckdb_fsst_compress(reinterpret_cast<duckdb_fsst_encoder_t *>(encoder), string_count,
-		                                  fsst_string_sizes.data(), fsst_string_ptrs.data(), dictionary_offset,
-		                                  (unsigned char *)dictionary_start, compressed_sizes.data(),
-		                                  compressed_ptrs.data());
+		auto count =
+		    duckdb_fsst_compress(reinterpret_cast<duckdb_fsst_encoder_t *>(encoder), string_count,
+		                         fsst_string_sizes.data(), fsst_string_ptrs.data(), dictionary_offset,
+		                         (unsigned char *)dictionary_start, compressed_sizes.data(), compressed_ptrs.data());
 		new_size = 0;
 		for (idx_t i = 0; i < count; i++) {
 			new_size += compressed_sizes[i];
