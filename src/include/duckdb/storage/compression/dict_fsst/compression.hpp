@@ -94,7 +94,7 @@ public:
 	bool verify_compression = false;
 
 private:
-	//! Kept across segments, reused while it compresses as well as when it was trained
+	//! Kept across segments, reused while it compresses about as well as when it was trained
 	void *encoder = nullptr;
 	//! Encoded/plain size ratio (scaled by 1024) the current encoder reached when it was trained
 	idx_t trained_ratio = 0;

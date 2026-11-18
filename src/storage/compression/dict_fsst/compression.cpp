@@ -694,11 +694,17 @@ DictionaryAppendState DictFSSTCompressionState::TryEncode() {
 		return count;
 	};
 	static constexpr idx_t RATIO_SCALE = 1024;
-	static constexpr idx_t REUSE_TOLERANCE = RATIO_SCALE / 64;
+	//! Reuse while the ratio is at most this much worse than when the encoder was trained
+	static constexpr idx_t REUSE_TOLERANCE = RATIO_SCALE / 128;
+	//! A much better ratio means the strings changed, a new encoder likely compresses them even better
+	static constexpr idx_t RETRAIN_IMPROVEMENT = RATIO_SCALE / 16;
 	size_t res = 0;
 	if (encoder) {
 		res = compress_dictionary();
-		if (res != string_count || new_size * RATIO_SCALE > dictionary_offset * (trained_ratio + REUSE_TOLERANCE)) {
+		auto scaled_size = new_size * RATIO_SCALE;
+		bool reuse = res == string_count && scaled_size <= dictionary_offset * (trained_ratio + REUSE_TOLERANCE) &&
+		             scaled_size + dictionary_offset * RETRAIN_IMPROVEMENT >= dictionary_offset * trained_ratio;
+		if (!reuse) {
 			duckdb_fsst_destroy(reinterpret_cast<duckdb_fsst_encoder_t *>(encoder));
 			encoder = nullptr;
 		}
