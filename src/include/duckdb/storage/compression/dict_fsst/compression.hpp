@@ -94,10 +94,9 @@ public:
 	bool verify_compression = false;
 
 private:
+	//! Kept across segments, reused while it compresses as well as when it was trained
 	void *encoder = nullptr;
-	//! The encoder of the previous segment, reused while it compresses as well as a freshly trained one
-	void *previous_encoder = nullptr;
-	//! Encoded/plain size ratio (scaled by 1024) reached by the last freshly trained encoder
+	//! Encoded/plain size ratio (scaled by 1024) the current encoder reached when it was trained
 	idx_t trained_ratio = 0;
 	unsafe_unique_array<unsigned char> fsst_serialized_symbol_table;
 	DictionaryAppendState append_state = DictionaryAppendState::REGULAR;

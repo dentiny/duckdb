@@ -30,9 +30,6 @@ DictFSSTCompressionState::~DictFSSTCompressionState() {
 		auto fsst_encoder = reinterpret_cast<duckdb_fsst_encoder_t *>(encoder);
 		duckdb_fsst_destroy(fsst_encoder);
 	}
-	if (previous_encoder) {
-		duckdb_fsst_destroy(reinterpret_cast<duckdb_fsst_encoder_t *>(previous_encoder));
-	}
 }
 
 static DictFSSTMode ConvertToMode(DictionaryAppendState &state) {
@@ -273,14 +270,6 @@ void DictFSSTCompressionState::Flush(bool final) {
 	current_string_map.Clear();
 	string_lengths.clear();
 	dictionary_indices.clear();
-	if (encoder) {
-		if (previous_encoder) {
-			duckdb_fsst_destroy(reinterpret_cast<duckdb_fsst_encoder_t *>(previous_encoder));
-		}
-		previous_encoder = encoder;
-		encoder = nullptr;
-		symbol_table_size = DConstants::INVALID_INDEX;
-	}
 	total_tuple_count += tuple_count;
 
 	if (!final) {
@@ -692,41 +681,37 @@ DictionaryAppendState DictFSSTCompressionState::TryEncode() {
 	auto compressed_sizes = vector<size_t>(string_count, 0);
 
 	// Compress the dictionary, straight to the segment
-	auto compress_dictionary = [&](duckdb_fsst_encoder_t *fsst_encoder, idx_t &encoded_size) {
-		auto count = duckdb_fsst_compress(fsst_encoder, string_count, fsst_string_sizes.data(), fsst_string_ptrs.data(),
-		                                  dictionary_offset, (unsigned char *)dictionary_start, compressed_sizes.data(),
+	idx_t new_size = 0;
+	auto compress_dictionary = [&]() {
+		auto count = duckdb_fsst_compress(reinterpret_cast<duckdb_fsst_encoder_t *>(encoder), string_count,
+		                                  fsst_string_sizes.data(), fsst_string_ptrs.data(), dictionary_offset,
+		                                  (unsigned char *)dictionary_start, compressed_sizes.data(),
 		                                  compressed_ptrs.data());
-		encoded_size = 0;
+		new_size = 0;
 		for (idx_t i = 0; i < count; i++) {
-			encoded_size += compressed_sizes[i];
+			new_size += compressed_sizes[i];
 		}
 		return count;
 	};
 	static constexpr idx_t RATIO_SCALE = 1024;
 	static constexpr idx_t REUSE_TOLERANCE = RATIO_SCALE / 64;
-	idx_t encoded_size = 0;
 	size_t res = 0;
-	if (previous_encoder) {
-		auto candidate = reinterpret_cast<duckdb_fsst_encoder_t *>(previous_encoder);
-		res = compress_dictionary(candidate, encoded_size);
-		if (res == string_count &&
-		    encoded_size * RATIO_SCALE <= dictionary_offset * (trained_ratio + REUSE_TOLERANCE)) {
-			encoder = previous_encoder;
-			previous_encoder = nullptr;
+	if (encoder) {
+		res = compress_dictionary();
+		if (res != string_count || new_size * RATIO_SCALE > dictionary_offset * (trained_ratio + REUSE_TOLERANCE)) {
+			duckdb_fsst_destroy(reinterpret_cast<duckdb_fsst_encoder_t *>(encoder));
+			encoder = nullptr;
 		}
 	}
 	if (!encoder) {
 		encoder = reinterpret_cast<void *>(
 		    duckdb_fsst_create(string_count, fsst_string_sizes.data(), fsst_string_ptrs.data(), 0));
-		res = compress_dictionary(reinterpret_cast<duckdb_fsst_encoder_t *>(encoder), encoded_size);
-		if (res == string_count) {
-			trained_ratio = encoded_size * RATIO_SCALE / dictionary_offset;
-		}
+		res = compress_dictionary();
+		trained_ratio = new_size * RATIO_SCALE / dictionary_offset;
 	}
 	auto fsst_encoder = reinterpret_cast<duckdb_fsst_encoder_t *>(encoder);
 
 	bool can_use_encoding = true;
-	idx_t new_size = 0;
 	bitpacking_width_t new_string_lengths_width;
 	idx_t new_string_lengths_space;
 	//! Check that the compressed dictionary can fit on the block
@@ -738,7 +723,6 @@ DictionaryAppendState DictFSSTCompressionState::TryEncode() {
 		uint32_t max_length = 0;
 		for (idx_t i = 0; i < string_count; i++) {
 			auto str_len = UnsafeNumericCast<uint32_t>(compressed_sizes[i]);
-			new_size += str_len;
 			if (str_len > max_length) {
 				max_length = str_len;
 			}
