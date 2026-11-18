@@ -2,7 +2,7 @@
 # description: Segments reuse the previous segment's FSST encoder, also when the string distribution changes
 # group: [dict_fsst]
 
-load {TEST_DIR}/dict_fsst_encoder_reuse.db
+load {TEST_DIR}/dict_fsst_encoder_reuse.db readwrite v1.3.0
 
 statement ok
 SET force_compression='uncompressed';
