@@ -367,11 +367,16 @@ void CompressedStringScanState::Select(Vector &result, idx_t result_offset, idx_
 	const idx_t start_offset = layout.mode == DictFSSTMode::FSST_ONLY ? start + 1 : 0;
 
 	auto result_data = FlatVector::Writer<string_t>(result, sel_count, result_offset);
-	if (string_scan_type == StringScanType::COPY_STRINGS) {
+	const bool decode_without_dictionary =
+	    string_scan_type != StringScanType::COPY_STRINGS && DecodeWithoutDictionary(sel_count);
+	if (string_scan_type == StringScanType::COPY_STRINGS || decode_without_dictionary) {
 		// a select of many rows unpacks every length up front and computes all offsets on its first step back
 		const bool few_rows = sel_count < BitpackingPrimitives::BITPACKING_ALGORITHM_GROUP_SIZE;
 		if (!few_rows) {
 			LoadStringLengths();
+		}
+		if (decode_without_dictionary) {
+			rows_decoded_without_dictionary += sel_count;
 		}
 		for (idx_t i = 0; i < sel_count; i++) {
 			auto string_number = selvec.get_index(start_offset + sel.get_index(i));
@@ -379,8 +384,8 @@ void CompressedStringScanState::Select(Vector &result, idx_t result_offset, idx_
 				result_data.WriteNull();
 				continue;
 			}
-			result_data.WriteStringRef(FetchStringFromDict(result, GetStringOffset(string_number, few_rows),
-			                                               string_number, StringScanType::COPY_STRINGS));
+			result_data.WriteStringRef(
+			    FetchStringFromDict(result, GetStringOffset(string_number, few_rows), string_number, string_scan_type));
 		}
 	} else if (EnsureDictionary()) {
 		// We have prepared the full dictionary, we can reference these strings directly
@@ -412,6 +417,12 @@ void CompressedStringScanState::Select(Vector &result, idx_t result_offset, idx_
 			result_data.WriteStringRef(FetchStringFromDict(result, decompress_offset, string_number));
 		}
 	}
+}
+
+bool CompressedStringScanState::DecodeWithoutDictionary(idx_t sel_count) const {
+	return !dictionary && layout.mode != DictFSSTMode::FSST_ONLY &&
+	       sel_count < BitpackingPrimitives::BITPACKING_ALGORITHM_GROUP_SIZE &&
+	       rows_decoded_without_dictionary + sel_count < layout.dict_count;
 }
 
 bool CompressedStringScanState::AllowDictionaryScan(idx_t scan_count) {

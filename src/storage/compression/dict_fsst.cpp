@@ -156,7 +156,8 @@ void DictFSSTSelect(ColumnSegment &segment, ColumnScanState &state, idx_t vector
 	D_ASSERT(sel_count <= vector_count);
 	D_ASSERT(sel_count == 0 || sel.get_index(sel_count - 1) < vector_count);
 	auto &scan_state = state.scan_state->Cast<CompressedStringScanState>();
-	if (scan_state.layout.mode != DictFSSTMode::FSST_ONLY && scan_type == ScanVectorType::SCAN_ENTIRE_VECTOR) {
+	if (scan_state.layout.mode != DictFSSTMode::FSST_ONLY && scan_type == ScanVectorType::SCAN_ENTIRE_VECTOR &&
+	    !scan_state.DecodeWithoutDictionary(sel_count)) {
 		// scan + slice, so that we can emit a dictionary vector
 		DictFSSTCompressionStorage::StringScan(segment, state, vector_count, result);
 		result.Slice(sel, sel_count);

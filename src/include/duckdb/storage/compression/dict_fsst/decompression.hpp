@@ -56,6 +56,8 @@ public:
 	            StringScanType string_scan_type = StringScanType::STANDARD);
 
 	bool AllowDictionaryScan(idx_t scan_count);
+	//! Whether selecting sel_count rows decodes just them, which is cheaper than building the dictionary
+	bool DecodeWithoutDictionary(idx_t sel_count) const;
 
 private:
 	static SegmentLayout ReadLayout(const BufferHandle &handle, const ColumnSegment &segment);
@@ -93,6 +95,8 @@ public:
 	vector<uint32_t> string_offsets;
 	//! String lengths summed by GetStringOffset so far
 	idx_t summed_lengths = 0;
+	//! Rows decoded without the dictionary so far, the dictionary is built once they would reach dict_count
+	idx_t rows_decoded_without_dictionary = 0;
 
 	buffer_ptr<DictionaryEntry> dictionary;
 	void *decoder = nullptr;
