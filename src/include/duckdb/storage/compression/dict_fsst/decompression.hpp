@@ -9,6 +9,7 @@
 namespace duckdb {
 
 class DictionaryEntry;
+class StringHeap;
 
 namespace dict_fsst {
 
@@ -59,15 +60,24 @@ public:
 
 	bool AllowDictionaryScan(idx_t scan_count);
 	//! Whether selecting sel_count rows decodes just them, which is cheaper than building the dictionary
-	bool DecodeWithoutDictionary(idx_t sel_count) const;
+	bool DecodeWithoutDictionary(idx_t sel_count, StringScanType string_scan_type) const;
 
 private:
 	static SegmentLayout ReadLayout(const BufferHandle &handle, const ColumnSegment &segment);
-	//! With COPY_STRINGS the string is owned by the result instead of pointing into the block
-	string_t FetchStringFromDict(Vector &result, uint32_t dict_offset, idx_t dict_idx,
+	//! The heap fetched strings are decoded or copied into, nullptr if they point into the block or are inlined
+	optional_ptr<StringHeap> GetStringHeap(Vector &result, StringScanType string_scan_type);
+	//! With COPY_STRINGS the string is owned by the heap instead of pointing into the block
+	string_t FetchStringFromDict(optional_ptr<StringHeap> heap, uint32_t dict_offset, idx_t dict_idx,
 	                             StringScanType string_scan_type = StringScanType::STANDARD);
 	//! Builds the dictionary on first use, returns false if this scan has no dictionary
 	bool EnsureDictionary();
+	void SelectWithoutDictionary(Vector &result, idx_t result_offset, idx_t start, const SelectionVector &sel,
+	                             idx_t sel_count);
+	//! Unpacks only the bitpacking groups of the selected rows
+	void UnpackSelectedIndices(idx_t start, const SelectionVector &sel, idx_t sel_count,
+	                           SelectionVector &selected_indices);
+	//! Decodes a dictionary entry into the partial dictionary, unless an earlier select already did
+	string_t GetPartialDictionaryEntry(idx_t string_number);
 	//! A string's offset from a running sum, restarted on a step back if allowed and cheap, else from all offsets
 	uint32_t GetStringOffset(idx_t string_number, bool allow_restart);
 	//! Unpacks the length of every string, which scans need; a few fetched strings only unpack the groups they use
@@ -97,10 +107,12 @@ public:
 	vector<uint32_t> string_offsets;
 	//! String lengths summed by GetStringOffset so far
 	idx_t summed_lengths = 0;
-	//! Rows decoded without the dictionary so far, the dictionary is built once they would reach dict_count
-	idx_t rows_decoded_without_dictionary = 0;
+	//! Only the first select of a segment decodes without the dictionary, later ones build it
+	bool selected_without_dictionary = false;
 
 	buffer_ptr<DictionaryEntry> dictionary;
+	//! Entries decoded without the dictionary, valid once decoded; EnsureDictionary completes it
+	buffer_ptr<DictionaryEntry> partial_dictionary;
 	void *decoder = nullptr;
 	bool all_values_inlined = false;
 

@@ -1,5 +1,5 @@
 # name: test/sql/storage/compression/dict_fsst/dict_fsst_select_few_rows.test
-# description: Selects of a few rows decode just those rows until they add up to the dictionary size
+# description: The first select of a few rows of a segment decodes just those rows, later selects build the dictionary
 # group: [dict_fsst]
 
 load {TEST_DIR}/dict_fsst_select_few_rows.db
@@ -49,7 +49,7 @@ query IIII nosort few_rows
 SELECT * FROM {table} WHERE i BETWEEN 200000 AND 200030 AND i % 3 = 0 ORDER BY i;
 ----
 
-# a few rows in every vector: decoded one by one until the dictionary is cheaper
+# a few rows in every vector: the first vector decodes them, the next builds the dictionary around them
 query IIII nosort sparse_rows
 SELECT * FROM {table} WHERE i % 97 = 5 ORDER BY i;
 ----
