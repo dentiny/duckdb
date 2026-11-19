@@ -67,8 +67,16 @@ CompressedStringScanState::~CompressedStringScanState() {
 	delete reinterpret_cast<duckdb_fsst_decoder_t *>(decoder);
 }
 
-string_t CompressedStringScanState::FetchStringFromDict(Vector &result, uint32_t dict_offset, idx_t dict_idx,
-                                                        StringScanType string_scan_type) {
+optional_ptr<StringHeap> CompressedStringScanState::GetStringHeap(Vector &result, StringScanType string_scan_type) {
+	const bool decodes_to_heap = layout.mode != DictFSSTMode::DICTIONARY && !all_values_inlined;
+	if (decodes_to_heap || string_scan_type == StringScanType::COPY_STRINGS) {
+		return StringVector::GetStringHeap(result);
+	}
+	return nullptr;
+}
+
+string_t CompressedStringScanState::FetchStringFromDict(optional_ptr<StringHeap> heap, uint32_t dict_offset,
+                                                        idx_t dict_idx, StringScanType string_scan_type) {
 	D_ASSERT(dict_idx < layout.dict_count);
 	if (dict_idx == 0) {
 		return string_t(nullptr, 0);
@@ -90,13 +98,12 @@ string_t CompressedStringScanState::FetchStringFromDict(Vector &result, uint32_t
 		if (all_values_inlined) {
 			return FSSTPrimitives::DecompressInlinedValue(decoder, str_ptr, string_len);
 		} else {
-			return FSSTPrimitives::DecompressValue(decoder, StringVector::GetStringAllocator(result), str_ptr,
-			                                       string_len);
+			return FSSTPrimitives::DecompressValue(decoder, heap->GetAllocator(), str_ptr, string_len);
 		}
 	}
 	default:
 		if (string_scan_type == StringScanType::COPY_STRINGS) {
-			return StringVector::AddStringOrBlob(result, string_t(str_ptr, string_len));
+			return heap->AddBlob(string_t(str_ptr, string_len));
 		}
 		// FIXME: the Vector doesn't seem to take ownership of the non-inlined string data???
 		return string_t(str_ptr, string_len);
@@ -243,21 +250,45 @@ bool CompressedStringScanState::EnsureDictionary() {
 		return dictionary != nullptr;
 	}
 	LoadStringLengths();
-	dictionary = DictionaryVector::CreateReusableDictionary(segment.GetType(), layout.dict_count);
+	const bool partially_decoded = partial_dictionary != nullptr;
+	dictionary = partially_decoded ? std::move(partial_dictionary)
+	                               : DictionaryVector::CreateReusableDictionary(segment.GetType(), layout.dict_count);
 	auto &dict_data = dictionary->data;
 	auto dict_child_data = FlatVector::GetDataMutable<string_t>(dict_data);
 	auto &validity = FlatVector::ValidityMutable(dict_data);
 	D_ASSERT(layout.dict_count >= 1);
-	validity.SetInvalid(0);
 
+	auto heap = GetStringHeap(dict_data, StringScanType::STANDARD);
 	uint32_t offset = 0;
 	for (uint32_t i = 0; i < layout.dict_count; i++) {
 		//! We can uncompress during fetching, we need the length of the string inside the dictionary
 		auto string_len = string_lengths[i];
-		dict_child_data[i] = FetchStringFromDict(dict_data, offset, i);
+		if (!partially_decoded || !validity.RowIsValid(i)) {
+			dict_child_data[i] = FetchStringFromDict(heap, offset, i);
+		}
 		offset += string_len;
 	}
+	if (partially_decoded) {
+		validity.SetAllValid(layout.dict_count);
+	}
+	validity.SetInvalid(0);
 	return true;
+}
+
+string_t CompressedStringScanState::GetPartialDictionaryEntry(idx_t string_number) {
+	if (!partial_dictionary) {
+		partial_dictionary = DictionaryVector::CreateReusableDictionary(segment.GetType(), layout.dict_count);
+		FlatVector::ValidityMutable(partial_dictionary->data).SetAllInvalid(layout.dict_count);
+	}
+	auto &dict_data = partial_dictionary->data;
+	auto &validity = FlatVector::ValidityMutable(dict_data);
+	auto dict_child_data = FlatVector::GetDataMutable<string_t>(dict_data);
+	if (!validity.RowIsValid(string_number)) {
+		dict_child_data[string_number] = FetchStringFromDict(GetStringHeap(dict_data, StringScanType::STANDARD),
+		                                                     GetStringOffset(string_number, true), string_number);
+		validity.SetValid(string_number);
+	}
+	return dict_child_data[string_number];
 }
 
 uint32_t CompressedStringScanState::GetStringOffset(idx_t string_number, bool allow_restart) {
@@ -351,6 +382,10 @@ void CompressedStringScanState::Select(Vector &result, idx_t result_offset, idx_
 		D_ASSERT(sel.get_index(i - 1) <= sel.get_index(i));
 	}
 #endif
+	if (DecodeWithoutDictionary(sel_count, string_scan_type)) {
+		SelectWithoutDictionary(result, result_offset, start, sel, sel_count);
+		return;
+	}
 	const auto scan_count = sel_count == 0 ? 0 : sel.get_index(sel_count - 1) + 1;
 	auto &selvec = GetSelVec(start, scan_count);
 
@@ -364,13 +399,14 @@ void CompressedStringScanState::Select(Vector &result, idx_t result_offset, idx_
 		if (!few_rows) {
 			LoadStringLengths();
 		}
+		auto heap = GetStringHeap(result, StringScanType::COPY_STRINGS);
 		for (idx_t i = 0; i < sel_count; i++) {
 			auto string_number = selvec.get_index(start_offset + sel.get_index(i));
 			if (string_number == 0) {
 				result_data.WriteNull();
 				continue;
 			}
-			result_data.WriteStringRef(FetchStringFromDict(result, GetStringOffset(string_number, few_rows),
+			result_data.WriteStringRef(FetchStringFromDict(heap, GetStringOffset(string_number, few_rows),
 			                                               string_number, StringScanType::COPY_STRINGS));
 		}
 	} else if (EnsureDictionary()) {
@@ -387,6 +423,7 @@ void CompressedStringScanState::Select(Vector &result, idx_t result_offset, idx_
 		}
 	} else {
 		LoadStringLengths();
+		auto heap = GetStringHeap(result, StringScanType::STANDARD);
 		for (idx_t i = 0; i < sel_count; i++) {
 			// Lookup dict offset in index buffer
 			auto string_number = selvec.get_index(start_offset + sel.get_index(i));
@@ -400,27 +437,40 @@ void CompressedStringScanState::Select(Vector &result, idx_t result_offset, idx_
 			for (; decompress_position < string_number; decompress_position++) {
 				decompress_offset += string_lengths[decompress_position];
 			}
-			result_data.WriteStringRef(FetchStringFromDict(result, decompress_offset, string_number));
+			result_data.WriteStringRef(FetchStringFromDict(heap, decompress_offset, string_number));
 		}
 	}
 }
 
-bool CompressedStringScanState::AllowDictionaryScan(idx_t scan_count) {
-	if (layout.mode == DictFSSTMode::FSST_ONLY) {
-		return false;
-	}
-	if (scan_count != STANDARD_VECTOR_SIZE) {
-		return false;
-	}
-	return EnsureDictionary();
+bool CompressedStringScanState::DecodeWithoutDictionary(idx_t sel_count, StringScanType string_scan_type) const {
+	return !dictionary && !selected_without_dictionary && layout.mode != DictFSSTMode::FSST_ONLY &&
+	       string_scan_type != StringScanType::COPY_STRINGS &&
+	       sel_count < BitpackingPrimitives::BITPACKING_ALGORITHM_GROUP_SIZE && sel_count < layout.dict_count;
 }
 
-void CompressedStringScanState::SelectToDictionaryVector(Vector &result, idx_t start, idx_t vector_count,
-                                                         const SelectionVector &sel, idx_t sel_count) {
-	D_ASSERT(layout.mode != DictFSSTMode::FSST_ONLY);
-	D_ASSERT(sel_count <= vector_count / 64);
-	EnsureDictionary();
+void CompressedStringScanState::SelectWithoutDictionary(Vector &result, idx_t result_offset, idx_t start,
+                                                        const SelectionVector &sel, idx_t sel_count) {
+	D_ASSERT(sel_count < BitpackingPrimitives::BITPACKING_ALGORITHM_GROUP_SIZE);
+	selected_without_dictionary = true;
+	LoadStringLengths();
 	SelectionVector selected_indices(MaxValue<idx_t>(sel_count, 1));
+	UnpackSelectedIndices(start, sel, sel_count, selected_indices);
+	auto result_data = FlatVector::Writer<string_t>(result, sel_count, result_offset);
+	for (idx_t i = 0; i < sel_count; i++) {
+		auto string_number = selected_indices.get_index(i);
+		if (string_number == 0) {
+			result_data.WriteNull();
+			continue;
+		}
+		result_data.WriteStringRef(GetPartialDictionaryEntry(string_number));
+	}
+	if (partial_dictionary) {
+		StringVector::AddHeapReference(result, partial_dictionary->data);
+	}
+}
+
+void CompressedStringScanState::UnpackSelectedIndices(idx_t start, const SelectionVector &sel, idx_t sel_count,
+                                                      SelectionVector &selected_indices) {
 	constexpr auto group_size = BitpackingPrimitives::BITPACKING_ALGORITHM_GROUP_SIZE;
 	uint32_t group[group_size];
 	idx_t loaded_group = NumericLimits<idx_t>::Maximum();
@@ -443,6 +493,25 @@ void CompressedStringScanState::SelectToDictionaryVector(Vector &result, idx_t s
 	if (invalid_index) {
 		ThrowDictionaryIndexOutOfBounds();
 	}
+}
+
+bool CompressedStringScanState::AllowDictionaryScan(idx_t scan_count) {
+	if (layout.mode == DictFSSTMode::FSST_ONLY) {
+		return false;
+	}
+	if (scan_count != STANDARD_VECTOR_SIZE) {
+		return false;
+	}
+	return EnsureDictionary();
+}
+
+void CompressedStringScanState::SelectToDictionaryVector(Vector &result, idx_t start, idx_t vector_count,
+                                                         const SelectionVector &sel, idx_t sel_count) {
+	D_ASSERT(layout.mode != DictFSSTMode::FSST_ONLY);
+	D_ASSERT(sel_count <= vector_count / 64);
+	EnsureDictionary();
+	SelectionVector selected_indices(MaxValue<idx_t>(sel_count, 1));
+	UnpackSelectedIndices(start, sel, sel_count, selected_indices);
 	result.Dictionary(dictionary, selected_indices, sel_count);
 }
 
