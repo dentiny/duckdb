@@ -145,6 +145,7 @@ ColumnReader::ColumnReader(const ParquetReader &reader, const ParquetColumnSchem
 }
 
 ColumnReader::~ColumnReader() {
+	duckdb_zstd::ZSTD_freeDCtx(zstd_context);
 }
 
 Allocator &ColumnReader::GetAllocator() {
@@ -845,7 +846,14 @@ void ColumnReader::DecompressInternal(CompressionCodec::type codec, const_data_p
 		break;
 	}
 	case CompressionCodec::ZSTD: {
-		auto res = duckdb_zstd::ZSTD_decompress(dst, dst_size, src, src_size);
+		if (!zstd_context) {
+			zstd_context = duckdb_zstd::ZSTD_createDCtx();
+			if (!zstd_context) {
+				throw OutOfMemoryException("Failed to read file \"%s\": could not allocate a ZSTD context",
+				                           Reader().GetFileName());
+			}
+		}
+		auto res = duckdb_zstd::ZSTD_decompressDCtx(zstd_context, dst, dst_size, src, src_size);
 		if (duckdb_zstd::ZSTD_isError(res) || res != dst_size) {
 			throw InvalidInputException("Failed to read file \"%s\": ZSTD Decompression failure",
 			                            Reader().GetFileName());

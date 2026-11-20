@@ -57,6 +57,10 @@ class TProtocol;
 } // namespace thrift
 } // namespace duckdb_apache
 
+namespace duckdb_zstd {
+struct ZSTD_DCtx_s;
+} // namespace duckdb_zstd
+
 namespace duckdb {
 class ParquetReader;
 struct TableFilterState;
@@ -463,6 +467,8 @@ private:
 	CryptoMetaData aad_crypto_metadata;
 	//! Backs the Thrift page header of the page that is currently being read
 	ArenaAllocator page_header_arena;
+	//! Reused for the ZSTD pages read by this reader, created on the first one
+	duckdb_zstd::ZSTD_DCtx_s *zstd_context = nullptr;
 
 	//! Resizeable buffers used for the various encodings above
 	ResizeableBuffer encoding_buffers[2];
